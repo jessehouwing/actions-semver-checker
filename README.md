@@ -11,6 +11,5 @@ Run this action for your github actions repository to ensure the correct tags ha
         with:
           fetch-depth: 0
 
-      # Runs a single command using the runners shell
       - uses: jessehouwing/actions-semver-checker@v1
 ```
