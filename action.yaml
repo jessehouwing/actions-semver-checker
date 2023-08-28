@@ -1,5 +1,8 @@
 name: 'Action SemVer Checker'
 description: 'Checks the version tags for your action repository to ensure the correct versions will be picked.'
+branding:
+  icon: 'check-circle'
+  color: 'orange'
 runs:
   using: "composite"
   steps:
