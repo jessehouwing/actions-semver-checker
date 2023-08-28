@@ -11,12 +11,11 @@ ERROR: Version: v1.0.0 does not exist and must match: v1 ref f43a0e5ff2bd2940956
 
 # Usage
 
-```yaml
-      
-      - uses: actions/checkout@v3
-        # Check out with fetch-depth: 0
-        with:
-          fetch-depth: 0
+```yaml  
+- uses: actions/checkout@v3
+  # Check out with fetch-depth: 0
+  with:
+    fetch-depth: 0
 
-      - uses: jessehouwing/actions-semver-checker@v1
+- uses: jessehouwing/actions-semver-checker@v1
 ```
