@@ -7,6 +7,7 @@ runs:
   using: "composite"
   steps:
     - run: |
+        $global:returnCode = 0
         $warnMinor = $true
 
         $tags = & git tag -l v* | ?{ return ($_ -match "v\d+(.\d+)*$") }
@@ -15,6 +16,25 @@ runs:
 
         $tagVersions = @()
         $branchVersions = @()
+
+        function write-actions-error
+        {
+            param(
+                [string] $message
+            )
+
+            write-output $message
+            $global:returnCode = 1
+        }
+
+        function write-actions-warning
+        {
+            param(
+                [string] $message
+            )
+
+            write-output $message
+        }
 
         function ConvertTo-Version
         {
@@ -40,6 +60,7 @@ runs:
                 }
             }
         }
+
         foreach ($tag in $tags)
         {
             $tagVersions += @{
@@ -81,11 +102,11 @@ runs:
                 if ($branchVersion.sha -eq $tagVersion.sha)
                 {
                     
-                    write-output "::warning $message"
+                    write-actions-warning "::warning $message"
                 }
                 else
                 {
-                    write-output "::error $message"
+                    write-actions-error "::error $message"
                 }
             }
         }
@@ -107,12 +128,12 @@ runs:
             {
                 if (-not $majorSha)
                 {
-                    write-output "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                    write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
                 }
 
                 if ($minorSha -and ($majorSha -ne $minorSha))
                 {
-                    write-output "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                    write-actions-error "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
                 }
             }
 
@@ -124,27 +145,27 @@ runs:
             
             if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
             {
-                write-output "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             }
 
             if (-not $patchSha -and $majorSha)
             {
-                write-output "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: v$($highestPatch.major) ref $majorSha"
+                write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: v$($highestPatch.major) ref $majorSha"
             }
 
             if (-not $majorSha)
             {
-                write-output "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             }
 
             if ($warnMinor -and -not $minorSha)
             {
-                write-output "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             }
 
             if ($minorSha -and ($minorSha -ne $patchSha))
             {
-                write-output "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             }
         }
 
@@ -153,6 +174,8 @@ runs:
 
         if ($latest -and($latest.sha -ne $highestVersion.sha))
         {
-            write-output "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $($highestVersion.sha)"
+            write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $($highestVersion.sha)"
         }
+
+        exit $global:returnCode
       shell: pwsh
