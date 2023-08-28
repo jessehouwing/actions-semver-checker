@@ -15,4 +15,4 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: jessehouwing/actions-semver-checker@v1
+      - uses: jessehouwing/actions-semver-checker@main
