@@ -2,9 +2,9 @@
 
 Every time you publish a new GitHub Action, say 1.2.3, it's customary to also update the tags for 1.2 and 1 to point to the same commit. That way people can subscribe to  either an exact version or a floating version that's automatically updated when the action's author pushes a new version.
 
-unfortunately, GitHub's creative use of tags doesn't do this automatically and many actions don't auto-update their major and minor versions whenever they release a new  patch.
+Unfortunately, GitHub's creative use of tags doesn't do this automatically and many actions don't auto-update their major and minor versions whenever they release a new  patch.
 
-An action author can run this action for your github actions repository to ensure the correct tags have been created and point to the correct commits.
+An action author can run this action for their github actions repository to ensure the correct tags have been created and point to the correct commits.
 
 Example output:
 
