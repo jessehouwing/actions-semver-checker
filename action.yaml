@@ -4,7 +4,7 @@ runs:
   using: "composite"
   steps:
     - run: |
-        Install-Module -Name SemVerPS
+        Install-Module -Confirm -Name SemVerPS
 
         $warnMinor = $false
 
