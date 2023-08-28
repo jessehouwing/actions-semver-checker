@@ -28,4 +28,4 @@ jobs:
           fetch-depth: 0
 
       # Runs a single command using the runners shell
-      - uses: jessehouwing/actions-semver-checker@v0
+      - uses: jessehouwing/actions-semver-checker@v1
