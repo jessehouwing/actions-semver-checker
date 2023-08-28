@@ -5,8 +5,9 @@ Run this action for your github actions repository to ensure the correct tags ha
 # Usage
 
 ```yaml
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      
       - uses: actions/checkout@v3
+        # Check out with fetch-depth: 0
         with:
           fetch-depth: 0
 
