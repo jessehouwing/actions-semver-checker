@@ -77,14 +77,15 @@ runs:
 
             if ($branchVersion)
             {
-                $message = "Ambigouous version: $($tagVersion.version) - Exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha))"
+                $message = "title=Ambigouous version: $($tagVersion.version)::Exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha))"
                 if ($branchVersion.sha -eq $tagVersion.sha)
                 {
-                    write-warning $message
+                    
+                    write-output "::warning $message"
                 }
                 else
                 {
-                    write-error $message
+                    write-output "::error $message"
                 }
             }
         }
@@ -106,12 +107,12 @@ runs:
             {
                 if (-not $majorSha)
                 {
-                    write-error "Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                    write-output "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
                 }
 
                 if ($minorSha -and ($majorSha -ne $minorSha))
                 {
-                    write-error "Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                    write-output "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
                 }
             }
 
@@ -123,27 +124,27 @@ runs:
             
             if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
             {
-                write-error "Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                write-output "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             }
 
             if (-not $patchSha -and $majorSha)
             {
-                write-error "Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: v$($highestPatch.major) ref $majorSha"
+                write-output "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: v$($highestPatch.major) ref $majorSha"
             }
 
             if (-not $majorSha)
             {
-                write-error "Version: v$($majorVersion.major) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                write-output "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             }
 
             if ($warnMinor -and -not $minorSha)
             {
-                write-error "Version: v$($highestMinor.major).$($highestMinor.minor) does not exist must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                write-output "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             }
 
             if ($minorSha -and ($minorSha -ne $patchSha))
             {
-                write-error "Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                write-output "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             }
         }
 
@@ -152,6 +153,6 @@ runs:
 
         if ($latest -and($latest.sha -ne $highestVersion.sha))
         {
-            write-error "Version: latest ref $($latest.sha) must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $($highestVersion.sha)"
+            write-output "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $($highestVersion.sha)"
         }
       shell: pwsh
