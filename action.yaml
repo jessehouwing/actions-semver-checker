@@ -6,7 +6,8 @@ branding:
 runs:
   using: "composite"
   steps:
-    - run: |
+    - name: "Checking versions..."
+      run: |
         $global:returnCode = 0
         $warnMinor = $true
 
