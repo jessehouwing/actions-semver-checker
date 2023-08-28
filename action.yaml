@@ -1,0 +1,134 @@
+name: 'Action SemVer Checker'
+description: 'Checks the version tags for your action repository to ensure the correct versions will be picked.'
+inputs:
+runs:
+  using: "composite"
+  steps:
+    - run: |
+        Install-Module -Name SemVerPS
+
+        $warnMinor = $false
+
+        $tags = & git tag -l v* | ?{ return ($_ -match "v\d+(.\d+)*$") }
+
+        $branches = & git branch --all --quiet --remotes | ?{ return ($_ -match "origin/(v\d+(.\d+)*(-.*)?)$") } | %{ $_.Trim().Replace("origin/", "")}
+
+        $tagVersions = @()
+        $branchVersions = @()
+
+        foreach ($tag in $tags)
+        {
+            $tagVersions += @{
+                version = $tag
+                ref = "refs/tags/$tag"
+                sha = & git rev-parse --quiet refs/tags/$tag
+                semver = ConvertTo-SemVer -Version $tag.Substring(1)
+            }
+        }
+
+        $latest = & git tag -l latest
+        if ($latest)
+        {
+            $latest = @{
+                version = "latest"
+                ref = "refs/tags/latest"
+                sha = & git rev-parse --quiet refs/tags/latest
+                semver = $null
+            }
+        }
+
+        foreach ($branch in $branches)
+        {
+            $branchVersions += @{
+                version = $branch
+                ref = "refs/remotes/origin/$branch"
+                sha = & git rev-parse refs/remotes/origin/$branch
+                semver = ConvertTo-SemVer -Version $branch.Substring(1)
+            }
+        }
+
+        foreach ($tagVersion in $tagVersions)
+        {
+            $branchVersion = $branchVersions | ?{ $_.version -eq $tagVersion.version } | Select-Object -First 1
+
+            if ($branchVersion)
+            {
+                $message = "title=Ambigouous version: $($tagVersion.version)::Exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha))"
+                if ($branchVersion.sha -eq $tagVersion.sha)
+                {
+                    
+                    write-output "::warning $message"
+                }
+                else
+                {
+                    write-output "::error $message"
+                }
+            }
+        }
+
+        $allVersions = $tagVersions + $branchVersions
+
+        $majorVersions = $allVersions | %{ ConvertTo-SemVer -Version "$($_.semver.major)" } | Select-Object -Unique
+        $minorVersions = $allVersions | %{ ConvertTo-SemVer -Version "$($_.semver.major).$($_.semver.minor)" } | Select-Object -Unique
+        $patchVersions = $allVersions | %{ ConvertTo-SemVer -Version "$($_.semver.major).$($_.semver.minor).$($_.semver.patch)" } | Select-Object -Unique
+
+        foreach ($majorVersion in $majorVersions)
+        {
+            $highestMinor = ($minorVersions | ?{ $_.major -eq $majorVersion.major } | Measure-Object -Max).Maximum
+
+            $majorSha = ($allVersions | ?{ $_.version -eq "v$($majorVersion.major)" } | Select-Object -First 1).sha
+            $minorSha = ($allVersions | ?{ $_.version -eq "v$($majorVersion.major).$($highestMinor.minor)" } | Select-Object -First 1).sha
+
+            if ($warnMinor)
+            {
+                if (-not $majorSha)
+                {
+                    write-output "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                }
+
+                if ($minorSha -and ($majorSha -ne $minorSha))
+                {
+                    write-output "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                }
+            }
+
+            $highestPatch = ($patchVersions | ?{ $_.major -eq $highestMinor.major -and $_.minor -eq $highestMinor.minor } | Measure-Object -Max).Maximum
+            
+            $majorSha = ($allVersions | ?{ $_.version -eq "v$($highestMinor.major)" } | Select-Object -First 1).sha
+            $minorSha = ($allVersions | ?{ $_.version -eq "v$($highestMinor.major).$($highestMinor.minor)" } | Select-Object -First 1).sha
+            $patchSha = ($allVersions | ?{ $_.version -eq "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.patch)" } | Select-Object -First 1).sha
+            
+            if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
+            {
+                write-output "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.patch) ref $patchSha"
+            }
+
+            if (-not $patchSha -and $majorSha)
+            {
+                write-output "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.patch) does not exist and must match: v$($highestPatch.major) ref $majorSha"
+            }
+
+            if (-not $majorSha)
+            {
+                write-output "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.patch) ref $patchSha"
+            }
+
+            if ($warnMinor -and -not $minorSha)
+            {
+                write-output "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.patch) ref $patchSha"
+            }
+
+            if ($minorSha -and ($minorSha -ne $patchSha))
+            {
+                write-output "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.patch) ref $patchSha"
+            }
+        }
+
+        $highestVersion = ($allVersions | %{ ConvertTo-SemVer -Version "$($_.semver.major).$($_.semver.minor).$($_.semver.patch)" } | Select-Object -Unique | Measure-Object -Max).Maximum
+        $highestVersion = $allVersions | ?{ $_.version -eq "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.patch)" } | Select-Object -First 1 
+
+        if ($latest -and($latest.sha -ne $highestVersion.sha))
+        {
+            write-output "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.patch) ref $($highestVersion.sha)"
+        }
+      shell: pwsh
