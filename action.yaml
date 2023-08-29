@@ -67,7 +67,7 @@ runs:
             $tagVersions += @{
                 version = $tag
                 ref = "refs/tags/$tag"
-                sha = & git rev-parse --quiet refs/tags/$tag
+                sha = sha = & git rev-list -n 1 $tag
                 semver = ConvertTo-Version $tag.Substring(1)
             }
         }
@@ -78,7 +78,7 @@ runs:
             $latest = @{
                 version = "latest"
                 ref = "refs/tags/latest"
-                sha = & git rev-parse --quiet refs/tags/latest
+                sha = sha = & git rev-list -n 1 latest
                 semver = $null
             }
         }
