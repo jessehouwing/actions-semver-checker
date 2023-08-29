@@ -26,6 +26,8 @@ ERROR: Version: v1.0.0 does not exist and must match: v1 ref f43a0e5ff2bd2940956
 
 # Future updates
 
-I expect to update this action to automatically update the major and minor version when a new patch version is created.
+I expect to update this action to
 
-And for it to generate the correct git commands to manually correct an existing action.
+ * automatically update the major and minor version when a new patch version is created.
+ * generate the correct git commands to manually correct an existing action.
+ * ensure proper github releases exist for each tag
