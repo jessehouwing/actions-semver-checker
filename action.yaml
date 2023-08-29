@@ -89,7 +89,7 @@ runs:
                 version = $branch
                 ref = "refs/remotes/origin/$branch"
                 sha = & git rev-parse refs/remotes/origin/$branch
-                semver = ConvertTo-Version $tag.Substring(1)
+                semver = ConvertTo-Version $branch.Substring(1)
             }
         }
 
@@ -112,7 +112,7 @@ runs:
             }
         }
 
-        $allVersions = $tagVersions + $branchVersions
+        $allVersions = $branchVersions + $tagVersions
 
         $majorVersions = $allVersions | %{ ConvertTo-Version "$($_.semver.major)" } | Select-Object -Unique
         $minorVersions = $allVersions | %{ ConvertTo-Version "$($_.semver.major).$($_.semver.minor)" } | Select-Object -Unique
