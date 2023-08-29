@@ -13,7 +13,7 @@ runs:
 
         $tags = & git tag -l v* | ?{ return ($_ -match "v\d+(.\d+)*$") }
 
-        $branches = & git branch --all --quiet --remotes | ?{ return ($_ -match "origin/(v\d+(.\d+)*(-.*)?)$") } | %{ $_.Trim().Replace("origin/", "")}
+        $branches = & git branch --list --quiet --remotes | ?{ return ($_.Trim() -match "^origin/(v\d+(.\d+)*(-.*)?)$") } | %{ $_.Trim().Replace("origin/", "")}
 
         $tagVersions = @()
         $branchVersions = @()
