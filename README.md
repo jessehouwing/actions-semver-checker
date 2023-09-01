@@ -4,7 +4,7 @@ Every time you publish a new version of a GitHub Action, say `v1.2.3`, it's cust
 
 Unfortunately, GitHub's creative use of tags doesn't do this automatically and many actions don't auto-update their major and minor versions whenever they release a new  patch.
 
-You can run this action for their GitHub Action's repository to ensure the correct tags have been created and point to the correct commits.
+You can run this action for your GitHub Action's repository to ensure the correct tags have been created and point to the correct commits.
 
 Example output:
 
