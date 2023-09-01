@@ -37,6 +37,9 @@ on:
 
 jobs:
   check-semver:
+    concurrency:
+      group: '${{ github.workflow }}'
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
