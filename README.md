@@ -24,6 +24,27 @@ ERROR: Version: v1.0.0 does not exist and must match: v1 ref f43a0e5ff2bd2940956
 - uses: jessehouwing/actions-semver-checker@v1
 ```
 
+[Example workflow](https://github.com/jessehouwing/actions-semver-checker/blob/main/.github/workflows/action-semver-checker.yml):
+
+```yaml
+name: Check SemVer
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+jobs:
+  check-semver:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: jessehouwing/actions-semver-checker@v1
+```
 # Future updates
 
 I expect to update this action to
