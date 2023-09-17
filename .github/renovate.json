@@ -1,7 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "local>jessehouwing/.github:renovate-config",
-    "helpers:pinGitHubActionDigests"
+    "local>jessehouwing/.github:renovate-config"
   ]
 }
