@@ -16,7 +16,7 @@ ERROR: Version: v1.0.0 does not exist and must match: v1 ref f43a0e5ff2bd2940956
 # Usage
 
 ```yaml  
-- uses: actions/checkout@v3
+- uses: actions/checkout@v4
   # Check out with fetch-depth: 0
   with:
     fetch-depth: 0
@@ -42,7 +42,7 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
