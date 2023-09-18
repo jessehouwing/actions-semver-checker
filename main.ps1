@@ -107,7 +107,7 @@ $allVersions = $branchVersions + $tagVersions
 $majorVersions = $allVersions | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major)" } | 
     Select-Object -Unique
-    
+
 $minorVersions = $allVersions | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major).$($_.semver.minor)" } | 
     Select-Object -Unique
@@ -121,11 +121,11 @@ foreach ($majorVersion in $majorVersions)
     $highestMinor = ($minorVersions | Where-Object{ $_.major -eq $majorVersion.major } | Measure-Object -Max).Maximum
 
     $majorSha = ($allVersions | 
-        Where-Objecthere-Object{ $_.version -eq "v$($majorVersion.major)" } | 
+        Where-Object{ $_.version -eq "v$($majorVersion.major)" } | 
         Select-Object -First 1).sha
 
     $minorSha = ($allVersions | 
-        Where-Objecthere-Object{ $_.version -eq "v$($majorVersion.major).$($highestMinor.minor)" } | 
+        Where-Object{ $_.version -eq "v$($majorVersion.major).$($highestMinor.minor)" } | 
         Select-Object -First 1).sha
 
     if ($warnMinor)
@@ -142,11 +142,11 @@ foreach ($majorVersion in $majorVersions)
     }
 
     $highestPatch = ($patchVersions | 
-        Where-Objecthere-Object{ $_.major -eq $highestMinor.major -and $_.minor -eq $highestMinor.minor } | 
+        Where-Object{ $_.major -eq $highestMinor.major -and $_.minor -eq $highestMinor.minor } | 
         Measure-Object -Max).Maximum
     
     $majorSha = ($allVersions | 
-        Where-Objecthere-Object{ $_.version -eq "v$($highestMinor.major)" } | 
+        Where-Object{ $_.version -eq "v$($highestMinor.major)" } | 
         Select-Object -First 1).sha
     $minorSha = ($allVersions | 
         Where-Object{ $_.version -eq "v$($highestMinor.major).$($highestMinor.minor)" } | 
