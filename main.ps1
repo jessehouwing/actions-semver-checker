@@ -89,7 +89,7 @@ foreach ($tagVersion in $tagVersions)
 
     if ($branchVersion)
     {
-        $message = "title=Ambigouous version: $($tagVersion.version)::Exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha))"
+        $message = "title=Ambiguous version: $($tagVersion.version)::Exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha))"
         if ($branchVersion.sha -eq $tagVersion.sha)
         {
             
