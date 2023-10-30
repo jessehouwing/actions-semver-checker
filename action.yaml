@@ -3,6 +3,12 @@ description: 'Checks the version tags for your action repository to ensure the c
 branding:
   icon: 'check-circle'
   color: 'orange'
+inputs:
+  check_minor_version: 
+    description: "Configures warnings for minor versions (options: [true, false], default: true)."
+    required: false
+    default: "true"
+
 runs:
   using: "composite"
   steps:
