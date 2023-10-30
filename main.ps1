@@ -1,6 +1,6 @@
 $global:returnCode = 0
 
-$warnMinor = $env:INPUT_CHECK_MINOR_VERSION -eq "true"
+$warnMinor = $env["INPUT_CHECK-MINOR-VERSION"] -eq "true"
 
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(.\d+)*$") }
 
