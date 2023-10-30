@@ -1,5 +1,6 @@
 $global:returnCode = 0
-$warnMinor = $true
+
+$warnMinor = $env:INPUT_CHECK_MINOR_VERSION -eq "true"
 
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(.\d+)*$") }
 
@@ -135,7 +136,7 @@ foreach ($majorVersion in $majorVersions)
             write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
         }
 
-        if ($minorSha -and ($majorSha -ne $minorSha))
+        if ($warnMinor -and $minorSha -and ($majorSha -ne $minorSha))
         {
             write-actions-error "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
         }
