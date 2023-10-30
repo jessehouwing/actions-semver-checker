@@ -23,6 +23,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: jessehouwing/actions-semver-checker@main
+      - uses: /
         with:
           check-minor-version: true
