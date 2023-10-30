@@ -23,10 +23,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: jessehouwing/actions-semver-checker@features/confgurableminor
+      - uses: jessehouwing/actions-semver-checker@main
         with:
           check-minor-version: true
-
-      - uses: jessehouwing/actions-semver-checker@features/confgurableminor
-        with:
-          check-minor-version: false

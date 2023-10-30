@@ -22,6 +22,10 @@ ERROR: Version: v1.0.0 does not exist and must match: v1 ref f43a0e5ff2bd2940956
     fetch-depth: 0
 
 - uses: jessehouwing/actions-semver-checker@v1
+  with:
+    # Configures warnings for minor versions.
+    # Default: true
+    warn-minor-version: ''
 ```
 
 [Example workflow](https://github.com/jessehouwing/actions-semver-checker/blob/main/.github/workflows/action-semver-checker.yml):
@@ -47,6 +51,8 @@ jobs:
           fetch-depth: 0
 
       - uses: jessehouwing/actions-semver-checker@v1
+        with:
+          warn-minor-version: true
 ```
 # Future updates
 
