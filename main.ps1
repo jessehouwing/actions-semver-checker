@@ -211,8 +211,10 @@ if ($latest -and($latest.sha -ne $highestVersion.sha))
     $suggestedCommands += "git push origin $($highestVersion.sha):latest --force`n"
 }
 
-
-Write-Output $suggestedCommands
-write-output "### Suggested fix:`n```````n$suggestedCommands`n``````" >> $env:GITHUB_STEP_SUMMARY
+if ($suggestedCommands -ne "")
+{
+    Write-Output $suggestedCommands
+    write-output "### Suggested fix:`n```````n$suggestedCommands`n``````" >> $env:GITHUB_STEP_SUMMARY
+}
 
 exit $global:returnCode
