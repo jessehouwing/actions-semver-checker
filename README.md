@@ -59,7 +59,6 @@ jobs:
 I expect to update this action to
 
  * automatically update the major and minor version when a new patch version is created.
- * generate the correct git commands to manually correct an existing action.
  * ensure proper github releases exist for each tag
  * ensure github release tags are signed
  * drop a sarif file so the task can generate security issues.
