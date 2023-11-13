@@ -103,7 +103,7 @@ foreach ($tagVersion in $tagVersions)
             write-actions-error "::error $message"
         }
 
-        $suggestedCommands =+ "git push origin :refs/heads/$($tagVersion.version)`n"
+        $suggestedCommands += "git push origin :refs/heads/$($tagVersion.version)`n"
     }
 }
 
