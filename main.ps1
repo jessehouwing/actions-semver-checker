@@ -213,5 +213,6 @@ if ($latest -and($latest.sha -ne $highestVersion.sha))
 
 
 Write-Output $suggestedCommands
+write-output "### Suggested fix:`n```````n$suggestedCommands`n``````" >> $env:GITHUB_STEP_SUMMARY
 
 exit $global:returnCode
