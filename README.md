@@ -8,10 +8,30 @@ You can run this action for your GitHub Action's repository to ensure the correc
 
 Example output:
 
-```
-WARNING: Ambiguous version: v1 - Exists as both tag (f43a0e5ff2bd294095638e18286ca9a3d1956744) and branch (f43a0e5ff2bd294095638e18286ca9a3d1956744)
-ERROR: Version: v1.0.0 does not exist and must match: v1 ref f43a0e5ff2bd294095638e18286ca9a3d1956744
-```
+> ### Annotations
+>
+> 🔴 Incorrect version
+> ```
+> Version: v1 ref 59499a44cd4482b68a7e989a5e7dd781414facfa must match: v1.0.6 ref 1a13fd188ebef96fb179faedfabcc8de5cb6189d
+> ```
+> 
+> 🔴 Incorrect version
+> ```
+> Version: v1.0 ref 59499a44cd4482b68a7e989a5e7dd781414facfa must match: v1.0.6 ref 1a13fd188ebef96fb179faedfabcc8de5cb6189d
+> ```
+> 🔴 Incorrect version
+> ```
+> Version: latest ref 59499a44cd4482b68a7e989a5e7dd781414facfa must match: v1.0.6 ref 1a13fd188ebef96fb179faedfabcc8de5cb6189d
+> ```
+
+And a set of suggested Git commands to fix this:
+
+> ### Suggested fix:
+> ```
+> git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:v1 --force
+> git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:v1.0 --force
+> git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:latest --force
+> ```
 
 # Usage
 
