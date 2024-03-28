@@ -45,7 +45,7 @@ And a set of suggested Git commands to fix this:
   with:
     # Configures warnings for minor versions.
     # Default: true
-    warn-minor-version: ''
+    check-minor-version: ''
 ```
 
 [Example workflow](https://github.com/jessehouwing/actions-semver-checker/blob/main/.github/workflows/action-semver-checker.yml):
@@ -72,7 +72,7 @@ jobs:
 
       - uses: jessehouwing/actions-semver-checker@v1
         with:
-          warn-minor-version: true
+          check-minor-version: true
 ```
 # Future updates
 
