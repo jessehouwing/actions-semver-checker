@@ -9,7 +9,7 @@ $branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Tri
 $tagVersions = @()
 $branchVersions = @()
 
-$suggestedCommands = ""
+$suggestedCommands = @()
 
 function write-actions-error
 {
@@ -103,7 +103,7 @@ foreach ($tagVersion in $tagVersions)
             write-actions-error "::error $message"
         }
 
-        $suggestedCommands += "git push origin :refs/heads/$($tagVersion.version)`n"
+        $suggestedCommands += "git push origin :refs/heads/$($tagVersion.version)"
     }
 }
 
@@ -138,13 +138,13 @@ foreach ($majorVersion in $majorVersions)
         if (-not $majorSha -and $minorSha)
         {
             write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
-            $suggestedCommands += "git push origin $minorSha`:v$($majorVersion.major)`n"
+            $suggestedCommands += "git push origin $minorSha`:v$($majorVersion.major)"
         }
 
         if ($minorSha -and ($majorSha -ne $minorSha))
         {
             write-actions-error "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
-            $suggestedCommands += "git push origin $minorSha`:v$($majorVersion.major) --force`n"
+            $suggestedCommands += "git push origin $minorSha`:v$($majorVersion.major) --force"
         }
     }
 
@@ -165,19 +165,19 @@ foreach ($majorVersion in $majorVersions)
     if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
     {
         write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-        $suggestedCommands += "git push origin $patchSha`:v$($majorVersion.major) --force`n"
+        $suggestedCommands += "git push origin $patchSha`:v$($majorVersion.major) --force"
     }
 
     if (-not $patchSha -and $majorSha)
     {
         write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: v$($highestPatch.major) ref $majorSha"
-        $suggestedCommands += "git push origin $majorSha`:v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)`n"
+        $suggestedCommands += "git push origin $majorSha`:v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
     }
 
     if (-not $majorSha)
     {
         write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-        $suggestedCommands += "git push origin $patchSha`:v$($highestPatch.major)`n"
+        $suggestedCommands += "git push origin $patchSha`:v$($highestPatch.major)"
     }
 
     if ($warnMinor)
@@ -185,13 +185,13 @@ foreach ($majorVersion in $majorVersions)
         if (-not $minorSha)
         {
             write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-            $suggestedCommands += "git push origin $patchSha`:v$($highestMinor.major).$($highestMinor.minor)`n"
+            $suggestedCommands += "git push origin $patchSha`:v$($highestMinor.major).$($highestMinor.minor)"
         }
 
         if ($minorSha -and ($minorSha -ne $patchSha))
         {
             write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-            $suggestedCommands += "git push origin $patchSha`:v$($highestMinor.major).$($highestMinor.minor) --force`n"
+            $suggestedCommands += "git push origin $patchSha`:v$($highestMinor.major).$($highestMinor.minor) --force"
         }
     }
 }
@@ -208,13 +208,14 @@ $highestVersion = $allVersions |
 if ($latest -and($latest.sha -ne $highestVersion.sha))
 {
     write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $($highestVersion.sha)"
-    $suggestedCommands += "git push origin $($highestVersion.sha):latest --force`n"
+    $suggestedCommands += "git push origin $($highestVersion.sha):latest --force"
 }
 
 if ($suggestedCommands -ne "")
 {
-    Write-Output $suggestedCommands
-    write-output "### Suggested fix:`n```````n$suggestedCommands`n``````" >> $env:GITHUB_STEP_SUMMARY
+    $suggestedCommands = $suggestedCommands | Select-Object -unique
+    Write-Output ($suggestedCommands -join "`n")
+    write-output "### Suggested fix:`n```````n$($suggestedCommands -join "`n")`n``````" >> $env:GITHUB_STEP_SUMMARY
 }
 
 exit $global:returnCode
