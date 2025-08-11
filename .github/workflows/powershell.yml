@@ -30,7 +30,7 @@ jobs:
     name: PSScriptAnalyzer
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
 
       - name: Run PSScriptAnalyzer
         uses: microsoft/psscriptanalyzer-action@7a0da25f33985767f15f93140306528900744195
