@@ -2,6 +2,7 @@ name: Submit Dependencies
 on:
   push:
     branches: [main]
+  pull_request:
   schedule:
     - cron: '0 0 * * 0' # Weekly
 
@@ -15,3 +16,5 @@ jobs:
       - uses: jessehouwing/actions-dependency-submission@main
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/dependency-review-action@v4.8.2
+        if: ${{ github.event_name == 'pull_request' }}
