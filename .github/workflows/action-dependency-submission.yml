@@ -1,0 +1,17 @@
+name: Submit Dependencies
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0' # Weekly
+
+jobs:
+  submit-dependencies:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required for dependency submission
+    steps:
+      - uses: actions/checkout@v6
+      - uses: jessehouwing/actions-dependency-submission@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
