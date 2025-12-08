@@ -28,3 +28,7 @@ jobs:
         if: false
       - uses: actions/download-artifact@v4.0.0
         if: false
+      - uses: actions/download-artifact@v4.1.0
+        if: false
+      - uses: actions/download-artifact@eaceaf801fd36c7dee90939fad912460b18a1ffe # 4.1.2
+        if: false
