@@ -18,5 +18,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/dependency-review-action@v4.8.2
         if: ${{ github.event_name == 'pull_request' }}
+        with:
+          retry-on-snapshot-warnings: true
       - uses: actions/download-artifact@f44cd7b40bfd40b6aa1cc1b9b5b7bf03d3c67110
         if: false
