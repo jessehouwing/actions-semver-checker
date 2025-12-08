@@ -28,8 +28,8 @@ And a set of suggested Git commands to fix this:
 
 > ### Suggested fix:
 > ```
-> git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:v1 --force
-> git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:v1.0 --force
+> git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:refs/tags/v1 --force
+> git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:refs/tags/v1.0 --force
 > git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:latest --force
 > ```
 
