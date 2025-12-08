@@ -138,13 +138,13 @@ foreach ($majorVersion in $majorVersions)
         if (-not $majorSha -and $minorSha)
         {
             write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
-            $suggestedCommands += "git push origin $minorSha`:heads/refs/tags/v$($majorVersion.major)"
+            $suggestedCommands += "git push origin $minorSha`:refs/tags/v$($majorVersion.major)"
         }
 
         if ($minorSha -and ($majorSha -ne $minorSha))
         {
             write-actions-error "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
-            $suggestedCommands += "git push origin $minorSha`:heads/refs/tags/v$($majorVersion.major) --force"
+            $suggestedCommands += "git push origin $minorSha`:refs/tags/v$($majorVersion.major) --force"
         }
     }
 
@@ -165,19 +165,19 @@ foreach ($majorVersion in $majorVersions)
     if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
     {
         write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-        $suggestedCommands += "git push origin $patchSha`:heads/refs/tags/v$($majorVersion.major) --force"
+        $suggestedCommands += "git push origin $patchSha`:refs/tags/v$($majorVersion.major) --force"
     }
 
     if (-not $patchSha -and $majorSha)
     {
         write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: v$($highestPatch.major) ref $majorSha"
-        $suggestedCommands += "git push origin $majorSha`:heads/refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
+        $suggestedCommands += "git push origin $majorSha`:refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
     }
 
     if (-not $majorSha)
     {
         write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-        $suggestedCommands += "git push origin $patchSha`:heads/refs/tags/v$($highestPatch.major)"
+        $suggestedCommands += "git push origin $patchSha`:refs/tags/v$($highestPatch.major)"
     }
 
     if ($warnMinor)
@@ -185,13 +185,13 @@ foreach ($majorVersion in $majorVersions)
         if (-not $minorSha)
         {
             write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-            $suggestedCommands += "git push origin $patchSha`:heads/refs/tags/v$($highestMinor.major).$($highestMinor.minor)"
+            $suggestedCommands += "git push origin $patchSha`:refs/tags/v$($highestMinor.major).$($highestMinor.minor)"
         }
 
         if ($minorSha -and ($minorSha -ne $patchSha))
         {
             write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-            $suggestedCommands += "git push origin $patchSha`:heads/refs/tags/v$($highestMinor.major).$($highestMinor.minor) --force"
+            $suggestedCommands += "git push origin $patchSha`:refs/tags/v$($highestMinor.major).$($highestMinor.minor) --force"
         }
     }
 }
