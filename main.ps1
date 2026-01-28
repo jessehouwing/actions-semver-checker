@@ -1,19 +1,70 @@
 $global:returnCode = 0
 
+# Read inputs
+$token = ${env:INPUT_TOKEN} ?? $env:GITHUB_TOKEN ?? ""
 $warnMinor = (${env:INPUT_CHECK-MINOR-VERSION} ?? "true").Trim() -eq "true"
-$checkReleases = (${env:INPUT_CHECK-RELEASES} ?? "true").Trim() -eq "true"
-$checkReleaseImmutability = (${env:INPUT_CHECK-RELEASE-IMMUTABILITY} ?? "true").Trim() -eq "true"
+$checkReleases = (${env:INPUT_CHECK-RELEASES} ?? "error").Trim().ToLower()
+$checkReleaseImmutability = (${env:INPUT_CHECK-RELEASE-IMMUTABILITY} ?? "error").Trim().ToLower()
 $ignorePreviewReleases = (${env:INPUT_IGNORE-PREVIEW-RELEASES} ?? "false").Trim() -eq "true"
 $floatingVersionsUse = (${env:INPUT_FLOATING-VERSIONS-USE} ?? "tags").Trim().ToLower()
 $autoFix = (${env:INPUT_AUTO-FIX} ?? "false").Trim() -eq "true"
 
-# Validate floating-versions-use input
+# Validate inputs
+if ($checkReleases -notin @("error", "warning", "none")) {
+    write-output "::error title=Invalid configuration::check-releases must be 'error', 'warning', or 'none', got '$checkReleases'"
+    exit 1
+}
+
+if ($checkReleaseImmutability -notin @("error", "warning", "none")) {
+    write-output "::error title=Invalid configuration::check-release-immutability must be 'error', 'warning', or 'none', got '$checkReleaseImmutability'"
+    exit 1
+}
+
 if ($floatingVersionsUse -notin @("tags", "branches")) {
     write-output "::error title=Invalid configuration::floating-versions-use must be either 'tags' or 'branches', got '$floatingVersionsUse'"
     exit 1
 }
 
 $useBranches = $floatingVersionsUse -eq "branches"
+
+# Get GitHub context information
+$apiUrl = "https://api.github.com"
+$repository = $null
+$repoOwner = $null
+$repoName = $null
+
+if ($env:GITHUB_CONTEXT) {
+    try {
+        $githubContext = $env:GITHUB_CONTEXT | ConvertFrom-Json
+        $apiUrl = $githubContext.api_url ?? "https://api.github.com"
+        $repository = $githubContext.repository
+        
+        if ($repository -and $repository -match "^([^/]+)/(.+)$") {
+            $repoOwner = $matches[1]
+            $repoName = $matches[2]
+        }
+    }
+    catch {
+        # Fall back to environment variables if JSON parsing fails
+        $apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
+        $repository = $env:GITHUB_REPOSITORY
+        
+        if ($repository -and $repository -match "^([^/]+)/(.+)$") {
+            $repoOwner = $matches[1]
+            $repoName = $matches[2]
+        }
+    }
+}
+else {
+    # Fall back to environment variables
+    $apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
+    $repository = $env:GITHUB_REPOSITORY
+    
+    if ($repository -and $repository -match "^([^/]+)/(.+)$") {
+        $repoOwner = $matches[1]
+        $repoName = $matches[2]
+    }
+}
 
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
 
@@ -41,6 +92,24 @@ function write-actions-warning
     )
 
     write-output $message
+}
+
+function Get-ApiHeaders
+{
+    param(
+        [string]$Token
+    )
+    
+    $headers = @{
+        'Accept' = 'application/vnd.github+json'
+        'X-GitHub-Api-Version' = '2022-11-28'
+    }
+    
+    if ($Token) {
+        $headers['Authorization'] = "Bearer $Token"
+    }
+    
+    return $headers
 }
 
 function ConvertTo-Version
@@ -73,7 +142,16 @@ function Get-GitHubRepoInfo
     param()
     
     try {
-        # Get the repository from git remote
+        # First try to use GitHub context (preferred)
+        if ($script:repoOwner -and $script:repoName) {
+            return @{
+                Owner = $script:repoOwner
+                Repo = $script:repoName
+                Url = "https://github.com/$script:repoOwner/$script:repoName"
+            }
+        }
+        
+        # Fallback: Get the repository from git remote
         $remoteUrl = & git config --get remote.origin.url 2>$null
         if (-not $remoteUrl) {
             return $null
@@ -104,19 +182,21 @@ function Get-TagCommitSHA
         [string]$Owner,
         [string]$Repo,
         [string]$Tag,
-        [hashtable]$Headers
+        [string]$Token,
+        [string]$ApiUrl
     )
     
     try {
-        $url = "https://api.github.com/repos/$Owner/$Repo/git/ref/tags/$Tag"
-        $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get -ErrorAction Stop
+        $headers = Get-ApiHeaders -Token $Token
+        $url = "$ApiUrl/repos/$Owner/$Repo/git/ref/tags/$Tag"
+        $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Get -ErrorAction Stop
         
         # The ref API returns an object with sha pointing to the tag object
         # We need to follow that to get the actual commit SHA
         if ($response.object.type -eq "tag") {
             # Annotated tag - need to fetch the tag object to get commit SHA
             $tagUrl = $response.object.url
-            $tagResponse = Invoke-RestMethod -Uri $tagUrl -Headers $Headers -Method Get -ErrorAction Stop
+            $tagResponse = Invoke-RestMethod -Uri $tagUrl -Headers $headers -Method Get -ErrorAction Stop
             return $tagResponse.object.sha
         } else {
             # Lightweight tag - directly points to commit
@@ -134,12 +214,13 @@ function Test-ReleaseAttestation
         [string]$Owner,
         [string]$Repo,
         [string]$Tag,
-        [hashtable]$Headers
+        [string]$Token,
+        [string]$ApiUrl
     )
     
     try {
         # Get the commit SHA for the tag
-        $commitSHA = Get-TagCommitSHA -Owner $Owner -Repo $Repo -Tag $Tag -Headers $Headers
+        $commitSHA = Get-TagCommitSHA -Owner $Owner -Repo $Repo -Tag $Tag -Token $Token -ApiUrl $ApiUrl
         if (-not $commitSHA) {
             return $false
         }
@@ -148,8 +229,9 @@ function Test-ReleaseAttestation
         $digest = "sha256:$commitSHA"
         
         # Check for attestations
-        $url = "https://api.github.com/repos/$Owner/$Repo/attestations/$digest"
-        $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get -ErrorAction Stop
+        $headers = Get-ApiHeaders -Token $Token
+        $url = "$ApiUrl/repos/$Owner/$Repo/attestations/$digest"
+        $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Get -ErrorAction Stop
         
         # If we get a response with attestations, the release is attested
         if ($response.attestations -and $response.attestations.Count -gt 0) {
@@ -169,37 +251,31 @@ function Get-GitHubReleases
     param()
     
     try {
-        $repoInfo = Get-GitHubRepoInfo
-        if (-not $repoInfo) {
+        # Use the pre-obtained repo info
+        if (-not $script:repoInfo) {
             return @()
         }
         
         # Use GitHub REST API to get releases
-        $token = $env:GITHUB_TOKEN
-        $headers = @{
-            'Accept' = 'application/vnd.github+json'
-            'X-GitHub-Api-Version' = '2022-11-28'
-        }
-        
-        if ($token) {
-            $headers['Authorization'] = "Bearer $token"
-        }
-        
+        $headers = Get-ApiHeaders -Token $script:token
         $allReleases = @()
-        $page = 1
-        $perPage = 100
+        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases?per_page=100"
         
         do {
-            $url = "https://api.github.com/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases?per_page=$perPage&page=$page"
+            # Use a wrapper to allow for test mocking
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+            } else {
+                $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+            }
+            $releases = $response.Content | ConvertFrom-Json
             
-            $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Get -ErrorAction Stop
-            
-            if ($response.Count -eq 0) {
+            if ($releases.Count -eq 0) {
                 break
             }
             
-            # Use array list for better performance with large result sets
-            foreach ($release in $response) {
+            # Collect releases
+            foreach ($release in $releases) {
                 $allReleases += @{
                     tagName = $release.tag_name
                     isPrerelease = $release.prerelease
@@ -207,14 +283,22 @@ function Get-GitHubReleases
                 }
             }
             
-            $page++
+            # Check for Link header to get next page
+            $linkHeader = $response.Headers['Link']
+            $url = $null
             
-            # Stop if we got less than a full page (no more pages)
-            if ($response.Count -lt $perPage) {
-                break
+            if ($linkHeader) {
+                # Parse Link header: <url>; rel="next", <url>; rel="last"
+                $links = $linkHeader -split ','
+                foreach ($link in $links) {
+                    if ($link -match '<([^>]+)>;\s*rel="next"') {
+                        $url = $matches[1]
+                        break
+                    }
+                }
             }
             
-        } while ($page -le 100) # Safety limit: max 10,000 releases
+        } while ($url)
         
         return $allReleases
     }
@@ -230,7 +314,7 @@ $repoInfo = Get-GitHubRepoInfo
 # Get GitHub releases if check is enabled
 $releases = @()
 $releaseMap = @{}
-if ($checkReleases -or $checkReleaseImmutability -or $ignorePreviewReleases)
+if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none" -or $ignorePreviewReleases) -and $repoInfo)
 {
     $releases = Get-GitHubReleases
     # Create a map for quick lookup
@@ -314,7 +398,7 @@ foreach ($tagVersion in $tagVersions)
 }
 
 # Check that every patch version (vX.Y.Z) has a corresponding release
-if ($checkReleases -and $releases.Count -gt 0)
+if ($checkReleases -ne "none" -and $releases.Count -gt 0)
 {
     $releaseTagNames = $releases | ForEach-Object { $_.tagName }
     
@@ -327,7 +411,9 @@ if ($checkReleases -and $releases.Count -gt 0)
             
             if (-not $hasRelease)
             {
-                write-actions-error "::error title=Missing release::Version $($tagVersion.version) does not have a GitHub Release"
+                $messageType = if ($checkReleases -eq "error") { "error" } else { "warning" }
+                $messageFunc = if ($checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                & $messageFunc "::$messageType title=Missing release::Version $($tagVersion.version) does not have a GitHub Release"
                 $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
                 if ($repoInfo) {
                     $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
@@ -341,18 +427,8 @@ if ($checkReleases -and $releases.Count -gt 0)
 
 # Check that releases are immutable (not draft, which allows tag changes)
 # Also optionally verify attestations for additional security
-if ($checkReleaseImmutability -and $releases.Count -gt 0)
+if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
 {
-    # Prepare headers for API calls
-    $token = $env:GITHUB_TOKEN
-    $headers = @{
-        'Accept' = 'application/vnd.github+json'
-        'X-GitHub-Api-Version' = '2022-11-28'
-    }
-    if ($token) {
-        $headers['Authorization'] = "Bearer $token"
-    }
-    
     foreach ($release in $releases)
     {
         # Only check releases for patch versions (vX.Y.Z format)
@@ -360,7 +436,9 @@ if ($checkReleaseImmutability -and $releases.Count -gt 0)
         {
             if ($release.isDraft)
             {
-                write-actions-error "::error title=Draft release::Release $($release.tagName) is still in draft status, making it mutable. Publish the release to make it immutable."
+                $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
+                $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                & $messageFunc "::$messageType title=Draft release::Release $($release.tagName) is still in draft status, making it mutable. Publish the release to make it immutable."
                 if ($repoInfo) {
                     $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($release.tagName)"
                 } else {
@@ -371,7 +449,7 @@ if ($checkReleaseImmutability -and $releases.Count -gt 0)
             # Optionally check for attestations (provides cryptographic verification)
             # Only check if we have repo info and it's not a draft
             if ($repoInfo -and -not $release.isDraft) {
-                $hasAttestation = Test-ReleaseAttestation -Owner $repoInfo.Owner -Repo $repoInfo.Repo -Tag $release.tagName -Headers $headers
+                $hasAttestation = Test-ReleaseAttestation -Owner $repoInfo.Owner -Repo $repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
                 if (-not $hasAttestation) {
                     # Note: This is informational only, not an error, as attestations are optional
                     write-actions-warning "::notice title=No attestation::Release $($release.tagName) does not have attestations. Consider using 'gh attestation' to cryptographically verify releases."
@@ -449,27 +527,13 @@ foreach ($majorVersion in $majorVersions)
         if (-not $majorSha -and $minorSha)
         {
             write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
-            if ($useBranches)
-            {
-                $suggestedCommands += "git push origin $minorSha`:refs/heads/v$($majorVersion.major)"
-            }
-            else
-            {
-                $suggestedCommands += "git push origin $minorSha`:refs/tags/v$($majorVersion.major)"
-            }
+            $suggestedCommands += "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major)"
         }
 
         if ($majorSha -and $minorSha -and ($majorSha -ne $minorSha))
         {
             write-actions-error "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
-            if ($useBranches)
-            {
-                $suggestedCommands += "git push origin $minorSha`:refs/heads/v$($majorVersion.major) --force"
-            }
-            else
-            {
-                $suggestedCommands += "git push origin $minorSha`:refs/tags/v$($majorVersion.major) --force"
-            }
+            $suggestedCommands += "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major) --force"
         }
     }
 
@@ -506,14 +570,7 @@ foreach ($majorVersion in $majorVersions)
     if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
     {
         write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-        if ($useBranches)
-        {
-            $suggestedCommands += "git push origin $patchSha`:refs/heads/v$($majorVersion.major) --force"
-        }
-        else
-        {
-            $suggestedCommands += "git push origin $patchSha`:refs/tags/v$($majorVersion.major) --force"
-        }
+        $suggestedCommands += "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major) --force"
     }
 
     if (-not $patchSha -and $sourceShaForPatch)
@@ -525,14 +582,7 @@ foreach ($majorVersion in $majorVersions)
     if (-not $majorSha)
     {
         write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
-        if ($useBranches)
-        {
-            $suggestedCommands += "git push origin $sourceShaForPatch`:refs/heads/v$($highestPatch.major)"
-        }
-        else
-        {
-            $suggestedCommands += "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major)"
-        }
+        $suggestedCommands += "git push origin $sourceShaForPatch`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestPatch.major)"
     }
 
     if ($warnMinor)
@@ -540,27 +590,13 @@ foreach ($majorVersion in $majorVersions)
         if (-not $minorSha -and $patchSha)
         {
             write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-            if ($useBranches)
-            {
-                $suggestedCommands += "git push origin $patchSha`:refs/heads/v$($highestMinor.major).$($highestMinor.minor)"
-            }
-            else
-            {
-                $suggestedCommands += "git push origin $patchSha`:refs/tags/v$($highestMinor.major).$($highestMinor.minor)"
-            }
+            $suggestedCommands += "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor)"
         }
 
         if ($minorSha -and $patchSha -and ($minorSha -ne $patchSha))
         {
             write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-            if ($useBranches)
-            {
-                $suggestedCommands += "git push origin $patchSha`:refs/heads/v$($highestMinor.major).$($highestMinor.minor) --force"
-            }
-            else
-            {
-                $suggestedCommands += "git push origin $patchSha`:refs/tags/v$($highestMinor.major).$($highestMinor.minor) --force"
-            }
+            $suggestedCommands += "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor) --force"
         }
     }
 }
