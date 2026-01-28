@@ -57,6 +57,15 @@ if ($repository -and $repository -match "^([^/]+)/(.+)$") {
     $script:repoName = $matches[2]
 }
 
+# If still not found, fall back to git remote
+if (-not $script:repoOwner -or -not $script:repoName) {
+    $remoteUrl = & git config --get remote.origin.url 2>$null
+    if ($remoteUrl -and $remoteUrl -match 'github\.com[:/]([^/]+)/([^/]+?)(\.git)?$') {
+        $script:repoOwner = $matches[1]
+        $script:repoName = $matches[2]
+    }
+}
+
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
 
 $branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Trim() -match "^origin/(v\d+(\.\d+)*(-.*)?)$") } | ForEach-Object{ $_.Trim().Replace("origin/", "")}
@@ -132,39 +141,16 @@ function Get-GitHubRepoInfo
 {
     param()
     
-    try {
-        # First try to use GitHub context (preferred)
-        if ($script:repoOwner -and $script:repoName) {
-            return @{
-                Owner = $script:repoOwner
-                Repo = $script:repoName
-                Url = "https://github.com/$script:repoOwner/$script:repoName"
-            }
+    # Return the already-parsed repository info from script-level variables
+    if ($script:repoOwner -and $script:repoName) {
+        return @{
+            Owner = $script:repoOwner
+            Repo = $script:repoName
+            Url = "https://github.com/$script:repoOwner/$script:repoName"
         }
-        
-        # Fallback: Get the repository from git remote
-        $remoteUrl = & git config --get remote.origin.url 2>$null
-        if (-not $remoteUrl) {
-            return $null
-        }
-        
-        # Parse owner/repo from various Git URL formats
-        # SSH: git@github.com:owner/repo.git
-        # HTTPS: https://github.com/owner/repo.git
-        # HTTPS without .git: https://github.com/owner/repo
-        if ($remoteUrl -match 'github\.com[:/]([^/]+)/([^/]+?)(\.git)?$') {
-            return @{
-                Owner = $matches[1]
-                Repo = $matches[2]
-                Url = "https://github.com/$($matches[1])/$($matches[2])"
-            }
-        }
-        
-        return $null
     }
-    catch {
-        return $null
-    }
+    
+    return $null
 }
 
 function Get-TagCommitSHA
