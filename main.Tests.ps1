@@ -128,7 +128,8 @@ Describe "SemVer Checker" {
     
     Context "When repo has mismatched versions" {
         It "Should suggest force updating when major version points to wrong commit" {
-            # Arrange: Create v1.0.0, then v1.1.0, but leave v1 pointing to v1.0.0
+            # Arrange: Create v1.0.0 on first commit, then v1.1.0 and v1.1 on second commit,
+            # but set v1 to point to the old v1.0.0 commit to test version mismatch detection
             git tag v1.0.0
             $oldCommitSha = Get-CommitSha
             

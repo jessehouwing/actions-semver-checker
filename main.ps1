@@ -165,11 +165,14 @@ foreach ($majorVersion in $majorVersions)
     # Determine the source SHA for the patch version
     # If patchSha doesn't exist, use minorSha if available, otherwise majorSha
     $sourceShaForPatch = $patchSha
+    $sourceVersionForPatch = "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
     if (-not $sourceShaForPatch) {
         $sourceShaForPatch = $minorSha
+        $sourceVersionForPatch = "v$($highestMinor.major).$($highestMinor.minor)"
     }
     if (-not $sourceShaForPatch) {
         $sourceShaForPatch = $majorSha
+        $sourceVersionForPatch = "v$($highestMinor.major)"
     }
     
     if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
@@ -180,13 +183,13 @@ foreach ($majorVersion in $majorVersions)
 
     if (-not $patchSha -and $sourceShaForPatch)
     {
-        write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $sourceShaForPatch"
+        write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
         $suggestedCommands += "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
     }
 
     if (-not $majorSha)
     {
-        write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $sourceShaForPatch"
+        write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
         $suggestedCommands += "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major)"
     }
 
@@ -194,7 +197,7 @@ foreach ($majorVersion in $majorVersions)
     {
         if (-not $minorSha -and $patchSha)
         {
-            write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+            write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             $suggestedCommands += "git push origin $patchSha`:refs/tags/v$($highestMinor.major).$($highestMinor.minor)"
         }
 
