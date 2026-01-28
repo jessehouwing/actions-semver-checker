@@ -1,7 +1,60 @@
 $global:returnCode = 0
 
-# Read inputs
-$script:token = ${env:INPUT_TOKEN} ?? $env:GITHUB_TOKEN ?? ""
+# Get GitHub context information first
+$script:apiUrl = "https://api.github.com"
+$script:serverUrl = "https://github.com"
+$script:token = ""
+$script:repoOwner = $null
+$script:repoName = $null
+
+if ($env:GITHUB_CONTEXT) {
+    try {
+        $githubContext = $env:GITHUB_CONTEXT | ConvertFrom-Json
+        
+        # Use specific fields from GitHub context
+        $script:apiUrl = $githubContext.api_url ?? "https://api.github.com"
+        $script:serverUrl = $githubContext.server_url ?? "https://github.com"
+        $script:token = $githubContext.token ?? ""
+        $script:repoOwner = $githubContext.repository_owner
+        
+        # Get repo name from repository field (format: owner/repo)
+        if ($githubContext.repository) {
+            $script:repoName = ($githubContext.repository -split "/")[1]
+        }
+    }
+    catch {
+        # Fall back to environment variables if JSON parsing fails
+        $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
+        $script:token = $env:GITHUB_TOKEN ?? ""
+        
+        if ($env:GITHUB_REPOSITORY -and $env:GITHUB_REPOSITORY -match "^([^/]+)/(.+)$") {
+            $script:repoOwner = $matches[1]
+            $script:repoName = $matches[2]
+        }
+    }
+}
+else {
+    # Fall back to environment variables
+    $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
+    $script:token = $env:GITHUB_TOKEN ?? ""
+    
+    if ($env:GITHUB_REPOSITORY -and $env:GITHUB_REPOSITORY -match "^([^/]+)/(.+)$") {
+        $script:repoOwner = $matches[1]
+        $script:repoName = $matches[2]
+    }
+}
+
+# If still not found, fall back to git remote
+if (-not $script:repoOwner -or -not $script:repoName) {
+    $remoteUrl = & git config --get remote.origin.url 2>$null
+    if ($remoteUrl -and $remoteUrl -match 'github\.com[:/]([^/]+)/([^/]+?)(\.git)?$') {
+        $script:repoOwner = $matches[1]
+        $script:repoName = $matches[2]
+    }
+}
+
+# Read inputs (allow override of token from input)
+$script:token = ${env:INPUT_TOKEN} ?? $script:token
 $warnMinor = (${env:INPUT_CHECK-MINOR-VERSION} ?? "true").Trim() -eq "true"
 $checkReleases = (${env:INPUT_CHECK-RELEASES} ?? "error").Trim().ToLower()
 $checkReleaseImmutability = (${env:INPUT_CHECK-RELEASE-IMMUTABILITY} ?? "error").Trim().ToLower()
@@ -26,45 +79,6 @@ if ($floatingVersionsUse -notin @("tags", "branches")) {
 }
 
 $useBranches = $floatingVersionsUse -eq "branches"
-
-# Get GitHub context information
-$script:apiUrl = "https://api.github.com"
-$repository = $null
-$script:repoOwner = $null
-$script:repoName = $null
-
-if ($env:GITHUB_CONTEXT) {
-    try {
-        $githubContext = $env:GITHUB_CONTEXT | ConvertFrom-Json
-        $script:apiUrl = $githubContext.api_url ?? "https://api.github.com"
-        $repository = $githubContext.repository
-    }
-    catch {
-        # Fall back to environment variables if JSON parsing fails
-        $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
-        $repository = $env:GITHUB_REPOSITORY
-    }
-}
-else {
-    # Fall back to environment variables
-    $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
-    $repository = $env:GITHUB_REPOSITORY
-}
-
-# Parse repository owner and name
-if ($repository -and $repository -match "^([^/]+)/(.+)$") {
-    $script:repoOwner = $matches[1]
-    $script:repoName = $matches[2]
-}
-
-# If still not found, fall back to git remote
-if (-not $script:repoOwner -or -not $script:repoName) {
-    $remoteUrl = & git config --get remote.origin.url 2>$null
-    if ($remoteUrl -and $remoteUrl -match 'github\.com[:/]([^/]+)/([^/]+?)(\.git)?$') {
-        $script:repoOwner = $matches[1]
-        $script:repoName = $matches[2]
-    }
-}
 
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
 
@@ -146,7 +160,7 @@ function Get-GitHubRepoInfo
         return @{
             Owner = $script:repoOwner
             Repo = $script:repoName
-            Url = "https://github.com/$script:repoOwner/$script:repoName"
+            Url = "$script:serverUrl/$script:repoOwner/$script:repoName"
         }
     }
     
