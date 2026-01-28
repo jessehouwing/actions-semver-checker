@@ -341,7 +341,10 @@ foreach ($tag in $tags)
     }
     
     # Determine if this is a patch version (vX.Y.Z) or a floating version (vX or vX.Y)
-    $versionParts = $tag.Substring(1) -split '\.'
+    # Strip any prerelease suffix (e.g., -beta) before counting parts
+    $versionWithoutPrefix = $tag.Substring(1)
+    $versionCore = $versionWithoutPrefix -split '-' | Select-Object -First 1
+    $versionParts = $versionCore -split '\.'
     $isPatchVersion = $versionParts.Count -eq 3
     $isMinorVersion = $versionParts.Count -eq 2
     $isMajorVersion = $versionParts.Count -eq 1
@@ -385,7 +388,10 @@ if ($latestBranchExists) {
 foreach ($branch in $branches)
 {
     # Determine if this is a patch version (vX.Y.Z) or a floating version (vX or vX.Y)
-    $versionParts = $branch.Substring(1) -split '\.'
+    # Strip any prerelease suffix (e.g., -beta) before counting parts
+    $versionWithoutPrefix = $branch.Substring(1)
+    $versionCore = $versionWithoutPrefix -split '-' | Select-Object -First 1
+    $versionParts = $versionCore -split '\.'
     $isPatchVersion = $versionParts.Count -eq 3
     $isMinorVersion = $versionParts.Count -eq 2
     $isMajorVersion = $versionParts.Count -eq 1
@@ -436,7 +442,7 @@ foreach ($version in $allVersions)
         
         if (-not $patchVersionsExist)
         {
-            write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).0.0) found. Floating versions must reference actual patch versions."
+            write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).0.0) found. Create at least one patch version before using floating version tags."
             $suggestedCommands += "# Create a patch version for $($version.version), e.g.:"
             $suggestedCommands += "git tag v$($version.semver.major).0.0"
             $suggestedCommands += "git push origin v$($version.semver.major).0.0"
@@ -453,7 +459,7 @@ foreach ($version in $allVersions)
         
         if (-not $patchVersionsExist)
         {
-            write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).$($version.semver.minor).0) found. Floating versions must reference actual patch versions."
+            write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).$($version.semver.minor).0) found. Create at least one patch version before using floating version tags."
             $suggestedCommands += "# Create a patch version for $($version.version), e.g.:"
             $suggestedCommands += "git tag v$($version.semver.major).$($version.semver.minor).0"
             $suggestedCommands += "git push origin v$($version.semver.major).$($version.semver.minor).0"
