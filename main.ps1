@@ -162,6 +162,49 @@ $branchVersions = @()
 
 $suggestedCommands = @()
 
+# Auto-fix tracking
+$script:fixedIssues = 0
+$script:failedFixes = 0
+$script:unfixableIssues = 0
+
+function Invoke-AutoFix
+{
+    param(
+        [string]$Description,
+        [string]$Command
+    )
+    
+    if (-not $autoFix)
+    {
+        return $false  # Not in auto-fix mode
+    }
+    
+    Write-Output "::notice::Auto-fix: $Description"
+    Write-Output "Executing: $Command"
+    
+    try
+    {
+        # Execute the command
+        Invoke-Expression $Command 2>&1 | Out-Null
+        
+        if ($LASTEXITCODE -eq 0)
+        {
+            Write-Output "::notice::✓ Success: $Description"
+            return $true
+        }
+        else
+        {
+            Write-Output "::error::✗ Failed: $Description (exit code: $LASTEXITCODE)"
+            return $false
+        }
+    }
+    catch
+    {
+        Write-Output "::error::✗ Failed: $Description - $_"
+        return $false
+    }
+}
+
 function write-actions-error
 {
     param(
@@ -507,6 +550,7 @@ foreach ($version in $allVersions)
         
         if (-not $patchVersionsExist)
         {
+            $script:unfixableIssues++
             write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).0.0) found. Create at least one patch version before using floating version tags."
             $suggestedCommands += "# Create a patch version for $($version.version) pointing to the same commit:"
             $suggestedCommands += "git push origin $($version.sha):refs/tags/v$($version.semver.major).0.0"
@@ -525,6 +569,7 @@ foreach ($version in $allVersions)
         
         if (-not $patchVersionsExist)
         {
+            $script:unfixableIssues++
             write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).$($version.semver.minor).0) found. Create at least one patch version before using floating version tags."
             $suggestedCommands += "# Create a patch version for $($version.version) pointing to the same commit:"
             $suggestedCommands += "git push origin $($version.sha):refs/tags/v$($version.semver.major).$($version.semver.minor).0"
@@ -546,6 +591,7 @@ if ($checkReleases -ne "none" -and $releases.Count -gt 0)
             
             if (-not $hasRelease)
             {
+                $script:unfixableIssues++
                 $messageType = if ($checkReleases -eq "error") { "error" } else { "warning" }
                 $messageFunc = if ($checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                 & $messageFunc "::$messageType title=Missing release::Version $($tagVersion.version) does not have a GitHub Release"
@@ -571,6 +617,7 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
         {
             if ($release.isDraft)
             {
+                $script:unfixableIssues++
                 $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
                 $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                 & $messageFunc "::$messageType title=Draft release::Release $($release.tagName) is still in draft status, making it mutable. Publish the release to make it immutable."
@@ -642,18 +689,34 @@ foreach ($majorVersion in $majorVersions)
     {
         if ($majorVersion_obj -and $majorVersion_obj.ref -match "^refs/tags/")
         {
-            write-actions-error "::error title=Version should be branch::Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled"
-            $suggestedCommands += "git branch v$($majorVersion.major) $majorSha"
-            $suggestedCommands += "git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major)"
-            $suggestedCommands += "git push origin :refs/tags/v$($majorVersion.major)"
+            $fixCmd = "git branch v$($majorVersion.major) $majorSha && git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major) && git push origin :refs/tags/v$($majorVersion.major)"
+            $fixed = Invoke-AutoFix -Description "Convert major version v$($majorVersion.major) from tag to branch" -Command $fixCmd
+            
+            if ($fixed) {
+                $script:fixedIssues++
+            } else {
+                if ($autoFix) { $script:failedFixes++ }
+                write-actions-error "::error title=Version should be branch::Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled"
+                $suggestedCommands += "git branch v$($majorVersion.major) $majorSha"
+                $suggestedCommands += "git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major)"
+                $suggestedCommands += "git push origin :refs/tags/v$($majorVersion.major)"
+            }
         }
         
         if ($minorVersion_obj -and $minorVersion_obj.ref -match "^refs/tags/")
         {
-            write-actions-error "::error title=Version should be branch::Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled"
-            $suggestedCommands += "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha"
-            $suggestedCommands += "git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor)"
-            $suggestedCommands += "git push origin :refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
+            $fixCmd = "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha && git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor) && git push origin :refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
+            $fixed = Invoke-AutoFix -Description "Convert minor version v$($majorVersion.major).$($highestMinor.minor) from tag to branch" -Command $fixCmd
+            
+            if ($fixed) {
+                $script:fixedIssues++
+            } else {
+                if ($autoFix) { $script:failedFixes++ }
+                write-actions-error "::error title=Version should be branch::Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled"
+                $suggestedCommands += "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha"
+                $suggestedCommands += "git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor)"
+                $suggestedCommands += "git push origin :refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
+            }
         }
     }
 
@@ -661,14 +724,30 @@ foreach ($majorVersion in $majorVersions)
     {
         if (-not $majorSha -and $minorSha)
         {
-            write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
-            $suggestedCommands += "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major)"
+            $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major)"
+            $fixed = Invoke-AutoFix -Description "Create missing major version v$($majorVersion.major) pointing to minor version" -Command $fixCmd
+            
+            if ($fixed) {
+                $script:fixedIssues++
+            } else {
+                if ($autoFix) { $script:failedFixes++ }
+                write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                $suggestedCommands += $fixCmd
+            }
         }
 
         if ($majorSha -and $minorSha -and ($majorSha -ne $minorSha))
         {
-            write-actions-error "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
-            $suggestedCommands += "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major) --force"
+            $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major) --force"
+            $fixed = Invoke-AutoFix -Description "Update major version v$($majorVersion.major) to match minor version" -Command $fixCmd
+            
+            if ($fixed) {
+                $script:fixedIssues++
+            } else {
+                if ($autoFix) { $script:failedFixes++ }
+                write-actions-error "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                $suggestedCommands += $fixCmd
+            }
         }
     }
 
@@ -704,34 +783,74 @@ foreach ($majorVersion in $majorVersions)
     
     if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
     {
-        write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-        $suggestedCommands += "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major) --force"
+        $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major) --force"
+        $fixed = Invoke-AutoFix -Description "Update major version v$($highestMinor.major) to match patch version" -Command $fixCmd
+        
+        if ($fixed) {
+            $script:fixedIssues++
+        } else {
+            if ($autoFix) { $script:failedFixes++ }
+            write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+            $suggestedCommands += $fixCmd
+        }
     }
 
     if (-not $patchSha -and $sourceShaForPatch)
     {
-        write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
-        $suggestedCommands += "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
+        $fixCmd = "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
+        $fixed = Invoke-AutoFix -Description "Create missing patch version v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Command $fixCmd
+        
+        if ($fixed) {
+            $script:fixedIssues++
+        } else {
+            if ($autoFix) { $script:failedFixes++ }
+            write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
+            $suggestedCommands += $fixCmd
+        }
     }
 
     if (-not $majorSha)
     {
-        write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
-        $suggestedCommands += "git push origin $sourceShaForPatch`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestPatch.major)"
+        $fixCmd = "git push origin $sourceShaForPatch`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestPatch.major)"
+        $fixed = Invoke-AutoFix -Description "Create missing major version v$($highestPatch.major)" -Command $fixCmd
+        
+        if ($fixed) {
+            $script:fixedIssues++
+        } else {
+            if ($autoFix) { $script:failedFixes++ }
+            write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
+            $suggestedCommands += $fixCmd
+        }
     }
 
     if ($warnMinor)
     {
         if (-not $minorSha -and $patchSha)
         {
-            write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-            $suggestedCommands += "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor)"
+            $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor)"
+            $fixed = Invoke-AutoFix -Description "Create missing minor version v$($highestMinor.major).$($highestMinor.minor)" -Command $fixCmd
+            
+            if ($fixed) {
+                $script:fixedIssues++
+            } else {
+                if ($autoFix) { $script:failedFixes++ }
+                write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                $suggestedCommands += $fixCmd
+            }
         }
 
         if ($minorSha -and $patchSha -and ($minorSha -ne $patchSha))
         {
-            write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-            $suggestedCommands += "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor) --force"
+            $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor) --force"
+            $fixed = Invoke-AutoFix -Description "Update minor version v$($highestMinor.major).$($highestMinor.minor) to match patch version" -Command $fixCmd
+            
+            if ($fixed) {
+                $script:fixedIssues++
+            } else {
+                if ($autoFix) { $script:failedFixes++ }
+                write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                $suggestedCommands += $fixCmd
+            }
         }
     }
 }
@@ -750,11 +869,27 @@ $highestVersion = $versionsForCalculation |
 if ($useBranches) {
     # When using branches, check if latest branch exists and points to correct version
     if ($latestBranch -and ($latestBranch.sha -ne $highestVersion.sha)) {
-        write-actions-error "::error title=Incorrect version::Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-        $suggestedCommands += "git push origin $($highestVersion.sha):refs/heads/latest --force"
+        $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest --force"
+        $fixed = Invoke-AutoFix -Description "Update latest branch to match highest version" -Command $fixCmd
+        
+        if ($fixed) {
+            $script:fixedIssues++
+        } else {
+            if ($autoFix) { $script:failedFixes++ }
+            write-actions-error "::error title=Incorrect version::Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
+            $suggestedCommands += $fixCmd
+        }
     } elseif (-not $latestBranch -and $highestVersion) {
-        write-actions-error "::error title=Missing version::Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-        $suggestedCommands += "git push origin $($highestVersion.sha):refs/heads/latest"
+        $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest"
+        $fixed = Invoke-AutoFix -Description "Create missing latest branch" -Command $fixCmd
+        
+        if ($fixed) {
+            $script:fixedIssues++
+        } else {
+            if ($autoFix) { $script:failedFixes++ }
+            write-actions-error "::error title=Missing version::Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
+            $suggestedCommands += $fixCmd
+        }
     }
     
     # Warn if latest exists as a tag when we're using branches
@@ -765,8 +900,16 @@ if ($useBranches) {
 } else {
     # When using tags, check if latest tag exists and points to correct version
     if ($latest -and $highestVersion -and ($latest.sha -ne $highestVersion.sha)) {
-        write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-        $suggestedCommands += "git push origin $($highestVersion.sha):refs/tags/latest --force"
+        $fixCmd = "git push origin $($highestVersion.sha):refs/tags/latest --force"
+        $fixed = Invoke-AutoFix -Description "Update latest tag to match highest version" -Command $fixCmd
+        
+        if ($fixed) {
+            $script:fixedIssues++
+        } else {
+            if ($autoFix) { $script:failedFixes++ }
+            write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
+            $suggestedCommands += $fixCmd
+        }
     }
     
     # Warn if latest exists as a branch when we're using tags
@@ -776,54 +919,51 @@ if ($useBranches) {
     }
 }
 
-if ($suggestedCommands -ne "")
+# Display summary based on auto-fix mode
+if ($autoFix)
 {
-    $suggestedCommands = $suggestedCommands | Select-Object -unique
+    Write-Output ""
+    Write-Output "### Auto-fix Summary"
+    Write-Output "✓ Fixed issues: $script:fixedIssues"
+    Write-Output "✗ Failed fixes: $script:failedFixes"
+    Write-Output "⚠ Unfixable issues: $script:unfixableIssues"
     
-    # Auto-fix if enabled
-    if ($autoFix)
+    # Only fail if there are failed fixes or unfixable issues
+    if ($script:failedFixes -gt 0 -or $script:unfixableIssues -gt 0)
     {
-        Write-Output "### Auto-fixing version tags/branches..."
-        
-        foreach ($command in $suggestedCommands)
-        {
-            # Only execute git commands that update tags/branches, skip gh release commands
-            if ($command -match "^git push")
-            {
-                Write-Output "Executing: $command"
-                try
-                {
-                    Invoke-Expression $command
-                    if ($LASTEXITCODE -eq 0)
-                    {
-                        Write-Output "✓ Success"
-                    }
-                    else
-                    {
-                        Write-Output "✗ Failed with exit code $LASTEXITCODE"
-                        $global:returnCode = 1
-                    }
-                }
-                catch
-                {
-                    Write-Output "✗ Failed: $_"
-                    $global:returnCode = 1
-                }
-            }
-            elseif ($command -match "^gh release")
-            {
-                Write-Output "Skipping release command (manual execution required): $command"
-            }
-            else
-            {
-                Write-Output "Skipping non-push command: $command"
-            }
+        $global:returnCode = 1
+        Write-Output ""
+        if ($script:failedFixes -gt 0) {
+            Write-Output "::error::Some fixes failed. Please review the errors above and fix manually."
         }
-        
-        write-output "### Auto-fix completed" >> $env:GITHUB_STEP_SUMMARY
+        if ($script:unfixableIssues -gt 0) {
+            Write-Output "::error::Some issues cannot be auto-fixed (releases, draft releases, or floating versions without patch versions). Please fix manually."
+        }
     }
     else
     {
+        # All issues were fixed successfully
+        $global:returnCode = 0
+        Write-Output ""
+        Write-Output "::notice::All issues were successfully fixed!"
+    }
+    
+    # Show suggested commands for unfixable issues or failed fixes
+    if ($suggestedCommands -ne "")
+    {
+        $suggestedCommands = $suggestedCommands | Select-Object -unique
+        Write-Output ""
+        Write-Output "### Manual fixes required for unfixable or failed issues:"
+        Write-Output ($suggestedCommands -join "`n")
+        write-output "### Manual fixes required:`n```````n$($suggestedCommands -join "`n")`n``````" >> $env:GITHUB_STEP_SUMMARY
+    }
+}
+else
+{
+    # Not in auto-fix mode, just show suggested commands if any
+    if ($suggestedCommands -ne "")
+    {
+        $suggestedCommands = $suggestedCommands | Select-Object -unique
         Write-Output ($suggestedCommands -join "`n")
         write-output "### Suggested fix:`n```````n$($suggestedCommands -join "`n")`n``````" >> $env:GITHUB_STEP_SUMMARY
     }
