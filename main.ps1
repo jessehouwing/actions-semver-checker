@@ -184,10 +184,13 @@ function Invoke-AutoFix
     
     try
     {
+        # Reset LASTEXITCODE to ensure we're not seeing a stale value
+        $global:LASTEXITCODE = 0
+        
         # Execute the command
         Invoke-Expression $Command 2>&1 | Out-Null
         
-        if ($LASTEXITCODE -eq 0)
+        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -eq 0)
         {
             Write-Output "::notice::✓ Success: $Description"
             return $true
@@ -519,15 +522,27 @@ foreach ($tagVersion in $tagVersions)
         $message = "title=Ambiguous version: $($tagVersion.version)::Exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha))"
         if ($branchVersion.sha -eq $tagVersion.sha)
         {
-            
             write-actions-warning "::warning $message"
         }
         else
         {
-            write-actions-error "::error $message"
+            # Ambiguous version with different SHAs - this is fixable by removing the branch
+            $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
+            $fixed = Invoke-AutoFix -Description "Remove ambiguous branch for $($tagVersion.version) (keeping tag)" -Command $fixCmd
+            
+            if ($fixed) {
+                $script:fixedIssues++
+            } else {
+                if ($autoFix) { $script:failedFixes++ }
+                write-actions-error "::error $message"
+                $suggestedCommands += $fixCmd
+            }
         }
 
-        $suggestedCommands += "git push origin :refs/heads/$($tagVersion.version)"
+        if ($branchVersion.sha -eq $tagVersion.sha)
+        {
+            $suggestedCommands += "git push origin :refs/heads/$($tagVersion.version)"
+        }
     }
 }
 
@@ -940,12 +955,19 @@ if ($autoFix)
             Write-Output "::error::Some issues cannot be auto-fixed (releases, draft releases, or floating versions without patch versions). Please fix manually."
         }
     }
-    else
+    elseif ($script:fixedIssues -gt 0)
     {
-        # All issues were fixed successfully
+        # Issues were found and all were fixed successfully
         $global:returnCode = 0
         Write-Output ""
         Write-Output "::notice::All issues were successfully fixed!"
+    }
+    else
+    {
+        # No issues were found
+        $global:returnCode = 0
+        Write-Output ""
+        Write-Output "::notice::No issues found!"
     }
     
     # Show suggested commands for unfixable issues or failed fixes
