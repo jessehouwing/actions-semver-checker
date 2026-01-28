@@ -40,5 +40,3 @@ runs:
       run: |
         & $env:GITHUB_ACTION_PATH/main.ps1
       shell: pwsh
-      #env:
-      #  GITHUB_CONTEXT: ${{ toJson(github) }}
