@@ -869,7 +869,7 @@ foreach ($majorVersion in $majorVersions)
     # If no minor versions exist for this major version, we need to create v{major}.0.0 and v{major}.0
     if (-not $highestMinor)
     {
-        Write-Output "::debug::No patch versions found for major version v$($majorVersion.major), will create v$($majorVersion.major).0.0 and v$($majorVersion.major).0"
+        Write-Output "::debug::No minor versions found for major version v$($majorVersion.major), will create v$($majorVersion.major).0.0 and v$($majorVersion.major).0"
         
         # Create v{major}.0.0 using the major version's SHA
         if ($majorSha)
