@@ -96,7 +96,17 @@ if ($floatingVersionsUse -notin @("tags", "branches")) {
 
 $useBranches = $floatingVersionsUse -eq "branches"
 
+# Debug output
+Write-Output "::debug::Repository: $script:repoOwner/$script:repoName"
+Write-Output "::debug::API URL: $script:apiUrl"
+Write-Output "::debug::Server URL: $script:serverUrl"
+Write-Output "::debug::Token available: $(if ($script:token) { 'Yes' } else { 'No' })"
+Write-Output "::debug::Check releases: $checkReleases"
+Write-Output "::debug::Check release immutability: $checkReleaseImmutability"
+Write-Output "::debug::Floating versions use: $floatingVersionsUse"
+
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
+Write-Output "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
 
 $branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Trim() -match "^origin/(v\d+(\.\d+)*(-.*)?)$") } | ForEach-Object{ $_.Trim().Replace("origin/", "")}
 
@@ -359,6 +369,8 @@ foreach ($tag in $tags)
         isMinorVersion = $isMinorVersion
         isMajorVersion = $isMajorVersion
     }
+    
+    Write-Output "::debug::Parsed tag $tag - isPatch:$isPatchVersion isMinor:$isMinorVersion isMajor:$isMajorVersion parts:$($versionParts.Count)"
 }
 
 $latest = & git tag -l latest
@@ -431,14 +443,20 @@ foreach ($tagVersion in $tagVersions)
 
 # Validate that floating versions (vX or vX.Y) have corresponding patch versions
 $allVersions = $tagVersions + $branchVersions
+Write-Output "::debug::Validating floating versions. Total versions: $($allVersions.Count) (tags: $($tagVersions.Count), branches: $($branchVersions.Count))"
+
 foreach ($version in $allVersions)
 {
+    Write-Output "::debug::Checking version $($version.version) - isMajor:$($version.isMajorVersion) isMinor:$($version.isMinorVersion) isPatch:$($version.isPatchVersion)"
+    
     if ($version.isMajorVersion)
     {
         # Check if any patch versions exist for this major version
         $patchVersionsExist = $allVersions | Where-Object { 
             $_.isPatchVersion -and $_.semver.major -eq $version.semver.major 
         }
+        
+        Write-Output "::debug::Major version $($version.version) - found $($patchVersionsExist.Count) patch versions"
         
         if (-not $patchVersionsExist)
         {
@@ -456,6 +474,8 @@ foreach ($version in $allVersions)
             $_.semver.major -eq $version.semver.major -and 
             $_.semver.minor -eq $version.semver.minor 
         }
+        
+        Write-Output "::debug::Minor version $($version.version) - found $($patchVersionsExist.Count) patch versions"
         
         if (-not $patchVersionsExist)
         {
