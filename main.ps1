@@ -174,13 +174,12 @@ if ($autoFix) {
         }
         elseif ($remoteUrl -and $remoteUrl -match '^git@') {
             # Wrap remote URL in stop-commands to prevent workflow command injection
-            Write-SafeOutput -Message $remoteUrl -Prefix "::warning title=SSH remote detected::Remote URL uses SSH ("
-            Write-Host "). Auto-fix may fail if SSH credentials are not available. Consider using HTTPS remote with checkout action."
+            Write-SafeOutput -Message "$remoteUrl). Auto-fix may fail if SSH credentials are not available. Consider using HTTPS remote with checkout action." -Prefix "::warning title=SSH remote detected::Remote URL uses SSH ("
         }
     }
     catch {
         # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message $_ -Prefix "::warning title=Git configuration warning::Could not configure git credentials: "
+        Write-SafeOutput -Message ([string]$_) -Prefix "::warning title=Git configuration warning::Could not configure git credentials: "
     }
 }
 
@@ -208,13 +207,17 @@ function Write-SafeOutput
     
     # Use stop-commands to prevent workflow command injection
     # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#stopping-and-starting-workflow-commands
+    # The prefix (containing workflow commands) is written BEFORE stop-commands
+    # so GitHub Actions can interpret it, but the untrusted message is wrapped
+    # in stop-commands to neutralize any malicious workflow commands it contains
+    
+    if ($Prefix) {
+        Write-Host -NoNewline $Prefix
+    }
+    
     $stopMarker = New-Guid
     Write-Host "::stop-commands::$stopMarker"
-    if ($Prefix) {
-        Write-Host "$Prefix$Message"
-    } else {
-        Write-Host $Message
-    }
+    Write-Host $Message
     Write-Host "::$stopMarker::"
 }
 
@@ -247,7 +250,7 @@ function Invoke-AutoFix
             # Log command output as debug using GitHub Actions workflow command
             # Wrap output in stop-commands to prevent workflow command injection
             if ($commandOutput) {
-                Write-SafeOutput -Message $commandOutput -Prefix "::debug::Command succeeded with output: "
+                Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::debug::Command succeeded with output: "
             }
             return $true
         }
@@ -257,7 +260,7 @@ function Invoke-AutoFix
             # Log error output prominently using GitHub Actions error command
             # Wrap output in stop-commands to prevent workflow command injection
             if ($commandOutput) {
-                Write-SafeOutput -Message $commandOutput -Prefix "::error::Command failed: "
+                Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::error::Command failed: "
             }
             return $false
         }
@@ -266,7 +269,7 @@ function Invoke-AutoFix
     {
         Write-Host "✗ Failed: $Description"
         # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message $_ -Prefix "::error::Exception: "
+        Write-SafeOutput -Message ([string]$_) -Prefix "::error::Exception: "
         return $false
     }
 }
@@ -518,7 +521,7 @@ function Remove-GitHubRelease
     }
     catch {
         # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message $_ -Prefix "::debug::Failed to delete release for $TagName : "
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to delete release for $TagName : "
         return $false
     }
 }
