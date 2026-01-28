@@ -228,7 +228,6 @@ Describe "SemVer Checker" {
             git tag v1.0.0
             git tag v1.0
             git tag v1 v1.0.0
-            $oldCommitSha = Get-CommitSha
             
             "# Update" | Out-File -FilePath "README.md" -Append
             git add README.md
@@ -256,7 +255,6 @@ Describe "SemVer Checker" {
             git tag v1.0.0
             git tag v1.0
             git tag v1
-            $oldCommitSha = Get-CommitSha
             
             "# Update" | Out-File -FilePath "README.md" -Append
             git add README.md
@@ -283,7 +281,6 @@ Describe "SemVer Checker" {
             git tag v1.0.0
             git tag v1.0
             git tag v1 v1.0.0
-            $oldCommitSha = Get-CommitSha
             
             "# Update" | Out-File -FilePath "README.md" -Append
             git add README.md
@@ -349,13 +346,11 @@ Describe "SemVer Checker" {
         It "Should error when same version exists as both tag and branch pointing to different commits" {
             # Arrange: Create a tag v1.0.0 on first commit
             git tag v1.0.0
-            $tagSha = Get-CommitSha
             
             # Create a new commit
             "# Update" | Out-File -FilePath "README.md" -Append
             git add README.md
             git commit -m "Update for branch" 2>&1 | Out-Null
-            $branchSha = Get-CommitSha
             
             # Push branch v1.0.0 pointing to the new commit
             git branch v1.0.0-temp
@@ -411,7 +406,8 @@ Describe "SemVer Checker" {
             git tag $ExistingTag
             
             # Act
-            $result = Invoke-MainScript -CheckMinorVersion ($CheckMinor -as [string])
+            $checkMinorStr = if ($CheckMinor) { "true" } else { "false" }
+            $result = Invoke-MainScript -CheckMinorVersion $checkMinorStr
             
             # Assert
             $result.ReturnCode | Should -Be 1
@@ -451,7 +447,6 @@ Describe "SemVer Checker" {
             foreach ($tag in $InitialTags) {
                 git tag $tag
             }
-            $oldCommitSha = Get-CommitSha
             
             # Create a new commit
             "# Update" | Out-File -FilePath "README.md" -Append
