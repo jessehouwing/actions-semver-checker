@@ -717,10 +717,10 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -Be 1
         }
         
-        It "Should not error when major version has corresponding patch versions" {
+        It "Should not error when floating versions have corresponding patch versions" {
             Initialize-TestRepo -Path $script:testRepoPath -WithRemote
             
-            # Create patch version, minor version, and major version
+            # Create patch version, minor floating version, and major floating version
             $commit = Get-CommitSha
             git tag v1.0.0 $commit
             git tag v1.0 $commit
@@ -729,24 +729,7 @@ Describe "SemVer Checker" {
             # Run the checker with check-releases=none to focus on floating version validation
             $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
             
-            # Should not error about floating version
-            $result.Output | Should -Not -Match "Floating version without patch version"
-            $result.ReturnCode | Should -Be 0
-        }
-        
-        It "Should not error when minor version has corresponding patch versions" {
-            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
-            
-            # Create patch version, minor version, and major version
-            $commit = Get-CommitSha
-            git tag v1.0.0 $commit
-            git tag v1.0 $commit
-            git tag v1 $commit
-            
-            # Run the checker with check-releases=none
-            $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
-            
-            # Should not error about floating version
+            # Should not error about floating version since v1.0.0 exists
             $result.Output | Should -Not -Match "Floating version without patch version"
             $result.ReturnCode | Should -Be 0
         }
