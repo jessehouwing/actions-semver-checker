@@ -573,4 +573,43 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -BeIn @(0, 1)
         }
     }
+    
+    Context "Branch usage enforcement" {
+        It "Should not enforce branches when use-branches is false" {
+            # Arrange
+            git tag v1.0.0
+            git tag v1
+            
+            # Act - don't enforce branches (default behavior)
+            $result = Invoke-MainScript -UseBranches "false"
+            
+            # Assert - should work normally with tags
+            $result.Output | Should -Not -Match "should be a branch"
+        }
+        
+        It "Should suggest using branches when use-branches is true and tags exist" {
+            # Arrange
+            git tag v1.0.0
+            git tag v1
+            
+            # Act - enforce branches
+            $result = Invoke-MainScript -UseBranches "true"
+            
+            # Assert - should error that v1 should be a branch
+            $result.Output | Should -Match "should be a branch"
+            $result.ReturnCode | Should -Be 1
+        }
+        
+        It "Should suggest creating branches when use-branches is true" {
+            # Arrange
+            git tag v1.0.0
+            
+            # Act - enforce branches
+            $result = Invoke-MainScript -UseBranches "true"
+            
+            # Assert - should suggest creating v1 as a branch, not tag
+            $result.Output | Should -Match "refs/heads/v1"
+            $result.Output | Should -Not -Match "refs/tags/v1[^.]"
+        }
+    }
 }
