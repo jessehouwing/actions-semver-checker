@@ -61,12 +61,12 @@ BeforeAll {
             [string]$AutoFix = "false"
         )
         
-        ${env:INPUT_CHECK-MINOR-VERSION} = $CheckMinorVersion
-        ${env:INPUT_CHECK-RELEASES} = $CheckReleases
-        ${env:INPUT_CHECK-RELEASE-IMMUTABILITY} = $CheckReleaseImmutability
-        ${env:INPUT_IGNORE-PREVIEW-RELEASES} = $IgnorePreviewReleases
-        ${env:INPUT_FLOATING-VERSIONS-USE} = $FloatingVersionsUse
-        ${env:INPUT_AUTO-FIX} = $AutoFix
+        ${env:INPUT_CHECK_MINOR_VERSION} = $CheckMinorVersion
+        ${env:INPUT_CHECK_RELEASES} = $CheckReleases
+        ${env:INPUT_CHECK_RELEASE_IMMUTABILITY} = $CheckReleaseImmutability
+        ${env:INPUT_IGNORE_PREVIEW_RELEASES} = $IgnorePreviewReleases
+        ${env:INPUT_FLOATING_VERSIONS_USE} = $FloatingVersionsUse
+        ${env:INPUT_AUTO_FIX} = $AutoFix
         $global:returnCode = 0
         
         # Define mock function in global scope before running script
@@ -667,7 +667,7 @@ Describe "SemVer Checker" {
             git tag v1.0.0
             
             # Act & Assert - invalid value should cause error
-            ${env:INPUT_FLOATING-VERSIONS-USE} = "invalid"
+            ${env:INPUT_FLOATING_VERSIONS_USE} = "invalid"
             $result = & "$PSScriptRoot/main.ps1" 2>&1 | Out-String
             $result | Should -Match "Invalid configuration"
         }
