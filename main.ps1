@@ -400,8 +400,54 @@ if ($latest -and($latest.sha -ne $highestVersion.sha))
 if ($suggestedCommands -ne "")
 {
     $suggestedCommands = $suggestedCommands | Select-Object -unique
-    Write-Output ($suggestedCommands -join "`n")
-    write-output "### Suggested fix:`n```````n$($suggestedCommands -join "`n")`n``````" >> $env:GITHUB_STEP_SUMMARY
+    
+    # Auto-fix if enabled
+    if ($autoFix)
+    {
+        Write-Output "### Auto-fixing version tags/branches..."
+        
+        foreach ($command in $suggestedCommands)
+        {
+            # Only execute git commands that update tags/branches, skip gh release commands
+            if ($command -match "^git push")
+            {
+                Write-Output "Executing: $command"
+                try
+                {
+                    Invoke-Expression $command
+                    if ($LASTEXITCODE -eq 0)
+                    {
+                        Write-Output "✓ Success"
+                    }
+                    else
+                    {
+                        Write-Output "✗ Failed with exit code $LASTEXITCODE"
+                        $global:returnCode = 1
+                    }
+                }
+                catch
+                {
+                    Write-Output "✗ Failed: $_"
+                    $global:returnCode = 1
+                }
+            }
+            elseif ($command -match "^gh release")
+            {
+                Write-Output "Skipping release command (manual execution required): $command"
+            }
+            else
+            {
+                Write-Output "Skipping non-push command: $command"
+            }
+        }
+        
+        write-output "### Auto-fix completed`n``````" >> $env:GITHUB_STEP_SUMMARY
+    }
+    else
+    {
+        Write-Output ($suggestedCommands -join "`n")
+        write-output "### Suggested fix:`n```````n$($suggestedCommands -join "`n")`n``````" >> $env:GITHUB_STEP_SUMMARY
+    }
 }
 
 exit $global:returnCode

@@ -612,4 +612,47 @@ Describe "SemVer Checker" {
             $result.Output | Should -Not -Match "refs/tags/v1[^.]"
         }
     }
+    
+    Context "Auto-fix functionality" {
+        It "Should not auto-fix when auto-fix is false" {
+            # Arrange
+            git tag v1.0.0
+            
+            # Act - don't auto-fix (default behavior)
+            $result = Invoke-MainScript -AutoFix "false"
+            
+            # Assert - should only suggest, not execute
+            $result.Output | Should -Not -Match "Auto-fixing"
+            $result.Output | Should -Not -Match "Executing:"
+        }
+        
+        It "Should suggest fixes when auto-fix is false and versions are missing" {
+            # Arrange
+            git tag v1.0.0
+            
+            # Act
+            $result = Invoke-MainScript -AutoFix "false"
+            
+            # Assert - should suggest creating v1 and v1.0
+            $result.Output | Should -Match "git push"
+            $result.ReturnCode | Should -Be 1
+        }
+        
+        It "Should report auto-fix mode when enabled" {
+            # Arrange - create proper repo with remote for push
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            git tag v1.0.0
+            git push origin v1.0.0 2>&1 | Out-Null
+            
+            # Act - enable auto-fix
+            $result = Invoke-MainScript -AutoFix "true"
+            
+            # Assert - should attempt to auto-fix
+            if ($result.Output -match "git push")
+            {
+                $result.Output | Should -Match "Auto-fixing"
+            }
+        }
+    }
 }
