@@ -4,24 +4,6 @@ BeforeAll {
     $script:remoteRepoPath = Join-Path $TestDrive "remote-repo"
     $script:originalLocation = Get-Location
     
-    # Mock Invoke-WebRequest to prevent actual API calls
-    function script:Mock-InvokeWebRequest {
-        param(
-            [string]$Uri,
-            [hashtable]$Headers,
-            [string]$Method,
-            [int]$TimeoutSec
-        )
-        
-        # Return empty releases array
-        $mockResponse = @{
-            Content = "[]"
-            Headers = @{}
-        }
-        
-        return $mockResponse
-    }
-    
     function Initialize-TestRepo {
         param(
             [string]$Path,
