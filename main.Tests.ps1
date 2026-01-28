@@ -510,4 +510,31 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -BeIn @(0, 1)
         }
     }
+    
+    Context "Release immutability checking" {
+        It "Should not check release immutability when check-release-immutability is false" {
+            # Arrange
+            git tag v1.0.0
+            git tag v1
+            
+            # Act - disable immutability checking
+            $result = Invoke-MainScript -CheckReleaseImmutability "false"
+            
+            # Assert - should not mention draft releases
+            $result.Output | Should -Not -Match "Draft release"
+            $result.Output | Should -Not -Match "immutable"
+        }
+        
+        It "Should allow checking releases but not immutability separately" {
+            # Arrange
+            git tag v1.0.0
+            git tag v1
+            
+            # Act - check releases but not immutability
+            $result = Invoke-MainScript -CheckReleases "true" -CheckReleaseImmutability "false"
+            
+            # Assert - feature doesn't break existing functionality
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
 }
