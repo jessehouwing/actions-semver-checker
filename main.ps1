@@ -69,35 +69,45 @@ if (-not $script:repoOwner -or -not $script:repoName) {
     }
 }
 
-# Read inputs (allow override of token from input)
-$script:token = ${env:INPUT_TOKEN} ?? $script:token
-$warnMinor = (${env:INPUT_CHECK_MINOR_VERSION} ?? "true").Trim() -eq "true"
-$checkReleases = (${env:INPUT_CHECK_RELEASES} ?? "error").Trim().ToLower()
-$checkReleaseImmutability = (${env:INPUT_CHECK_RELEASE_IMMUTABILITY} ?? "error").Trim().ToLower()
-$ignorePreviewReleases = (${env:INPUT_IGNORE_PREVIEW_RELEASES} ?? "true").Trim() -eq "true"
-$floatingVersionsUse = (${env:INPUT_FLOATING_VERSIONS_USE} ?? "tags").Trim().ToLower()
-$autoFix = (${env:INPUT_AUTO_FIX} ?? "false").Trim() -eq "true"
+# Read inputs from JSON environment variable
+if ($env:inputs) {
+    try {
+        $inputs = $env:inputs | ConvertFrom-Json
+        
+        # Parse inputs with defaults
+        $script:token = $inputs.token ?? $script:token
+        $warnMinor = (($inputs.'check-minor-version' ?? "true") -as [string]).Trim() -eq "true"
+        $checkReleases = (($inputs.'check-releases' ?? "error") -as [string]).Trim().ToLower()
+        $checkReleaseImmutability = (($inputs.'check-release-immutability' ?? "error") -as [string]).Trim().ToLower()
+        $ignorePreviewReleases = (($inputs.'ignore-preview-releases' ?? "true") -as [string]).Trim() -eq "true"
+        $floatingVersionsUse = (($inputs.'floating-versions-use' ?? "tags") -as [string]).Trim().ToLower()
+        $autoFix = (($inputs.'auto-fix' ?? "false") -as [string]).Trim() -eq "true"
+    }
+    catch {
+        Write-Output "::error::Failed to parse inputs JSON: $_"
+        exit 1
+    }
+}
+else {
+    # Fallback to environment variables if inputs JSON is not available
+    $script:token = ${env:INPUT_TOKEN} ?? $script:token
+    $warnMinor = (${env:INPUT_CHECK_MINOR_VERSION} ?? "true").Trim() -eq "true"
+    $checkReleases = (${env:INPUT_CHECK_RELEASES} ?? "error").Trim().ToLower()
+    $checkReleaseImmutability = (${env:INPUT_CHECK_RELEASE_IMMUTABILITY} ?? "error").Trim().ToLower()
+    $ignorePreviewReleases = (${env:INPUT_IGNORE_PREVIEW_RELEASES} ?? "true").Trim() -eq "true"
+    $floatingVersionsUse = (${env:INPUT_FLOATING_VERSIONS_USE} ?? "tags").Trim().ToLower()
+    $autoFix = (${env:INPUT_AUTO_FIX} ?? "false").Trim() -eq "true"
+}
 
 # Debug: Show parsed input values
 Write-Output "::debug::=== Parsed Input Values ==="
-Write-Output "::debug::auto-fix: $autoFix (from INPUT_AUTO_FIX='${env:INPUT_AUTO_FIX}')"
-Write-Output "::debug::check-minor-version: $warnMinor (from INPUT_CHECK_MINOR_VERSION='${env:INPUT_CHECK_MINOR_VERSION}')"
-Write-Output "::debug::check-releases: $checkReleases (from INPUT_CHECK_RELEASES='${env:INPUT_CHECK_RELEASES}')"
-Write-Output "::debug::check-release-immutability: $checkReleaseImmutability (from INPUT_CHECK_RELEASE_IMMUTABILITY='${env:INPUT_CHECK_RELEASE_IMMUTABILITY}')"
-Write-Output "::debug::ignore-preview-releases: $ignorePreviewReleases (from INPUT_IGNORE_PREVIEW_RELEASES='${env:INPUT_IGNORE_PREVIEW_RELEASES}')"
-Write-Output "::debug::floating-versions-use: $floatingVersionsUse (from INPUT_FLOATING_VERSIONS_USE='${env:INPUT_FLOATING_VERSIONS_USE}')"
-
-# Debug: Show all INPUT_* environment variables
-Write-Output "::debug::=== All INPUT_* Environment Variables ==="
-Get-ChildItem env: | Where-Object { $_.Name -like "INPUT_*" } | ForEach-Object {
-    Write-Output "::debug::$($_.Name) = '$($_.Value)'"
-}
-
-# Debug: Show all environment variables (for comprehensive diagnosis)
-Write-Output "::debug::=== All Environment Variables ==="
-Get-ChildItem env: | Sort-Object Name | ForEach-Object {
-    Write-Output "::debug::$($_.Name) = '$($_.Value)'"
-}
+Write-Output "::debug::inputs JSON: $env:inputs"
+Write-Output "::debug::auto-fix: $autoFix"
+Write-Output "::debug::check-minor-version: $warnMinor"
+Write-Output "::debug::check-releases: $checkReleases"
+Write-Output "::debug::check-release-immutability: $checkReleaseImmutability"
+Write-Output "::debug::ignore-preview-releases: $ignorePreviewReleases"
+Write-Output "::debug::floating-versions-use: $floatingVersionsUse"
 
 # Validate inputs
 if ($checkReleases -notin @("error", "warning", "none")) {

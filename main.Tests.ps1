@@ -61,12 +61,16 @@ BeforeAll {
             [string]$AutoFix = "false"
         )
         
-        ${env:INPUT_CHECK_MINOR_VERSION} = $CheckMinorVersion
-        ${env:INPUT_CHECK_RELEASES} = $CheckReleases
-        ${env:INPUT_CHECK_RELEASE_IMMUTABILITY} = $CheckReleaseImmutability
-        ${env:INPUT_IGNORE_PREVIEW_RELEASES} = $IgnorePreviewReleases
-        ${env:INPUT_FLOATING_VERSIONS_USE} = $FloatingVersionsUse
-        ${env:INPUT_AUTO_FIX} = $AutoFix
+        # Create inputs JSON object
+        $inputsObject = @{
+            'check-minor-version' = $CheckMinorVersion
+            'check-releases' = $CheckReleases
+            'check-release-immutability' = $CheckReleaseImmutability
+            'ignore-preview-releases' = $IgnorePreviewReleases
+            'floating-versions-use' = $FloatingVersionsUse
+            'auto-fix' = $AutoFix
+        }
+        $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
         $global:returnCode = 0
         
         # Define mock function in global scope before running script
@@ -667,7 +671,15 @@ Describe "SemVer Checker" {
             git tag v1.0.0
             
             # Act & Assert - invalid value should cause error
-            ${env:INPUT_FLOATING_VERSIONS_USE} = "invalid"
+            $inputsObject = @{
+                'check-minor-version' = "true"
+                'check-releases' = "none"
+                'check-release-immutability' = "none"
+                'ignore-preview-releases' = "false"
+                'floating-versions-use' = "invalid"
+                'auto-fix' = "false"
+            }
+            $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
             $result = & "$PSScriptRoot/main.ps1" 2>&1 | Out-String
             $result | Should -Match "Invalid configuration"
         }
