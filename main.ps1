@@ -172,6 +172,23 @@ if ($checkReleases -and $releases.Count -gt 0)
     }
 }
 
+# Check that releases are immutable (not draft, which allows tag changes)
+if ($checkReleaseImmutability -and $releases.Count -gt 0)
+{
+    foreach ($release in $releases)
+    {
+        # Only check releases for patch versions (vX.Y.Z format)
+        if ($release.tagName -match "^v\d+\.\d+\.\d+$")
+        {
+            if ($release.isDraft)
+            {
+                write-actions-error "::error title=Draft release::Release $($release.tagName) is still in draft status, making it mutable. Publish the release to make it immutable."
+                $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
+            }
+        }
+    }
+}
+
 $allVersions = $branchVersions + $tagVersions
 
 $majorVersions = $allVersions | 
