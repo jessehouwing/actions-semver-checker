@@ -9,15 +9,15 @@ inputs:
     required: false
     default: ""
   check-minor-version: 
-    description: "Configures warnings for minor versions (options: [true, false], default: true)."
+    description: "Configures warnings for minor versions (options: [error, warning, none, true, false], default: true maps to error)."
     required: false
     default: "true"
   check-releases:
-    description: "Check that for every build version a GitHub Release exists (options: [error, warning, none], default: error)."
+    description: "Check that for every build version a GitHub Release exists (options: [error, warning, none, true, false], default: error. true maps to error, false maps to none)."
     required: false
     default: "error"
   check-release-immutability:
-    description: "Check that releases are immutable and cannot be force-pushed (options: [error, warning, none], default: error)."
+    description: "Check that releases are immutable and cannot be force-pushed (options: [error, warning, none, true, false], default: error. true maps to error, false maps to none)."
     required: false
     default: "error"
   ignore-preview-releases:
