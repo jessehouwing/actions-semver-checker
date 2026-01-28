@@ -815,9 +815,8 @@ Describe "SemVer Checker" {
             # Run the checker with check-releases=none
             $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
             
-            # Should suggest using the SHA from v1 tag
+            # Should suggest using the SHA from v1 tag (direct push only, no alternative commands)
             $result.Output | Should -Match "git push origin $commit`:refs/tags/v1\.0\.0"
-            $result.Output | Should -Match "git tag v1\.0\.0 $commit"
             $result.ReturnCode | Should -Be 1
         }
         
@@ -831,9 +830,8 @@ Describe "SemVer Checker" {
             # Run the checker with check-releases=none
             $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
             
-            # Should suggest using the SHA from v1.2 tag
+            # Should suggest using the SHA from v1.2 tag (direct push only, no alternative commands)
             $result.Output | Should -Match "git push origin $commit`:refs/tags/v1\.2\.0"
-            $result.Output | Should -Match "git tag v1\.2\.0 $commit"
             $result.ReturnCode | Should -Be 1
         }
     }
