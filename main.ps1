@@ -340,12 +340,21 @@ foreach ($tag in $tags)
         $isPrerelease = $releaseMap[$tag].isPrerelease
     }
     
+    # Determine if this is a patch version (vX.Y.Z) or a floating version (vX or vX.Y)
+    $versionParts = $tag.Substring(1) -split '\.'
+    $isPatchVersion = $versionParts.Count -eq 3
+    $isMinorVersion = $versionParts.Count -eq 2
+    $isMajorVersion = $versionParts.Count -eq 1
+    
     $tagVersions += @{
         version = $tag
         ref = "refs/tags/$tag"
         sha = & git rev-list -n 1 $tag
         semver = ConvertTo-Version $tag.Substring(1)
         isPrerelease = $isPrerelease
+        isPatchVersion = $isPatchVersion
+        isMinorVersion = $isMinorVersion
+        isMajorVersion = $isMajorVersion
     }
 }
 
@@ -375,12 +384,21 @@ if ($latestBranchExists) {
 
 foreach ($branch in $branches)
 {
+    # Determine if this is a patch version (vX.Y.Z) or a floating version (vX or vX.Y)
+    $versionParts = $branch.Substring(1) -split '\.'
+    $isPatchVersion = $versionParts.Count -eq 3
+    $isMinorVersion = $versionParts.Count -eq 2
+    $isMajorVersion = $versionParts.Count -eq 1
+    
     $branchVersions += @{
         version = $branch
         ref = "refs/remotes/origin/$branch"
         sha = & git rev-parse refs/remotes/origin/$branch
         semver = ConvertTo-Version $branch.Substring(1)
         isPrerelease = $false  # Branches are not considered prereleases
+        isPatchVersion = $isPatchVersion
+        isMinorVersion = $isMinorVersion
+        isMajorVersion = $isMajorVersion
     }
 }
 
@@ -405,6 +423,44 @@ foreach ($tagVersion in $tagVersions)
     }
 }
 
+# Validate that floating versions (vX or vX.Y) have corresponding patch versions
+$allVersions = $tagVersions + $branchVersions
+foreach ($version in $allVersions)
+{
+    if ($version.isMajorVersion)
+    {
+        # Check if any patch versions exist for this major version
+        $patchVersionsExist = $allVersions | Where-Object { 
+            $_.isPatchVersion -and $_.semver.major -eq $version.semver.major 
+        }
+        
+        if (-not $patchVersionsExist)
+        {
+            write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).0.0) found. Floating versions must reference actual patch versions."
+            $suggestedCommands += "# Create a patch version for $($version.version), e.g.:"
+            $suggestedCommands += "git tag v$($version.semver.major).0.0"
+            $suggestedCommands += "git push origin v$($version.semver.major).0.0"
+        }
+    }
+    elseif ($version.isMinorVersion)
+    {
+        # Check if any patch versions exist for this minor version
+        $patchVersionsExist = $allVersions | Where-Object { 
+            $_.isPatchVersion -and 
+            $_.semver.major -eq $version.semver.major -and 
+            $_.semver.minor -eq $version.semver.minor 
+        }
+        
+        if (-not $patchVersionsExist)
+        {
+            write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).$($version.semver.minor).0) found. Floating versions must reference actual patch versions."
+            $suggestedCommands += "# Create a patch version for $($version.version), e.g.:"
+            $suggestedCommands += "git tag v$($version.semver.major).$($version.semver.minor).0"
+            $suggestedCommands += "git push origin v$($version.semver.major).$($version.semver.minor).0"
+        }
+    }
+}
+
 # Check that every patch version (vX.Y.Z) has a corresponding release
 if ($checkReleases -ne "none" -and $releases.Count -gt 0)
 {
@@ -412,8 +468,8 @@ if ($checkReleases -ne "none" -and $releases.Count -gt 0)
     
     foreach ($tagVersion in $tagVersions)
     {
-        # Only check patch versions (vX.Y.Z format with 3 parts)
-        if ($tagVersion.version -match "^v\d+\.\d+\.\d+$")
+        # Only check patch versions (vX.Y.Z format with 3 parts) - floating versions don't need releases
+        if ($tagVersion.isPatchVersion)
         {
             $hasRelease = $releaseTagNames -contains $tagVersion.version
             
