@@ -625,13 +625,8 @@ foreach ($version in $allVersions)
         
         Write-Output "::debug::Major version $($version.version) - found $($patchVersionsExist.Count) patch versions"
         
-        if (-not $patchVersionsExist)
-        {
-            $script:unfixableIssues++
-            write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).0.0) found. Create at least one patch version before using floating version tags."
-            $suggestedCommands += "# Create a patch version for $($version.version) pointing to the same commit:"
-            $suggestedCommands += "git push origin $($version.sha):refs/tags/v$($version.semver.major).0.0"
-        }
+        # Note: Missing patch versions will be detected and auto-fixed in the version consistency checks below
+        # We don't need to report errors here to avoid redundant error messages
     }
     elseif ($version.isMinorVersion)
     {
@@ -644,13 +639,8 @@ foreach ($version in $allVersions)
         
         Write-Output "::debug::Minor version $($version.version) - found $($patchVersionsExist.Count) patch versions"
         
-        if (-not $patchVersionsExist)
-        {
-            $script:unfixableIssues++
-            write-actions-error "::error title=Floating version without patch version::Version $($version.version) exists but no corresponding patch versions (e.g., v$($version.semver.major).$($version.semver.minor).0) found. Create at least one patch version before using floating version tags."
-            $suggestedCommands += "# Create a patch version for $($version.version) pointing to the same commit:"
-            $suggestedCommands += "git push origin $($version.sha):refs/tags/v$($version.semver.major).$($version.semver.minor).0"
-        }
+        # Note: Missing patch versions will be detected and auto-fixed in the version consistency checks below
+        # We don't need to report errors here to avoid redundant error messages
     }
 }
 

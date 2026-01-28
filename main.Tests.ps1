@@ -739,10 +739,9 @@ Describe "SemVer Checker" {
             # Run the checker
             $result = Invoke-MainScript
             
-            # Should error about missing patch versions
-            $result.Output | Should -Match "Floating version without patch version"
-            $result.Output | Should -Match "v1 exists but no corresponding patch versions"
-            $result.Output | Should -Match "v1.0.0"
+            # Should error about missing patch versions (detected by version consistency checks)
+            $result.Output | Should -Match "Version: v1.0.0 does not exist"
+            $result.Output | Should -Match "v1 ref"
             $result.ReturnCode | Should -Be 1
         }
         
@@ -756,10 +755,9 @@ Describe "SemVer Checker" {
             # Run the checker
             $result = Invoke-MainScript
             
-            # Should error about missing patch versions
-            $result.Output | Should -Match "Floating version without patch version"
-            $result.Output | Should -Match "v1.0 exists but no corresponding patch versions"
-            $result.Output | Should -Match "v1.0.0"
+            # Should error about missing patch versions (detected by version consistency checks)
+            $result.Output | Should -Match "Version: v1.0.0 does not exist"
+            $result.Output | Should -Match "v1.0 ref"
             $result.ReturnCode | Should -Be 1
         }
         
@@ -811,9 +809,9 @@ Describe "SemVer Checker" {
             # Run the checker
             $result = Invoke-MainScript
             
-            # Should error about missing patch versions
-            $result.Output | Should -Match "Floating version without patch version"
-            $result.Output | Should -Match "v1 exists but no corresponding patch versions"
+            # Should error about missing patch versions (detected by version consistency checks)
+            $result.Output | Should -Match "Version: v1.0.0 does not exist"
+            $result.Output | Should -Match "v1 ref"
             $result.ReturnCode | Should -Be 1
         }
         
@@ -828,9 +826,9 @@ Describe "SemVer Checker" {
             # Run the checker
             $result = Invoke-MainScript
             
-            # Should error about both
-            $result.Output | Should -Match "v1 exists but no corresponding patch versions"
-            $result.Output | Should -Match "v2 exists but no corresponding patch versions"
+            # Should error about both (detected by version consistency checks)
+            $result.Output | Should -Match "Version: v1.0.0 does not exist"
+            $result.Output | Should -Match "Version: v2.0.0 does not exist"
             $result.ReturnCode | Should -Be 1
         }
         
@@ -845,9 +843,9 @@ Describe "SemVer Checker" {
             # Run the checker with check-releases=none
             $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
             
-            # Should error only about v1 missing patch versions
-            $result.Output | Should -Match "v1 exists but no corresponding patch versions"
-            $result.Output | Should -Not -Match "v2 exists but no corresponding patch versions"
+            # Should error only about v1 missing patch versions (detected by version consistency checks)
+            $result.Output | Should -Match "Version: v1.0.0 does not exist"
+            $result.Output | Should -Not -Match "Version: v2.0.0 does not exist"
             $result.ReturnCode | Should -Be 1
         }
         
