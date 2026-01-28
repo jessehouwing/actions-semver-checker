@@ -87,6 +87,18 @@ Write-Output "::debug::check-release-immutability: $checkReleaseImmutability (fr
 Write-Output "::debug::ignore-preview-releases: $ignorePreviewReleases (from INPUT_IGNORE_PREVIEW_RELEASES='${env:INPUT_IGNORE_PREVIEW_RELEASES}')"
 Write-Output "::debug::floating-versions-use: $floatingVersionsUse (from INPUT_FLOATING_VERSIONS_USE='${env:INPUT_FLOATING_VERSIONS_USE}')"
 
+# Debug: Show all INPUT_* environment variables
+Write-Output "::debug::=== All INPUT_* Environment Variables ==="
+Get-ChildItem env: | Where-Object { $_.Name -like "INPUT_*" } | ForEach-Object {
+    Write-Output "::debug::$($_.Name) = '$($_.Value)'"
+}
+
+# Debug: Show all environment variables (for comprehensive diagnosis)
+Write-Output "::debug::=== All Environment Variables ==="
+Get-ChildItem env: | Sort-Object Name | ForEach-Object {
+    Write-Output "::debug::$($_.Name) = '$($_.Value)'"
+}
+
 # Validate inputs
 if ($checkReleases -notin @("error", "warning", "none")) {
     write-output "::error title=Invalid configuration::check-releases must be 'error', 'warning', or 'none', got '$checkReleases'"
