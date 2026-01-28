@@ -78,6 +78,15 @@ $ignorePreviewReleases = (${env:INPUT_IGNORE_PREVIEW_RELEASES} ?? "true").Trim()
 $floatingVersionsUse = (${env:INPUT_FLOATING_VERSIONS_USE} ?? "tags").Trim().ToLower()
 $autoFix = (${env:INPUT_AUTO_FIX} ?? "false").Trim() -eq "true"
 
+# Debug: Show parsed input values
+Write-Output "::debug::=== Parsed Input Values ==="
+Write-Output "::debug::auto-fix: $autoFix (from INPUT_AUTO_FIX='${env:INPUT_AUTO_FIX}')"
+Write-Output "::debug::check-minor-version: $warnMinor (from INPUT_CHECK_MINOR_VERSION='${env:INPUT_CHECK_MINOR_VERSION}')"
+Write-Output "::debug::check-releases: $checkReleases (from INPUT_CHECK_RELEASES='${env:INPUT_CHECK_RELEASES}')"
+Write-Output "::debug::check-release-immutability: $checkReleaseImmutability (from INPUT_CHECK_RELEASE_IMMUTABILITY='${env:INPUT_CHECK_RELEASE_IMMUTABILITY}')"
+Write-Output "::debug::ignore-preview-releases: $ignorePreviewReleases (from INPUT_IGNORE_PREVIEW_RELEASES='${env:INPUT_IGNORE_PREVIEW_RELEASES}')"
+Write-Output "::debug::floating-versions-use: $floatingVersionsUse (from INPUT_FLOATING_VERSIONS_USE='${env:INPUT_FLOATING_VERSIONS_USE}')"
+
 # Validate inputs
 if ($checkReleases -notin @("error", "warning", "none")) {
     write-output "::error title=Invalid configuration::check-releases must be 'error', 'warning', or 'none', got '$checkReleases'"
