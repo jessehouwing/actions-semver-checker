@@ -71,7 +71,7 @@ if (-not $script:repoOwner -or -not $script:repoName) {
 
 # Read inputs from JSON environment variable
 if (-not $env:inputs) {
-    Write-Output "::error::inputs environment variable is not set"
+    Write-Host "::error::inputs environment variable is not set"
     exit 1
 }
 
@@ -88,52 +88,52 @@ try {
     $autoFix = (($inputs.'auto-fix' ?? "false") -as [string]).Trim() -eq "true"
 }
 catch {
-    Write-Output "::error::Failed to parse inputs JSON"
+    Write-Host "::error::Failed to parse inputs JSON"
     exit 1
 }
 
 # Debug: Show parsed input values
-Write-Output "::debug::=== Parsed Input Values ==="
-Write-Output "::debug::auto-fix: $autoFix"
-Write-Output "::debug::check-minor-version: $warnMinor"
-Write-Output "::debug::check-releases: $checkReleases"
-Write-Output "::debug::check-release-immutability: $checkReleaseImmutability"
-Write-Output "::debug::ignore-preview-releases: $ignorePreviewReleases"
-Write-Output "::debug::floating-versions-use: $floatingVersionsUse"
+Write-Host "::debug::=== Parsed Input Values ==="
+Write-Host "::debug::auto-fix: $autoFix"
+Write-Host "::debug::check-minor-version: $warnMinor"
+Write-Host "::debug::check-releases: $checkReleases"
+Write-Host "::debug::check-release-immutability: $checkReleaseImmutability"
+Write-Host "::debug::ignore-preview-releases: $ignorePreviewReleases"
+Write-Host "::debug::floating-versions-use: $floatingVersionsUse"
 
 # Validate inputs
 if ($checkReleases -notin @("error", "warning", "none")) {
-    write-output "::error title=Invalid configuration::check-releases must be 'error', 'warning', or 'none', got '$checkReleases'"
+    Write-Host "::error title=Invalid configuration::check-releases must be 'error', 'warning', or 'none', got '$checkReleases'"
     exit 1
 }
 
 if ($checkReleaseImmutability -notin @("error", "warning", "none")) {
-    write-output "::error title=Invalid configuration::check-release-immutability must be 'error', 'warning', or 'none', got '$checkReleaseImmutability'"
+    Write-Host "::error title=Invalid configuration::check-release-immutability must be 'error', 'warning', or 'none', got '$checkReleaseImmutability'"
     exit 1
 }
 
 if ($floatingVersionsUse -notin @("tags", "branches")) {
-    write-output "::error title=Invalid configuration::floating-versions-use must be either 'tags' or 'branches', got '$floatingVersionsUse'"
+    Write-Host "::error title=Invalid configuration::floating-versions-use must be either 'tags' or 'branches', got '$floatingVersionsUse'"
     exit 1
 }
 
 $useBranches = $floatingVersionsUse -eq "branches"
 
 # Debug output
-Write-Output "::debug::Repository: $script:repoOwner/$script:repoName"
-Write-Output "::debug::API URL: $script:apiUrl"
-Write-Output "::debug::Server URL: $script:serverUrl"
-Write-Output "::debug::Token available: $(if ($script:token) { 'Yes' } else { 'No' })"
-Write-Output "::debug::Check releases: $checkReleases"
-Write-Output "::debug::Check release immutability: $checkReleaseImmutability"
-Write-Output "::debug::Floating versions use: $floatingVersionsUse"
+Write-Host "::debug::Repository: $script:repoOwner/$script:repoName"
+Write-Host "::debug::API URL: $script:apiUrl"
+Write-Host "::debug::Server URL: $script:serverUrl"
+Write-Host "::debug::Token available: $(if ($script:token) { 'Yes' } else { 'No' })"
+Write-Host "::debug::Check releases: $checkReleases"
+Write-Host "::debug::Check release immutability: $checkReleaseImmutability"
+Write-Host "::debug::Floating versions use: $floatingVersionsUse"
 
 # Validate git repository configuration
-Write-Output "::debug::Validating repository configuration..."
+Write-Host "::debug::Validating repository configuration..."
 
 # Check if repository is a shallow clone
 if (Test-Path ".git/shallow") {
-    Write-Output "::error title=Shallow clone detected::Repository is a shallow clone (fetch-depth: 1). This action requires full git history. Please configure your checkout action with 'fetch-depth: 0'.%0A%0AExample:%0A  - uses: actions/checkout@v4%0A    with:%0A      fetch-depth: 0%0A      fetch-tags: true"
+    Write-Host "::error title=Shallow clone detected::Repository is a shallow clone (fetch-depth: 1). This action requires full git history. Please configure your checkout action with 'fetch-depth: 0'.%0A%0AExample:%0A  - uses: actions/checkout@v4%0A    with:%0A      fetch-depth: 0%0A      fetch-tags: true"
     $global:returnCode = 1
     exit 1
 }
@@ -141,15 +141,15 @@ if (Test-Path ".git/shallow") {
 # Check if tags were fetched
 $allTags = & git tag -l 2>$null
 if (-not $allTags -or $allTags.Count -eq 0) {
-    Write-Output "::warning title=No tags found::No git tags found in repository. This could mean:%0A  1. The repository has no tags yet (expected for new repositories)%0A  2. Tags were not fetched (fetch-tags: false)%0A%0AIf you expect tags to exist, please configure your checkout action with 'fetch-tags: true'.%0A%0AExample:%0A  - uses: actions/checkout@v4%0A    with:%0A      fetch-depth: 0%0A      fetch-tags: true"
+    Write-Host "::warning title=No tags found::No git tags found in repository. This could mean:%0A  1. The repository has no tags yet (expected for new repositories)%0A  2. Tags were not fetched (fetch-tags: false)%0A%0AIf you expect tags to exist, please configure your checkout action with 'fetch-tags: true'.%0A%0AExample:%0A  - uses: actions/checkout@v4%0A    with:%0A      fetch-depth: 0%0A      fetch-tags: true"
 }
 
 # Configure git credentials for auto-fix mode if needed
 if ($autoFix) {
-    Write-Output "::debug::Auto-fix mode enabled, configuring git credentials..."
+    Write-Host "::debug::Auto-fix mode enabled, configuring git credentials..."
     
     if (-not $script:token) {
-        Write-Output "::error title=Auto-fix requires token::Auto-fix mode is enabled but no GitHub token is available. Please provide a token via the 'token' input or ensure GITHUB_TOKEN is available.%0A%0AExample:%0A  - uses: jessehouwing/actions-semver-checker@v2%0A    with:%0A      auto-fix: true%0A      token: `${{ secrets.GITHUB_TOKEN }}"
+        Write-Host "::error title=Auto-fix requires token::Auto-fix mode is enabled but no GitHub token is available. Please provide a token via the 'token' input or ensure GITHUB_TOKEN is available.%0A%0AExample:%0A  - uses: jessehouwing/actions-semver-checker@v2%0A    with:%0A      auto-fix: true%0A      token: `${{ secrets.GITHUB_TOKEN }}"
         $global:returnCode = 1
         exit 1
     }
@@ -164,19 +164,19 @@ if ($autoFix) {
         # Also set up the URL rewrite to use HTTPS with token
         $remoteUrl = & git config --get remote.origin.url 2>$null
         if ($remoteUrl -and $remoteUrl -match '^https://') {
-            Write-Output "::debug::Configured git credential helper for HTTPS authentication"
+            Write-Host "::debug::Configured git credential helper for HTTPS authentication"
         }
         elseif ($remoteUrl -and $remoteUrl -match '^git@') {
-            Write-Output "::warning title=SSH remote detected::Remote URL uses SSH ($remoteUrl). Auto-fix may fail if SSH credentials are not available. Consider using HTTPS remote with checkout action."
+            Write-Host "::warning title=SSH remote detected::Remote URL uses SSH ($remoteUrl). Auto-fix may fail if SSH credentials are not available. Consider using HTTPS remote with checkout action."
         }
     }
     catch {
-        Write-Output "::warning title=Git configuration warning::Could not configure git credentials: $_"
+        Write-Host "::warning title=Git configuration warning::Could not configure git credentials: $_"
     }
 }
 
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
-Write-Output "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
+Write-Host "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
 
 $branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Trim() -match "^origin/(v\d+(\.\d+)*(-.*)?)$") } | ForEach-Object{ $_.Trim().Replace("origin/", "")}
 
@@ -213,9 +213,11 @@ function Invoke-AutoFix
         # Execute the command and capture output
         $commandOutput = Invoke-Expression $Command 2>&1
         
-        # Log command output as debug
+        # Log command output as debug using GitHub Actions workflow command
         if ($commandOutput) {
-            Write-Output "::debug::Command output: $commandOutput"
+            Write-Host "::group::Command output"
+            Write-Host "::debug::$commandOutput"
+            Write-Host "::endgroup::"
         }
         
         if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -eq 0)
@@ -226,14 +228,19 @@ function Invoke-AutoFix
         else
         {
             Write-Host "✗ Failed: $Description (exit code: $LASTEXITCODE)"
-            Write-Output "::debug::Command output: $commandOutput"
+            # Log error details using GitHub Actions workflow command
+            if ($commandOutput) {
+                Write-Host "::group::Error details"
+                Write-Host "::error::$commandOutput"
+                Write-Host "::endgroup::"
+            }
             return $false
         }
     }
     catch
     {
         Write-Host "✗ Failed: $Description - $_"
-        Write-Output "::debug::Exception: $_"
+        Write-Host "::error::Exception: $_"
         return $false
     }
 }
@@ -244,7 +251,7 @@ function write-actions-error
         [string] $message
     )
 
-    write-output $message
+    Write-Host $message
     $global:returnCode = 1
 }
 
@@ -254,7 +261,7 @@ function write-actions-warning
         [string] $message
     )
 
-    write-output $message
+    Write-Host $message
 }
 
 function Get-ApiHeaders
@@ -484,7 +491,7 @@ function Remove-GitHubRelease
         return $true
     }
     catch {
-        Write-Output "::debug::Failed to delete release for $TagName : $_"
+        Write-Host "::debug::Failed to delete release for $TagName : $_"
         return $false
     }
 }
@@ -533,7 +540,7 @@ foreach ($tag in $tags)
         isMajorVersion = $isMajorVersion
     }
     
-    Write-Output "::debug::Parsed tag $tag - isPatch:$isPatchVersion isMinor:$isMinorVersion isMajor:$isMajorVersion parts:$($versionParts.Count)"
+    Write-Host "::debug::Parsed tag $tag - isPatch:$isPatchVersion isMinor:$isMinorVersion isMajor:$isMajorVersion parts:$($versionParts.Count)"
 }
 
 $latest = & git tag -l latest
@@ -657,11 +664,11 @@ foreach ($tagVersion in $tagVersions)
 
 # Validate that floating versions (vX or vX.Y) have corresponding patch versions
 $allVersions = $tagVersions + $branchVersions
-Write-Output "::debug::Validating floating versions. Total versions: $($allVersions.Count) (tags: $($tagVersions.Count), branches: $($branchVersions.Count))"
+Write-Host "::debug::Validating floating versions. Total versions: $($allVersions.Count) (tags: $($tagVersions.Count), branches: $($branchVersions.Count))"
 
 foreach ($version in $allVersions)
 {
-    Write-Output "::debug::Checking version $($version.version) - isMajor:$($version.isMajorVersion) isMinor:$($version.isMinorVersion) isPatch:$($version.isPatchVersion)"
+    Write-Host "::debug::Checking version $($version.version) - isMajor:$($version.isMajorVersion) isMinor:$($version.isMinorVersion) isPatch:$($version.isPatchVersion)"
     
     if ($version.isMajorVersion)
     {
@@ -670,7 +677,7 @@ foreach ($version in $allVersions)
             $_.isPatchVersion -and $_.semver.major -eq $version.semver.major 
         }
         
-        Write-Output "::debug::Major version $($version.version) - found $($patchVersionsExist.Count) patch versions"
+        Write-Host "::debug::Major version $($version.version) - found $($patchVersionsExist.Count) patch versions"
         
         # Note: Missing patch versions will be detected and auto-fixed in the version consistency checks below
         # We don't need to report errors here to avoid redundant error messages
@@ -684,7 +691,7 @@ foreach ($version in $allVersions)
             $_.semver.minor -eq $version.semver.minor 
         }
         
-        Write-Output "::debug::Minor version $($version.version) - found $($patchVersionsExist.Count) patch versions"
+        Write-Host "::debug::Minor version $($version.version) - found $($patchVersionsExist.Count) patch versions"
         
         # Note: Missing patch versions will be detected and auto-fixed in the version consistency checks below
         # We don't need to report errors here to avoid redundant error messages
@@ -869,7 +876,7 @@ foreach ($majorVersion in $majorVersions)
     # If no minor versions exist for this major version, we need to create v{major}.0.0 and v{major}.0
     if (-not $highestMinor)
     {
-        Write-Output "::debug::No minor versions found for major version v$($majorVersion.major), will create v$($majorVersion.major).0.0 and v$($majorVersion.major).0"
+        Write-Host "::debug::No minor versions found for major version v$($majorVersion.major), will create v$($majorVersion.major).0.0 and v$($majorVersion.major).0"
         
         # Create v{major}.0.0 using the major version's SHA
         if ($majorSha)
@@ -1174,46 +1181,46 @@ if ($useBranches) {
 # Display summary based on auto-fix mode
 if ($autoFix)
 {
-    Write-Output ""
-    Write-Output "### Auto-fix Summary"
-    Write-Output "✓ Fixed issues: $script:fixedIssues"
-    Write-Output "✗ Failed fixes: $script:failedFixes"
-    Write-Output "⚠ Unfixable issues: $script:unfixableIssues"
+    Write-Host ""
+    Write-Host "### Auto-fix Summary"
+    Write-Host "✓ Fixed issues: $script:fixedIssues"
+    Write-Host "✗ Failed fixes: $script:failedFixes"
+    Write-Host "⚠ Unfixable issues: $script:unfixableIssues"
     
     # Only fail if there are failed fixes or unfixable issues
     if ($script:failedFixes -gt 0 -or $script:unfixableIssues -gt 0)
     {
         $global:returnCode = 1
-        Write-Output ""
+        Write-Host ""
         if ($script:failedFixes -gt 0) {
-            Write-Output "::error::Some fixes failed. Please review the errors above and fix manually."
+            Write-Host "::error::Some fixes failed. Please review the errors above and fix manually."
         }
         if ($script:unfixableIssues -gt 0) {
-            Write-Output "::error::Some issues cannot be auto-fixed (draft releases must be published manually, or immutable releases with attestations on floating versions). Please fix manually."
+            Write-Host "::error::Some issues cannot be auto-fixed (draft releases must be published manually, or immutable releases with attestations on floating versions). Please fix manually."
         }
     }
     elseif ($script:fixedIssues -gt 0)
     {
         # Issues were found and all were fixed successfully
         $global:returnCode = 0
-        Write-Output ""
-        Write-Output "::notice::All issues were successfully fixed!"
+        Write-Host ""
+        Write-Host "::notice::All issues were successfully fixed!"
     }
     else
     {
         # No issues were found
         $global:returnCode = 0
-        Write-Output ""
-        Write-Output "::notice::No issues found!"
+        Write-Host ""
+        Write-Host "::notice::No issues found!"
     }
     
     # Show suggested commands for unfixable issues or failed fixes
     if ($suggestedCommands -ne "")
     {
         $suggestedCommands = $suggestedCommands | Select-Object -unique
-        Write-Output ""
-        Write-Output "### Manual fixes required for unfixable or failed issues:"
-        Write-Output ($suggestedCommands -join "`n")
+        Write-Host ""
+        Write-Host "### Manual fixes required for unfixable or failed issues:"
+        Write-Host ($suggestedCommands -join "`n")
         write-output "### Manual fixes required:`n```````n$($suggestedCommands -join "`n")`n``````" >> $env:GITHUB_STEP_SUMMARY
     }
 }
@@ -1223,7 +1230,7 @@ else
     if ($suggestedCommands -ne "")
     {
         $suggestedCommands = $suggestedCommands | Select-Object -unique
-        Write-Output ($suggestedCommands -join "`n")
+        Write-Host ($suggestedCommands -join "`n")
         write-output "### Suggested fix:`n```````n$($suggestedCommands -join "`n")`n``````" >> $env:GITHUB_STEP_SUMMARY
     }
 }
