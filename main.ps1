@@ -401,7 +401,7 @@ function Get-GitHubRepoInfo
     return $null
 }
 
-function Get-TagCommitSHA
+function Test-ReleaseImmutability
 {
     param(
         [string]$Owner,
@@ -412,61 +412,55 @@ function Get-TagCommitSHA
     )
     
     try {
+        # Use GitHub GraphQL API to check if release is immutable
         $headers = Get-ApiHeaders -Token $Token
-        $url = "$ApiUrl/repos/$Owner/$Repo/git/ref/tags/$Tag"
-        $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Get -ErrorAction Stop
         
-        # The ref API returns an object with sha pointing to the tag object
-        # We need to follow that to get the actual commit SHA
-        if ($response.object.type -eq "tag") {
-            # Annotated tag - need to fetch the tag object to get commit SHA
-            $tagUrl = $response.object.url
-            $tagResponse = Invoke-RestMethod -Uri $tagUrl -Headers $headers -Method Get -ErrorAction Stop
-            return $tagResponse.object.sha
-        } else {
-            # Lightweight tag - directly points to commit
-            return $response.object.sha
-        }
+        # Construct the GraphQL query
+        $query = @"
+query(`$owner: String!, `$name: String!, `$tag: String!) {
+  repository(owner: `$owner, name: `$name) {
+    release(tagName: `$tag) {
+      tagName
+      isDraft
+      immutable
     }
-    catch {
-        return $null
-    }
+  }
 }
-
-function Test-ReleaseAttestation
-{
-    param(
-        [string]$Owner,
-        [string]$Repo,
-        [string]$Tag,
-        [string]$Token,
-        [string]$ApiUrl
-    )
-    
-    try {
-        # Get the commit SHA for the tag
-        $commitSHA = Get-TagCommitSHA -Owner $Owner -Repo $Repo -Tag $Tag -Token $Token -ApiUrl $ApiUrl
-        if (-not $commitSHA) {
-            return $false
+"@
+        
+        $variables = @{
+            owner = $Owner
+            name = $Repo
+            tag = $Tag
         }
         
-        # Format SHA as digest (sha256:...)
-        $digest = "sha256:$commitSHA"
+        $body = @{
+            query = $query
+            variables = $variables
+        } | ConvertTo-Json -Depth 10
         
-        # Check for attestations
-        $headers = Get-ApiHeaders -Token $Token
-        $url = "$ApiUrl/repos/$Owner/$Repo/attestations/$digest"
-        $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Get -ErrorAction Stop
-        
-        # If we get a response with attestations, the release is attested
-        if ($response.attestations -and $response.attestations.Count -gt 0) {
-            return $true
+        # Determine GraphQL endpoint from API URL
+        $graphqlUrl = $ApiUrl -replace '/api/v3$', '/api/graphql'
+        if ($graphqlUrl -eq $ApiUrl) {
+            # Default to public GitHub GraphQL endpoint
+            $graphqlUrl = "https://api.github.com/graphql"
         }
         
+        $response = Invoke-RestMethod -Uri $graphqlUrl -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop
+        
+        # Check if we got a valid response
+        if ($response.data.repository.release) {
+            $release = $response.data.repository.release
+            # Release is immutable if the GitHub API reports it as immutable
+            return $release.immutable -eq $true
+        }
+        
+        # No release found for this tag
         return $false
     }
     catch {
-        # If API call fails (404, etc.), assume no attestation
+        Write-Verbose "Failed to check release immutability: $_"
+        # If API call fails, assume not immutable
         return $false
     }
 }
@@ -905,7 +899,7 @@ if ($checkReleases -ne "none")
 }
 
 # Check that releases are immutable (not draft, which allows tag changes)
-# For true immutability, releases should have attestations
+# Use GitHub's immutable field to check if a release is truly immutable
 if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
 {
     foreach ($release in $releases)
@@ -927,13 +921,13 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
             }
             else
             {
-                # Check for attestations (provides cryptographic verification and true immutability)
+                # Check if the release is truly immutable using GraphQL
                 # Only check if we have repo info
                 if ($script:repoInfo) {
-                    $hasAttestation = Test-ReleaseAttestation -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
-                    if (-not $hasAttestation) {
-                        # Non-draft release without attestations is still mutable (can be force-pushed)
-                        write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but lacks attestations, making it still mutable via force-push. Consider using 'gh attestation' to make it truly immutable."
+                    $isImmutable = Test-ReleaseImmutability -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
+                    if (-not $isImmutable) {
+                        # Non-draft release that is not immutable can still be force-pushed
+                        write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but is not immutable, making it mutable via force-push. Consider using 'gh attestation' to make it truly immutable."
                     }
                 }
             }
@@ -953,30 +947,26 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
         
         if ($isFloatingVersion)
         {
-            # Check if the release is truly immutable
-            # A release is immutable if it's not a draft AND has attestations
+            # Check if the release is truly immutable using GraphQL
             $isImmutable = $false
-            if (-not $release.isDraft)
+            if (-not $release.isDraft -and $script:repoInfo)
             {
-                # Check for attestations to determine true immutability
-                if ($script:repoInfo) {
-                    $hasAttestation = Test-ReleaseAttestation -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
-                    $isImmutable = $hasAttestation
-                }
+                # Check immutability via GitHub's GraphQL API
+                $isImmutable = Test-ReleaseImmutability -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
             }
             
             if ($isImmutable)
             {
-                # Immutable release (with attestations) on a floating version - this is unfixable
+                # Immutable release on a floating version - this is unfixable
                 $script:unfixableIssues++
                 $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
                 $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
-                & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has an immutable release with attestations, which conflicts with its mutable nature. This cannot be auto-fixed."
-                $suggestedCommands += "# WARNING: Cannot delete immutable release with attestations for $($release.tagName). Floating versions should not have releases."
+                & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has an immutable release, which conflicts with its mutable nature. This cannot be auto-fixed."
+                $suggestedCommands += "# WARNING: Cannot delete immutable release for $($release.tagName). Floating versions should not have releases."
             }
             else
             {
-                # Mutable release (draft or no attestations) on a floating version - can be auto-fixed by deleting it
+                # Mutable release (draft or not immutable) on a floating version - can be auto-fixed by deleting it
                 $fixCmd = "gh release delete $($release.tagName) --yes"
                 $fixDescription = "Remove mutable release for floating version $($release.tagName)"
                 
@@ -1373,7 +1363,7 @@ if ($autoFix)
             Write-Output "::error::Some fixes failed. Please review the errors above and fix manually."
         }
         if ($script:unfixableIssues -gt 0) {
-            Write-Output "::error::Some issues cannot be auto-fixed (draft releases must be published manually, or immutable releases with attestations on floating versions). Please fix manually."
+            Write-Output "::error::Some issues cannot be auto-fixed (draft releases must be published manually, or immutable releases on floating versions). Please fix manually."
         }
     }
     elseif ($script:fixedIssues -gt 0)
