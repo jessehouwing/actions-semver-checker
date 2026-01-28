@@ -831,7 +831,9 @@ Describe "SemVer Checker" {
             # Only patch versions require releases
             $result.Output | Should -Not -Match "v1 .*release"
             $result.Output | Should -Not -Match "v1.0 .*release"
-            $result.ReturnCode | Should -Be 0
+            # Should error about missing release for v1.0.0 (patch version)
+            $result.Output | Should -Match "v1.0.0 .*release"
+            $result.ReturnCode | Should -Be 1
         }
         
         It "Should error when branch floating version exists without patch versions" {
@@ -980,7 +982,7 @@ Describe "SemVer Checker" {
             # Create a version that needs fixing
             $commit = Get-CommitSha
             git tag v1.0.0 $commit
-            git tag v1 HEAD~1 2>&1 | Out-Null  # Point to wrong commit
+            git tag v1.0 $commit
             
             # Ensure token is available
             $env:GITHUB_TOKEN = "test-token-12345"
@@ -988,8 +990,8 @@ Describe "SemVer Checker" {
             # Run with auto-fix
             $result = Invoke-MainScript -AutoFix "true"
             
-            # Should configure git credential helper (debug output)
-            $result.Output | Should -Match "Auto-fix mode enabled"
+            # Should show auto-fix summary
+            $result.Output | Should -Match "Fixed issues:"
             
             # Verify git config was attempted (credential helper should be configured)
             $credHelper = & git config --local credential.helper 2>$null
