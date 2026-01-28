@@ -726,6 +726,43 @@ Describe "SemVer Checker" {
                 $result.Output | Should -Match "Auto-fixing"
             }
         }
+        
+        It "Should auto-fix multiple missing patch versions when auto-fix is enabled" {
+            # Arrange - create proper repo with remote for push
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create v1 and v2 tags without patch versions
+            $commit = Get-CommitSha
+            git tag v1 $commit
+            git tag v2 $commit
+            git push origin v1 2>&1 | Out-Null
+            git push origin v2 2>&1 | Out-Null
+            
+            # Set token for auto-fix
+            $env:GITHUB_TOKEN = "test-token-12345"
+            
+            try {
+                # Act - enable auto-fix with check-releases=none
+                $result = Invoke-MainScript -AutoFix "true" -CheckReleases "none" -CheckReleaseImmutability "none"
+                
+                # Assert - should show fixed issues count (both v1.0.0 and v2.0.0 attempted)
+                $result.Output | Should -Match "Fixed issues: 2"
+                
+                # Should not show failed fixes
+                $result.Output | Should -Match "Failed fixes: 0"
+                
+                # Should not show unfixable issues (the redundant floating version errors are removed)
+                $result.Output | Should -Match "Unfixable issues: 0"
+                
+                # Should show success message
+                $result.Output | Should -Match "All issues were successfully fixed"
+                
+                $result.ReturnCode | Should -Be 0
+            }
+            finally {
+                Remove-Item env:GITHUB_TOKEN -ErrorAction SilentlyContinue
+            }
+        }
     }
     
     Context "Floating version validation" {
