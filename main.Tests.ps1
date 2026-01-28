@@ -805,4 +805,85 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -Be 1
         }
     }
+    
+    Describe "Repository Configuration Validation" {
+        It "Should detect shallow clone and provide helpful error" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create a shallow clone marker
+            New-Item -ItemType File -Path ".git/shallow" -Force | Out-Null
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should error about shallow clone
+            $result.Output | Should -Match "Shallow clone detected"
+            $result.Output | Should -Match "fetch-depth: 0"
+            $result.ReturnCode | Should -Be 1
+        }
+        
+        It "Should warn when no tags are found" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Don't create any tags
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should warn about no tags
+            $result.Output | Should -Match "No tags found"
+            $result.Output | Should -Match "fetch-tags: true"
+            # Should not fail (warning only)
+            $result.ReturnCode | Should -Be 0
+        }
+        
+        It "Should error when auto-fix is enabled but no token available" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create a version that needs fixing
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1 HEAD~1 2>&1 | Out-Null  # Point to wrong commit
+            
+            # Save and clear token
+            $savedToken = $env:GITHUB_TOKEN
+            $env:GITHUB_TOKEN = $null
+            
+            try {
+                # Run with auto-fix but no token
+                $result = Invoke-MainScript -AutoFix "true"
+                
+                # Should error about missing token
+                $result.Output | Should -Match "Auto-fix requires token"
+                $result.ReturnCode | Should -Be 1
+            }
+            finally {
+                # Restore token
+                $env:GITHUB_TOKEN = $savedToken
+            }
+        }
+        
+        It "Should configure git credentials when auto-fix is enabled with token" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create a version that needs fixing
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1 HEAD~1 2>&1 | Out-Null  # Point to wrong commit
+            
+            # Ensure token is available
+            $env:GITHUB_TOKEN = "test-token-12345"
+            
+            # Run with auto-fix
+            $result = Invoke-MainScript -AutoFix "true"
+            
+            # Should configure git credential helper (debug output)
+            $result.Output | Should -Match "Auto-fix mode enabled"
+            
+            # Verify git config was attempted (credential helper should be configured)
+            $credHelper = & git config --local credential.helper 2>$null
+            # The credential helper should be set (even if empty array)
+            $credHelper | Should -Not -BeNullOrEmpty
+        }
+    }
 }

@@ -43,15 +43,52 @@ And a set of suggested Git commands to fix this:
 > git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:latest --force
 > ```
 
+# Prerequisites
+
+This action requires full git history and tags to function properly. Make sure your `actions/checkout` step is configured correctly:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0      # Required: Fetches full git history
+    fetch-tags: true    # Required: Fetches all tags
+```
+
+**Why these settings are required:**
+- `fetch-depth: 0` - The action needs full git history to analyze all version tags and commits. The default shallow clone (`fetch-depth: 1`) only includes the latest commit.
+- `fetch-tags: true` - The action validates version tags. The default (`fetch-tags: false`) does not fetch tags from the remote repository.
+
+Without these settings, the action will fail with an error message indicating the problem.
+
+## Auto-fix Mode Prerequisites
+
+If you're using the `auto-fix` feature to automatically update version tags/branches, additional requirements apply:
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    fetch-depth: 0
+    fetch-tags: true
+    persist-credentials: true  # Required for auto-fix (this is the default)
+    token: ${{ secrets.GITHUB_TOKEN }}
+
+- uses: jessehouwing/actions-semver-checker@v2
+  with:
+    auto-fix: true
+    token: ${{ secrets.GITHUB_TOKEN }}  # Required for auto-fix
+```
+
+The action will automatically configure git credentials if your checkout step used `persist-credentials: false`.
+
 # Usage
 
 ## Basic Usage
 
 ```yaml  
 - uses: actions/checkout@v4
-  # Check out with fetch-depth: 0 to get all tags
   with:
-    fetch-depth: 0
+    fetch-depth: 0      # Required: Full git history
+    fetch-tags: true    # Required: All tags
 
 - uses: jessehouwing/actions-semver-checker@v2
   with:
