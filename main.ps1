@@ -141,7 +141,7 @@ foreach ($majorVersion in $majorVersions)
             $suggestedCommands += "git push origin $minorSha`:refs/tags/v$($majorVersion.major)"
         }
 
-        if ($minorSha -and ($majorSha -ne $minorSha))
+        if ($majorSha -and $minorSha -and ($majorSha -ne $minorSha))
         {
             write-actions-error "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
             $suggestedCommands += "git push origin $minorSha`:refs/tags/v$($majorVersion.major) --force"
