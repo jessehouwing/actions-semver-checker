@@ -393,6 +393,40 @@ Describe "SemVer Checker" {
             $result.Output | Should -Match "::error.*Ambiguous version: v1.0.0"
             $result.Output | Should -Match "git push origin :refs/heads/v1.0.0"
         }
+        
+        It "Should auto-fix ambiguous version respecting floating-versions-use setting (tags mode)" {
+            # Arrange: Create both tag and branch for v1.0.0 pointing to same commit
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            $commitSha = Get-CommitSha
+            git tag v1.0.0
+            git branch v1.0.0-temp
+            git push origin v1.0.0-temp:v1.0.0 2>&1 | Out-Null
+            git branch -D v1.0.0-temp 2>&1 | Out-Null
+            
+            # Act without auto-fix to see suggestion (floating-versions-use=tags means keep tag, remove branch)
+            $result = Invoke-MainScript -AutoFix $false -FloatingVersionsUse "tags"
+            
+            # Assert: Should suggest removing the branch (keep tag)
+            $result.Output | Should -Match "git push origin :refs/heads/v1.0.0"
+            $result.Output | Should -Not -Match "git push origin :refs/tags/v1.0.0"
+        }
+        
+        It "Should auto-fix ambiguous version respecting floating-versions-use setting (branches mode)" {
+            # Arrange: Create both tag and branch for v1.0.0 pointing to same commit  
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            $commitSha = Get-CommitSha
+            git tag v1.0.0
+            git branch v1.0.0-temp
+            git push origin v1.0.0-temp:v1.0.0 2>&1 | Out-Null
+            git branch -D v1.0.0-temp 2>&1 | Out-Null
+            
+            # Act without auto-fix to see suggestion (floating-versions-use=branches means keep branch, remove tag)
+            $result = Invoke-MainScript -AutoFix $false -FloatingVersionsUse "branches"
+            
+            # Assert: Should suggest removing the tag (keep branch)
+            $result.Output | Should -Match "git push origin :refs/tags/v1.0.0"
+            $result.Output | Should -Not -Match "git push origin :refs/heads/v1.0.0"
+        }
     }
     
     Context "Parameterized tests for missing versions" {

@@ -520,28 +520,67 @@ foreach ($tagVersion in $tagVersions)
     if ($branchVersion)
     {
         $message = "title=Ambiguous version: $($tagVersion.version)::Exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha))"
+        
+        # Determine which reference to keep based on floating-versions-use setting
+        $keepBranch = ($useBranches -eq $true)
+        
         if ($branchVersion.sha -eq $tagVersion.sha)
         {
-            write-actions-warning "::warning $message"
+            # Same SHA - can auto-fix by removing the non-preferred reference
+            if ($keepBranch)
+            {
+                # Keep branch, remove tag
+                $fixCmd = "git push origin :refs/tags/$($tagVersion.version)"
+                $fixDescription = "Remove ambiguous tag for $($tagVersion.version) (keeping branch)"
+            }
+            else
+            {
+                # Keep tag, remove branch (default)
+                $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
+                $fixDescription = "Remove ambiguous branch for $($tagVersion.version) (keeping tag)"
+            }
+            
+            $fixed = Invoke-AutoFix -Description $fixDescription -Command $fixCmd
+            
+            if ($fixed)
+            {
+                $script:fixedIssues++
+            }
+            else
+            {
+                if ($autoFix) { $script:failedFixes++ }
+                write-actions-warning "::warning $message"
+                $suggestedCommands += $fixCmd
+            }
         }
         else
         {
-            # Ambiguous version with different SHAs - this is fixable by removing the branch
-            $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
-            $fixed = Invoke-AutoFix -Description "Remove ambiguous branch for $($tagVersion.version) (keeping tag)" -Command $fixCmd
+            # Different SHAs - can auto-fix by removing the non-preferred reference
+            if ($keepBranch)
+            {
+                # Keep branch, remove tag
+                $fixCmd = "git push origin :refs/tags/$($tagVersion.version)"
+                $fixDescription = "Remove ambiguous tag for $($tagVersion.version) (keeping branch at $($branchVersion.sha))"
+            }
+            else
+            {
+                # Keep tag, remove branch (default)
+                $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
+                $fixDescription = "Remove ambiguous branch for $($tagVersion.version) (keeping tag at $($tagVersion.sha))"
+            }
             
-            if ($fixed) {
+            $fixed = Invoke-AutoFix -Description $fixDescription -Command $fixCmd
+            
+            if ($fixed)
+            {
                 $script:fixedIssues++
-            } else {
+            }
+            else
+            {
                 if ($autoFix) { $script:failedFixes++ }
                 write-actions-error "::error $message"
                 $suggestedCommands += $fixCmd
             }
-        }
-
-        if ($branchVersion.sha -eq $tagVersion.sha)
-        {
-            $suggestedCommands += "git push origin :refs/heads/$($tagVersion.version)"
         }
     }
 }
