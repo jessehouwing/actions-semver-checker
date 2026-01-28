@@ -442,6 +442,46 @@ function Get-GitHubReleases
     }
 }
 
+function Remove-GitHubRelease
+{
+    param(
+        [string]$TagName
+    )
+    
+    try {
+        # Use the pre-obtained repo info
+        if (-not $script:repoInfo) {
+            return $false
+        }
+        
+        # First, get the release ID for this tag
+        $headers = Get-ApiHeaders -Token $script:token
+        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/tags/$TagName"
+        
+        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+        } else {
+            $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+        }
+        $release = $response.Content | ConvertFrom-Json
+        
+        # Now delete the release
+        $deleteUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/$($release.id)"
+        
+        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+            $deleteResponse = Invoke-WebRequestWrapper -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
+        } else {
+            $deleteResponse = Invoke-WebRequest -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
+        }
+        
+        return $true
+    }
+    catch {
+        Write-Output "::debug::Failed to delete release for $TagName : $_"
+        return $false
+    }
+}
+
 # Get repository info for URLs
 $script:repoInfo = Get-GitHubRepoInfo
 
@@ -674,7 +714,7 @@ if ($checkReleases -ne "none" -and $releases.Count -gt 0)
 }
 
 # Check that releases are immutable (not draft, which allows tag changes)
-# Also optionally verify attestations for additional security
+# For true immutability, releases should have attestations
 if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
 {
     foreach ($release in $releases)
@@ -694,14 +734,87 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                     $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
                 }
             }
+            else
+            {
+                # Check for attestations (provides cryptographic verification and true immutability)
+                # Only check if we have repo info
+                if ($script:repoInfo) {
+                    $hasAttestation = Test-ReleaseAttestation -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
+                    if (-not $hasAttestation) {
+                        # Non-draft release without attestations is still mutable (can be force-pushed)
+                        write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but lacks attestations, making it still mutable via force-push. Consider using 'gh attestation' to make it truly immutable."
+                    }
+                }
+            }
+        }
+    }
+}
+
+# Check that floating versions (major/minor/latest) DO NOT have GitHub releases
+# Floating versions should not have releases as they are mutable by design
+if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
+{
+    foreach ($release in $releases)
+    {
+        # Check if this is a floating version (vX, vX.Y, or "latest")
+        $isFloatingVersion = $release.tagName -match "^v\d+$" -or $release.tagName -match "^v\d+\.\d+$" -or $release.tagName -eq "latest"
+        
+        if ($isFloatingVersion)
+        {
+            # Check if the release is truly immutable
+            # A release is immutable if it's not a draft AND has attestations
+            $isImmutable = $false
+            if (-not $release.isDraft)
+            {
+                # Check for attestations to determine true immutability
+                if ($script:repoInfo) {
+                    $hasAttestation = Test-ReleaseAttestation -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
+                    $isImmutable = $hasAttestation
+                }
+            }
             
-            # Optionally check for attestations (provides cryptographic verification)
-            # Only check if we have repo info and it's not a draft
-            if ($repoInfo -and -not $release.isDraft) {
-                $hasAttestation = Test-ReleaseAttestation -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
-                if (-not $hasAttestation) {
-                    # Note: This is informational only, not an error, as attestations are optional
-                    write-actions-warning "::notice title=No attestation::Release $($release.tagName) does not have attestations. Consider using 'gh attestation' to cryptographically verify releases."
+            if ($isImmutable)
+            {
+                # Immutable release (with attestations) on a floating version - this is unfixable
+                $script:unfixableIssues++
+                $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
+                $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has an immutable release with attestations, which conflicts with its mutable nature. This cannot be auto-fixed."
+                $suggestedCommands += "# WARNING: Cannot delete immutable release with attestations for $($release.tagName). Floating versions should not have releases."
+            }
+            else
+            {
+                # Mutable release (draft or no attestations) on a floating version - can be auto-fixed by deleting it
+                $fixCmd = "# Delete release for floating version $($release.tagName)"
+                $fixDescription = "Remove mutable release for floating version $($release.tagName)"
+                
+                # Try to auto-fix if enabled
+                if ($autoFix)
+                {
+                    Write-Output "::notice::Auto-fix: $fixDescription"
+                    $deleteSuccess = Remove-GitHubRelease -TagName $release.tagName
+                    
+                    if ($deleteSuccess)
+                    {
+                        Write-Output "::notice::✓ Success: $fixDescription"
+                        $script:fixedIssues++
+                    }
+                    else
+                    {
+                        Write-Output "::error::✗ Failed: $fixDescription"
+                        $script:failedFixes++
+                        $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
+                        $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                        & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has a mutable release, which should be removed."
+                        $suggestedCommands += "gh release delete $($release.tagName) --yes"
+                    }
+                }
+                else
+                {
+                    $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
+                    $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                    & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has a mutable release, which should be removed."
+                    $suggestedCommands += "gh release delete $($release.tagName) --yes"
                 }
             }
         }
@@ -892,17 +1005,27 @@ foreach ($majorVersion in $majorVersions)
 
     if ($warnMinor)
     {
-        if (-not $minorSha -and $patchSha)
+        if (-not $minorSha)
         {
-            $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor)"
-            $fixed = Invoke-AutoFix -Description "Create missing minor version v$($highestMinor.major).$($highestMinor.minor)" -Command $fixCmd
+            # Determine source for minor version: prefer patch, fall back to major
+            $sourceShaForMinor = $patchSha
+            $sourceVersionForMinor = "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
+            if (-not $sourceShaForMinor) {
+                $sourceShaForMinor = $majorSha
+                $sourceVersionForMinor = "v$($highestMinor.major)"
+            }
             
-            if ($fixed) {
-                $script:fixedIssues++
-            } else {
-                if ($autoFix) { $script:failedFixes++ }
-                write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-                $suggestedCommands += $fixCmd
+            if ($sourceShaForMinor) {
+                $fixCmd = "git push origin $sourceShaForMinor`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor)"
+                $fixed = Invoke-AutoFix -Description "Create missing minor version v$($highestMinor.major).$($highestMinor.minor)" -Command $fixCmd
+                
+                if ($fixed) {
+                    $script:fixedIssues++
+                } else {
+                    if ($autoFix) { $script:failedFixes++ }
+                    write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor"
+                    $suggestedCommands += $fixCmd
+                }
             }
         }
 
@@ -1004,7 +1127,7 @@ if ($autoFix)
             Write-Output "::error::Some fixes failed. Please review the errors above and fix manually."
         }
         if ($script:unfixableIssues -gt 0) {
-            Write-Output "::error::Some issues cannot be auto-fixed (releases, draft releases, or floating versions without patch versions). Please fix manually."
+            Write-Output "::error::Some issues cannot be auto-fixed (releases, draft releases, or immutable releases on floating versions). Please fix manually."
         }
     }
     elseif ($script:fixedIssues -gt 0)
