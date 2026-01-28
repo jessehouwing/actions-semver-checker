@@ -1,7 +1,7 @@
 $global:returnCode = 0
 
 $warnMinor = (${env:INPUT_CHECK-MINOR-VERSION} ?? "true").Trim() -eq "true"
-
+Get-ChildItem Env:
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(.\d+)*$") }
 
 $branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Trim() -match "^origin/(v\d+(.\d+)*(-.*)?)$") } | ForEach-Object{ $_.Trim().Replace("origin/", "")}
