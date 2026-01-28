@@ -9,11 +9,11 @@ You can run this action for your GitHub Action's repository to ensure the correc
 ## Features
 
 - ✅ Validates that major (`v1`) and minor (`v1.0`) version tags point to the latest patch version
-- ✅ Checks that every patch version (`v1.0.0`) has a corresponding GitHub Release
+- ✅ Checks that every patch version (`v1.0.0`) has a corresponding GitHub Release (via REST API)
 - ✅ Verifies that releases are immutable (not in draft status)
 - ✅ Supports filtering preview/pre-release versions from major/minor tag calculations
-- ✅ Can enforce that major/minor versions use branches instead of tags
-- ✅ Provides suggested commands to fix any issues
+- ✅ Can configure floating versions (major/minor/latest) to use branches or tags
+- ✅ Provides suggested commands to fix any issues with direct links to GitHub release pages
 - ✅ Optional auto-fix mode to automatically update version tags/branches
 
 Example output:
@@ -108,15 +108,17 @@ Ignore preview/pre-release versions when calculating which version major/minor t
     ignore-preview-releases: 'true'
 ```
 
-### `use-branches`
-**Default:** `false`
+### `floating-versions-use`
+**Default:** `tags`
 
-Require that major and minor versions use branches instead of tags. This is useful when you want mutable major/minor versions that can be updated via branch commits.
+Specify whether floating versions (major like `v1`, minor like `v1.0`, and `latest`) should use tags or branches. This is useful when you want mutable major/minor versions that can be updated via branch commits.
+
+**Options:** `tags` or `branches`
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
   with:
-    use-branches: 'true'
+    floating-versions-use: 'branches'
 ```
 
 ### `auto-fix`
@@ -196,7 +198,7 @@ jobs:
 
       - uses: jessehouwing/actions-semver-checker@v2
         with:
-          use-branches: 'true'
+          floating-versions-use: 'branches'
           auto-fix: 'true'
 ```
 
@@ -226,15 +228,15 @@ jobs:
 
 ## Suggested Fixes
 
-When issues are detected, the action provides specific commands to fix them:
+When issues are detected, the action provides specific commands to fix them, including direct links to GitHub release pages:
 
 ### Creating a Release
 ```bash
 gh release create v1.0.0 --draft --title "v1.0.0" --notes "Release v1.0.0"
-gh release edit v1.0.0 --draft=false
+gh release edit v1.0.0 --draft=false  # Or edit at: https://github.com/{owner}/{repo}/releases/edit/v1.0.0
 ```
 
-**Note:** Creating releases as drafts first is important to maintain immutability checks.
+**Note:** Creating releases as drafts first is important to maintain immutability checks. The action provides direct links to the GitHub release edit page for convenience.
 
 ### Updating Version Tags
 ```bash
@@ -246,6 +248,7 @@ git push origin <sha>:refs/tags/v1.0 --force
 ```bash
 git push origin <sha>:refs/heads/v1 --force
 git push origin <sha>:refs/heads/v1.0 --force
+git push origin <sha>:refs/heads/latest --force
 ```
 
 ## Permissions
@@ -268,12 +271,17 @@ jobs:
 v2 is backward compatible with v1. The main differences:
 
 - **New features enabled by default:**
-  - `check-releases: true` - Now checks for GitHub Releases
+  - `check-releases: true` - Now checks for GitHub Releases via REST API
   - `check-release-immutability: true` - Validates releases are not drafts
+
+- **Configuration improvements:**
+  - `floating-versions-use` replaces `use-branches` - Now accepts `tags` (default) or `branches`
+  - Release suggestions include direct GitHub edit links
+  - Uses GitHub REST API instead of gh CLI for better reliability
 
 - **Opt-in features (disabled by default):**
   - `ignore-preview-releases: false` - Set to `true` to exclude prereleases
-  - `use-branches: false` - Set to `true` to enforce branches over tags
+  - `floating-versions-use: tags` - Set to `branches` to use branches for floating versions
   - `auto-fix: false` - Set to `true` to automatically fix issues
 
 If you want v1 behavior exactly, disable the new checks:
