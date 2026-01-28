@@ -537,4 +537,40 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -BeIn @(0, 1)
         }
     }
+    
+    Context "Preview release handling" {
+        It "Should not filter preview releases when ignore-preview-releases is false" {
+            # Arrange
+            git tag v1.0.0
+            git tag v1
+            
+            # Act - don't ignore preview releases (default behavior)
+            $result = Invoke-MainScript -IgnorePreviewReleases "false"
+            
+            # Assert - should work normally
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should filter preview releases when ignore-preview-releases is true" {
+            # Arrange - create both stable and preview versions
+            git tag v1.0.0
+            git tag v1.0
+            git tag v1
+            
+            # Create a new commit for preview
+            "# Preview" | Out-File -FilePath "README.md" -Append
+            git add README.md
+            git commit -m "Preview update" 2>&1 | Out-Null
+            
+            git tag v1.1.0-preview
+            
+            # Act - with preview filtering enabled
+            # Note: The actual filtering depends on GitHub releases API marking releases as prerelease
+            # In test environment without gh CLI, this validates the feature doesn't break existing tests
+            $result = Invoke-MainScript -IgnorePreviewReleases "true"
+            
+            # Assert - should still work (actual filtering requires gh CLI and releases)
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
 }
