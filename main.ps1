@@ -320,65 +320,6 @@ function Get-ApiHeaders
     return $headers
 }
 
-function Test-GitHubPermissions
-{
-    param(
-        [string[]]$RequiredPermissions
-    )
-    
-    try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
-            return $false
-        }
-        
-        # Check token permissions using the GitHub API
-        $headers = Get-ApiHeaders -Token $script:token
-        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)"
-        
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
-        } else {
-            $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
-        }
-        
-        # Check if we have the required permissions from response headers
-        # GitHub returns X-Accepted-OAuth-Scopes and X-OAuth-Scopes headers
-        $permissions = $response.Headers['X-OAuth-Scopes']
-        
-        if (-not $permissions) {
-            # Fallback: Try to determine from the response object itself
-            # For GitHub Apps, permissions are in a different format
-            # We'll attempt a simple write test as a fallback
-            Write-Host "::debug::Unable to determine permissions from headers, assuming sufficient permissions"
-            return $true
-        }
-        
-        # Parse permissions
-        $permissionList = $permissions -split ',' | ForEach-Object { $_.Trim() }
-        
-        $missingPermissions = @()
-        foreach ($required in $RequiredPermissions) {
-            if ($permissionList -notcontains $required) {
-                $missingPermissions += $required
-            }
-        }
-        
-        if ($missingPermissions.Count -gt 0) {
-            $missingList = $missingPermissions -join ', '
-            Write-Host "::debug::Missing permissions: $missingList"
-            return $false
-        }
-        
-        return $true
-    }
-    catch {
-        Write-Host "::debug::Failed to check permissions: $_"
-        # If we can't check permissions, assume we have them (fail open)
-        return $true
-    }
-}
-
 function ConvertTo-Version
 {
     param(
@@ -894,12 +835,8 @@ if ($checkReleases -ne "none")
                         Write-Host "⚠ Manual action required: The draft release must be published manually due to marketplace requirements."
                         Write-Host "   Edit and publish at: $editUrl"
                         
-                        # Still track this as a manual fix requirement in the summary
-                        if ($script:repoInfo) {
-                            $suggestedCommands += "# Publish the draft release at: $editUrl"
-                        } else {
-                            $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
-                        }
+                        # Note: We don't add this to suggestedCommands because the draft was created successfully
+                        # The user just needs to manually publish it via the UI
                     }
                     else
                     {
