@@ -113,7 +113,7 @@ Check that releases are immutable (not in draft status). Draft releases allow ta
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
   with:
-    check-release-immutability: 'true'
+    check-release-immutability: 'error'
 ```
 
 ### `ignore-preview-releases`

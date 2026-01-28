@@ -1,7 +1,7 @@
 $global:returnCode = 0
 
 # Read inputs
-$token = ${env:INPUT_TOKEN} ?? $env:GITHUB_TOKEN ?? ""
+$script:token = ${env:INPUT_TOKEN} ?? $env:GITHUB_TOKEN ?? ""
 $warnMinor = (${env:INPUT_CHECK-MINOR-VERSION} ?? "true").Trim() -eq "true"
 $checkReleases = (${env:INPUT_CHECK-RELEASES} ?? "error").Trim().ToLower()
 $checkReleaseImmutability = (${env:INPUT_CHECK-RELEASE-IMMUTABILITY} ?? "error").Trim().ToLower()
@@ -28,42 +28,33 @@ if ($floatingVersionsUse -notin @("tags", "branches")) {
 $useBranches = $floatingVersionsUse -eq "branches"
 
 # Get GitHub context information
-$apiUrl = "https://api.github.com"
+$script:apiUrl = "https://api.github.com"
 $repository = $null
-$repoOwner = $null
-$repoName = $null
+$script:repoOwner = $null
+$script:repoName = $null
 
 if ($env:GITHUB_CONTEXT) {
     try {
         $githubContext = $env:GITHUB_CONTEXT | ConvertFrom-Json
-        $apiUrl = $githubContext.api_url ?? "https://api.github.com"
+        $script:apiUrl = $githubContext.api_url ?? "https://api.github.com"
         $repository = $githubContext.repository
-        
-        if ($repository -and $repository -match "^([^/]+)/(.+)$") {
-            $repoOwner = $matches[1]
-            $repoName = $matches[2]
-        }
     }
     catch {
         # Fall back to environment variables if JSON parsing fails
-        $apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
+        $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
         $repository = $env:GITHUB_REPOSITORY
-        
-        if ($repository -and $repository -match "^([^/]+)/(.+)$") {
-            $repoOwner = $matches[1]
-            $repoName = $matches[2]
-        }
     }
 }
 else {
     # Fall back to environment variables
-    $apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
+    $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
     $repository = $env:GITHUB_REPOSITORY
-    
-    if ($repository -and $repository -match "^([^/]+)/(.+)$") {
-        $repoOwner = $matches[1]
-        $repoName = $matches[2]
-    }
+}
+
+# Parse repository owner and name
+if ($repository -and $repository -match "^([^/]+)/(.+)$") {
+    $script:repoOwner = $matches[1]
+    $script:repoName = $matches[2]
 }
 
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
@@ -289,9 +280,10 @@ function Get-GitHubReleases
             
             if ($linkHeader) {
                 # Parse Link header: <url>; rel="next", <url>; rel="last"
+                # RFC 8288 allows optional whitespace before semicolon
                 $links = $linkHeader -split ','
                 foreach ($link in $links) {
-                    if ($link -match '<([^>]+)>;\s*rel="next"') {
+                    if ($link -match '<([^>]+)>\s*;\s*rel="next"') {
                         $url = $matches[1]
                         break
                     }
@@ -309,12 +301,12 @@ function Get-GitHubReleases
 }
 
 # Get repository info for URLs
-$repoInfo = Get-GitHubRepoInfo
+$script:repoInfo = Get-GitHubRepoInfo
 
 # Get GitHub releases if check is enabled
 $releases = @()
 $releaseMap = @{}
-if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none" -or $ignorePreviewReleases) -and $repoInfo)
+if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none" -or $ignorePreviewReleases) -and $script:repoInfo)
 {
     $releases = Get-GitHubReleases
     # Create a map for quick lookup
@@ -415,8 +407,8 @@ if ($checkReleases -ne "none" -and $releases.Count -gt 0)
                 $messageFunc = if ($checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                 & $messageFunc "::$messageType title=Missing release::Version $($tagVersion.version) does not have a GitHub Release"
                 $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
-                if ($repoInfo) {
-                    $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                if ($script:repoInfo) {
+                    $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
                 } else {
                     $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
                 }
@@ -439,8 +431,8 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                 $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
                 $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                 & $messageFunc "::$messageType title=Draft release::Release $($release.tagName) is still in draft status, making it mutable. Publish the release to make it immutable."
-                if ($repoInfo) {
-                    $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($release.tagName)"
+                if ($script:repoInfo) {
+                    $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($release.tagName)"
                 } else {
                     $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
                 }
@@ -449,7 +441,7 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
             # Optionally check for attestations (provides cryptographic verification)
             # Only check if we have repo info and it's not a draft
             if ($repoInfo -and -not $release.isDraft) {
-                $hasAttestation = Test-ReleaseAttestation -Owner $repoInfo.Owner -Repo $repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
+                $hasAttestation = Test-ReleaseAttestation -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
                 if (-not $hasAttestation) {
                     # Note: This is informational only, not an error, as attestations are optional
                     write-actions-warning "::notice title=No attestation::Release $($release.tagName) does not have attestations. Consider using 'gh attestation' to cryptographically verify releases."
@@ -570,7 +562,7 @@ foreach ($majorVersion in $majorVersions)
     if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
     {
         write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-        $suggestedCommands += "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major) --force"
+        $suggestedCommands += "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major) --force"
     }
 
     if (-not $patchSha -and $sourceShaForPatch)
