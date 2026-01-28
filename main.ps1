@@ -71,12 +71,12 @@ if (-not $script:repoOwner -or -not $script:repoName) {
 
 # Read inputs (allow override of token from input)
 $script:token = ${env:INPUT_TOKEN} ?? $script:token
-$warnMinor = (${env:INPUT_CHECK-MINOR-VERSION} ?? "true").Trim() -eq "true"
-$checkReleases = (${env:INPUT_CHECK-RELEASES} ?? "error").Trim().ToLower()
-$checkReleaseImmutability = (${env:INPUT_CHECK-RELEASE-IMMUTABILITY} ?? "error").Trim().ToLower()
-$ignorePreviewReleases = (${env:INPUT_IGNORE-PREVIEW-RELEASES} ?? "false").Trim() -eq "true"
-$floatingVersionsUse = (${env:INPUT_FLOATING-VERSIONS-USE} ?? "tags").Trim().ToLower()
-$autoFix = (${env:INPUT_AUTO-FIX} ?? "false").Trim() -eq "true"
+$warnMinor = (${env:INPUT_CHECK_MINOR_VERSION} ?? "true").Trim() -eq "true"
+$checkReleases = (${env:INPUT_CHECK_RELEASES} ?? "error").Trim().ToLower()
+$checkReleaseImmutability = (${env:INPUT_CHECK_RELEASE_IMMUTABILITY} ?? "error").Trim().ToLower()
+$ignorePreviewReleases = (${env:INPUT_IGNORE_PREVIEW_RELEASES} ?? "true").Trim() -eq "true"
+$floatingVersionsUse = (${env:INPUT_FLOATING_VERSIONS_USE} ?? "tags").Trim().ToLower()
+$autoFix = (${env:INPUT_AUTO_FIX} ?? "false").Trim() -eq "true"
 
 # Validate inputs
 if ($checkReleases -notin @("error", "warning", "none")) {
