@@ -8,6 +8,26 @@ inputs:
     description: "Configures warnings for minor versions (options: [true, false], default: true)."
     required: false
     default: "true"
+  check-releases:
+    description: "Check that for every build version a GitHub Release exists (options: [true, false], default: true)."
+    required: false
+    default: "true"
+  check-release-immutability:
+    description: "Check that releases are immutable and cannot be force-pushed (options: [true, false], default: true)."
+    required: false
+    default: "true"
+  ignore-preview-releases:
+    description: "Ignore preview/pre-release versions when calculating major/minor version tags (options: [true, false], default: false)."
+    required: false
+    default: "false"
+  use-branches:
+    description: "Require that major and minor versions use branches instead of tags (options: [true, false], default: false)."
+    required: false
+    default: "false"
+  auto-fix:
+    description: "Automatically fix major/minor versions when a build tag is pushed. Requires contents: write permission (options: [true, false], default: false)."
+    required: false
+    default: "false"
 
 runs:
   using: "composite"
