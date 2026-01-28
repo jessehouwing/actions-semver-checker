@@ -62,6 +62,17 @@ And a set of suggested Git commands to fix this:
 
 ## Configuration Options
 
+### `token`
+**Default:** `""` (uses GITHUB_TOKEN)
+
+GitHub token for API access. If not provided, falls back to the GITHUB_TOKEN environment variable.
+
+```yaml
+- uses: jessehouwing/actions-semver-checker@v2
+  with:
+    token: ${{ secrets.GITHUB_TOKEN }}
+```
+
 ### `check-minor-version`
 **Default:** `true`
 
@@ -74,20 +85,30 @@ Configures whether to check minor versions (e.g., `v1.0`) in addition to major v
 ```
 
 ### `check-releases`
-**Default:** `true`
+**Default:** `error`
 
 Check that every build version (e.g., `v1.0.0`) has a corresponding GitHub Release.
+
+**Options:** `error`, `warning`, or `none`
+- `error`: Report as error and fail the action
+- `warning`: Report as warning but don't fail
+- `none`: Skip this check entirely
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
   with:
-    check-releases: 'true'
+    check-releases: 'error'
 ```
 
 ### `check-release-immutability`
-**Default:** `true`
+**Default:** `error`
 
 Check that releases are immutable (not in draft status). Draft releases allow tag changes, making them mutable.
+
+**Options:** `error`, `warning`, or `none`
+- `error`: Report as error and fail the action
+- `warning`: Report as warning but don't fail
+- `none`: Skip this check entirely
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
@@ -270,25 +291,36 @@ jobs:
 
 v2 is backward compatible with v1. The main differences:
 
-- **New features enabled by default:**
-  - `check-releases: true` - Now checks for GitHub Releases via REST API
-  - `check-release-immutability: true` - Validates releases are not drafts
+- **New input options:**
+  - `token` - Explicit GitHub token input
+  - `check-releases` - Now accepts "error" (default), "warning", or "none"
+  - `check-release-immutability` - Now accepts "error" (default), "warning", or "none"
 
 - **Configuration improvements:**
   - `floating-versions-use` replaces `use-branches` - Now accepts `tags` (default) or `branches`
   - Release suggestions include direct GitHub edit links
-  - Uses GitHub REST API instead of gh CLI for better reliability
+  - Uses GitHub context via `GITHUB_CONTEXT` for better reliability
+  - Link header-based pagination for better API performance
 
 - **Opt-in features (disabled by default):**
   - `ignore-preview-releases: false` - Set to `true` to exclude prereleases
   - `floating-versions-use: tags` - Set to `branches` to use branches for floating versions
   - `auto-fix: false` - Set to `true` to automatically fix issues
 
-If you want v1 behavior exactly, disable the new checks:
+If you want warnings instead of errors for release checks:
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
   with:
-    check-releases: 'false'
-    check-release-immutability: 'false'
+    check-releases: 'warning'
+    check-release-immutability: 'warning'
+```
+
+To disable release checks entirely (v1 behavior):
+
+```yaml
+- uses: jessehouwing/actions-semver-checker@v2
+  with:
+    check-releases: 'none'
+    check-release-immutability: 'none'
 ```
