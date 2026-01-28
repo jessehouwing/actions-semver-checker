@@ -832,8 +832,7 @@ if ($checkReleases -ne "none")
                         
                         # Log message about manual publishing requirement
                         $editUrl = "$($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
-                        Write-Host "⚠ Manual action required: The draft release must be published manually due to marketplace requirements."
-                        Write-Host "   Edit and publish at: $editUrl"
+                        Write-Host "::warning title=Manual action required::The draft release $($tagVersion.version) must be published manually due to marketplace requirements. Edit and publish at: $editUrl"
                         
                         # Note: We don't add this to suggestedCommands because the draft was created successfully
                         # The user just needs to manually publish it via the UI
