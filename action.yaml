@@ -4,18 +4,22 @@ branding:
   icon: 'check-circle'
   color: 'orange'
 inputs:
+  token:
+    description: "GitHub token for API access. If not provided, falls back to GITHUB_TOKEN environment variable."
+    required: false
+    default: ""
   check-minor-version: 
     description: "Configures warnings for minor versions (options: [true, false], default: true)."
     required: false
     default: "true"
   check-releases:
-    description: "Check that for every build version a GitHub Release exists (options: [true, false], default: true)."
+    description: "Check that for every build version a GitHub Release exists (options: [error, warning, none], default: error)."
     required: false
-    default: "true"
+    default: "error"
   check-release-immutability:
-    description: "Check that releases are immutable and cannot be force-pushed (options: [true, false], default: true)."
+    description: "Check that releases are immutable and cannot be force-pushed (options: [error, warning, none], default: error)."
     required: false
-    default: "true"
+    default: "error"
   ignore-preview-releases:
     description: "Ignore preview/pre-release versions when calculating major/minor version tags (options: [true, false], default: false)."
     required: false
@@ -36,3 +40,5 @@ runs:
       run: |
         & $env:GITHUB_ACTION_PATH/main.ps1
       shell: pwsh
+      env:
+        GITHUB_CONTEXT: ${{ toJson(github) }}

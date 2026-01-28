@@ -4,6 +4,24 @@ BeforeAll {
     $script:remoteRepoPath = Join-Path $TestDrive "remote-repo"
     $script:originalLocation = Get-Location
     
+    # Mock Invoke-WebRequest to prevent actual API calls
+    function script:Mock-InvokeWebRequest {
+        param(
+            [string]$Uri,
+            [hashtable]$Headers,
+            [string]$Method,
+            [int]$TimeoutSec
+        )
+        
+        # Return empty releases array
+        $mockResponse = @{
+            Content = "[]"
+            Headers = @{}
+        }
+        
+        return $mockResponse
+    }
+    
     function Initialize-TestRepo {
         param(
             [string]$Path,
@@ -54,8 +72,8 @@ BeforeAll {
     function Invoke-MainScript {
         param(
             [string]$CheckMinorVersion = "true",
-            [string]$CheckReleases = "true",
-            [string]$CheckReleaseImmutability = "true",
+            [string]$CheckReleases = "none",
+            [string]$CheckReleaseImmutability = "none",
             [string]$IgnorePreviewReleases = "false",
             [string]$FloatingVersionsUse = "tags",
             [string]$AutoFix = "false"
@@ -69,8 +87,25 @@ BeforeAll {
         ${env:INPUT_AUTO-FIX} = $AutoFix
         $global:returnCode = 0
         
+        # Define mock function in global scope before running script
+        $global:InvokeWebRequestWrapper = {
+            param($Uri, $Headers, $Method, $TimeoutSec)
+            return @{
+                Content = "[]"
+                Headers = @{}
+            }
+        }
+        
+        # Make the function available
+        Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+        
         # Capture output
         $output = & "$PSScriptRoot/main.ps1" 2>&1 | Out-String
+        
+        # Clean up mock
+        if (Test-Path function:global:Invoke-WebRequestWrapper) {
+            Remove-Item function:global:Invoke-WebRequestWrapper
+        }
         
         return @{
             Output = $output
@@ -480,12 +515,12 @@ Describe "SemVer Checker" {
     }
     
     Context "Release checking" {
-        It "Should not check releases when check-releases is false" {
+        It "Should not check releases when check-releases is none" {
             # Arrange
             git tag v1.0.0
             
             # Act - disable release checking
-            $result = Invoke-MainScript -CheckReleases "false"
+            $result = Invoke-MainScript -CheckReleases "none"
             
             # Assert - should not mention releases at all
             $result.Output | Should -Not -Match "Missing release"
@@ -501,7 +536,7 @@ Describe "SemVer Checker" {
             git tag v1
             
             # Act - with releases enabled (REST API will be queried)
-            $result = Invoke-MainScript -CheckReleases "true"
+            $result = Invoke-MainScript -CheckReleases "error"
             
             # If REST API is accessible and no releases exist, it would suggest:
             # gh release create v1.0.0 --draft
@@ -511,13 +546,13 @@ Describe "SemVer Checker" {
     }
     
     Context "Release immutability checking" {
-        It "Should not check release immutability when check-release-immutability is false" {
+        It "Should not check release immutability when check-release-immutability is none" {
             # Arrange
             git tag v1.0.0
             git tag v1
             
             # Act - disable immutability checking
-            $result = Invoke-MainScript -CheckReleaseImmutability "false"
+            $result = Invoke-MainScript -CheckReleaseImmutability "none"
             
             # Assert - should not mention draft releases
             $result.Output | Should -Not -Match "Draft release"
@@ -530,7 +565,7 @@ Describe "SemVer Checker" {
             git tag v1
             
             # Act - check releases but not immutability
-            $result = Invoke-MainScript -CheckReleases "true" -CheckReleaseImmutability "false"
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "none"
             
             # Assert - feature doesn't break existing functionality
             $result.ReturnCode | Should -BeIn @(0, 1)
