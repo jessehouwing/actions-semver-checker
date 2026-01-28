@@ -1,6 +1,11 @@
 $global:returnCode = 0
 
 $warnMinor = (${env:INPUT_CHECK-MINOR-VERSION} ?? "true").Trim() -eq "true"
+$checkReleases = (${env:INPUT_CHECK-RELEASES} ?? "true").Trim() -eq "true"
+$checkReleaseImmutability = (${env:INPUT_CHECK-RELEASE-IMMUTABILITY} ?? "true").Trim() -eq "true"
+$ignorePreviewReleases = (${env:INPUT_IGNORE-PREVIEW-RELEASES} ?? "false").Trim() -eq "true"
+$useBranches = (${env:INPUT_USE-BRANCHES} ?? "false").Trim() -eq "true"
+$autoFix = (${env:INPUT_AUTO-FIX} ?? "false").Trim() -eq "true"
 
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(.\d+)*$") }
 
@@ -55,6 +60,37 @@ function ConvertTo-Version
     }
 }
 
+function Get-GitHubReleases
+{
+    param()
+    
+    try {
+        # Check if gh CLI is available and we're in a GitHub repository
+        $ghAvailable = (Get-Command gh -ErrorAction SilentlyContinue) -ne $null
+        if (-not $ghAvailable) {
+            return @()
+        }
+        
+        # Get the repository from git remote
+        $remoteUrl = & git config --get remote.origin.url 2>$null
+        if (-not $remoteUrl) {
+            return @()
+        }
+        
+        # Try to get releases using gh CLI
+        $releases = & gh release list --limit 1000 --json tagName,isPrerelease,isDraft 2>$null | ConvertFrom-Json
+        
+        if ($LASTEXITCODE -ne 0) {
+            return @()
+        }
+        
+        return $releases
+    }
+    catch {
+        return @()
+    }
+}
+
 foreach ($tag in $tags)
 {
     $tagVersions += @{
@@ -104,6 +140,35 @@ foreach ($tagVersion in $tagVersions)
         }
 
         $suggestedCommands += "git push origin :refs/heads/$($tagVersion.version)"
+    }
+}
+
+# Get GitHub releases if check is enabled
+$releases = @()
+if ($checkReleases -or $checkReleaseImmutability -or $ignorePreviewReleases)
+{
+    $releases = Get-GitHubReleases
+}
+
+# Check that every patch version (vX.Y.Z) has a corresponding release
+if ($checkReleases -and $releases.Count -gt 0)
+{
+    $releaseTagNames = $releases | ForEach-Object { $_.tagName }
+    
+    foreach ($tagVersion in $tagVersions)
+    {
+        # Only check patch versions (vX.Y.Z format with 3 parts)
+        if ($tagVersion.version -match "^v\d+\.\d+\.\d+$")
+        {
+            $hasRelease = $releaseTagNames -contains $tagVersion.version
+            
+            if (-not $hasRelease)
+            {
+                write-actions-error "::error title=Missing release::Version $($tagVersion.version) does not have a GitHub Release"
+                $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
+                $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
+            }
+        }
     }
 }
 
