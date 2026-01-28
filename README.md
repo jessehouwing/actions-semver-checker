@@ -6,6 +6,17 @@ Unfortunately, GitHub's creative use of tags doesn't do this automatically and m
 
 You can run this action for your GitHub Action's repository to ensure the correct tags have been created and point to the correct commits.
 
+## GitHub's Immutable Release Strategy
+
+This action implements [GitHub's recommended approach](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/using-immutable-releases-and-tags-to-manage-your-actions-releases) for versioning actions:
+
+- **Patch versions (v1.0.0, v1.0.1)** → Immutable GitHub Releases that never change
+- **Floating versions (v1, v1.0, latest)** → Mutable Git tags that point to the latest compatible release
+
+This strategy balances **stability** (pinned versions never change) with **convenience** (floating versions get updates automatically).
+
+📖 **[Read the comprehensive versioning guidance](docs/versioning-guidance.md)** for detailed best practices, workflows, and troubleshooting.
+
 ## Features
 
 - ✅ Validates that major (`v1`) and minor (`v1.0`) version tags point to the latest patch version
@@ -45,7 +56,7 @@ And a set of suggested Git commands to fix this:
 
 # Prerequisites
 
-This action requires full git history and tags to function properly. Make sure your `actions/checkout` step is configured correctly:
+This action requires full git history and tags to function properly. Configure the [Checkout action](https://github.com/marketplace/actions/checkout) correctly:
 
 ```yaml
 - uses: actions/checkout@v4
@@ -55,14 +66,16 @@ This action requires full git history and tags to function properly. Make sure y
 ```
 
 **Why these settings are required:**
-- `fetch-depth: 0` - The action needs full git history to analyze all version tags and commits. The default shallow clone (`fetch-depth: 1`) only includes the latest commit.
-- `fetch-tags: true` - The action validates version tags. The default (`fetch-tags: false`) does not fetch tags from the remote repository.
 
-Without these settings, the action will fail with an error message indicating the problem.
+- **`fetch-depth: 0`** ([docs](https://github.com/actions/checkout#usage)) - The action needs full git history to analyze all version tags and commits. The default shallow clone (`fetch-depth: 1`) only includes the latest commit. Without this, you'll see: `::error::Shallow clone detected`.
+
+- **`fetch-tags: true`** ([docs](https://github.com/actions/checkout#usage)) - The action validates version tags. The default (`fetch-tags: false`) does not fetch tags from the remote repository. Without this, the action may report: `::warning::No tags found`.
+
+Learn more about [configuring the checkout action](https://github.com/marketplace/actions/checkout).
 
 ## Auto-fix Mode Prerequisites
 
-If you're using the `auto-fix` feature to automatically update version tags/branches, additional requirements apply:
+If you're using the `auto-fix` feature to automatically update version tags/branches, additional configuration applies:
 
 ```yaml
 - uses: actions/checkout@v4
@@ -78,7 +91,12 @@ If you're using the `auto-fix` feature to automatically update version tags/bran
     token: ${{ secrets.GITHUB_TOKEN }}  # Required for auto-fix
 ```
 
-The action will automatically configure git credentials if your checkout step used `persist-credentials: false`.
+**About `persist-credentials`** ([docs](https://github.com/actions/checkout#persist-credentials)):
+- Default is `true` - checkout action saves credentials for subsequent git operations
+- If set to `false`, the semver-checker action will automatically configure git credentials using the provided token
+- Either way works, but `true` (default) is simpler
+
+Learn more about [checkout action authentication](https://github.com/marketplace/actions/checkout).
 
 # Usage
 
@@ -226,6 +244,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - uses: jessehouwing/actions-semver-checker@v2
         with:
@@ -253,6 +272,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - uses: jessehouwing/actions-semver-checker@v2
         with:
@@ -277,6 +297,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - uses: jessehouwing/actions-semver-checker@v2
         with:
