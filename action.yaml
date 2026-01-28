@@ -40,3 +40,5 @@ runs:
       run: |
         & $env:GITHUB_ACTION_PATH/main.ps1
       shell: pwsh
+      env:
+        inputs: ${{ tojson(inputs) }}
