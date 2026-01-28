@@ -78,11 +78,30 @@ if (-not $env:inputs) {
 try {
     $inputs = $env:inputs | ConvertFrom-Json
     
+    # Helper function to normalize check input values (accept boolean or string)
+    function Normalize-CheckInput {
+        param(
+            [string]$value,
+            [string]$default
+        )
+        
+        $normalized = ($value ?? $default).Trim().ToLower()
+        
+        # Map boolean values to error/none
+        if ($normalized -eq "true") {
+            return "error"
+        } elseif ($normalized -eq "false") {
+            return "none"
+        }
+        
+        return $normalized
+    }
+    
     # Parse inputs with defaults
     $script:token = $inputs.token ?? $script:token
-    $warnMinor = (($inputs.'check-minor-version' ?? "true") -as [string]).Trim() -eq "true"
-    $checkReleases = (($inputs.'check-releases' ?? "error") -as [string]).Trim().ToLower()
-    $checkReleaseImmutability = (($inputs.'check-release-immutability' ?? "error") -as [string]).Trim().ToLower()
+    $checkMinorVersion = Normalize-CheckInput -value (($inputs.'check-minor-version' ?? "true") -as [string]) -default "error"
+    $checkReleases = Normalize-CheckInput -value (($inputs.'check-releases' ?? "error") -as [string]) -default "error"
+    $checkReleaseImmutability = Normalize-CheckInput -value (($inputs.'check-release-immutability' ?? "error") -as [string]) -default "error"
     $ignorePreviewReleases = (($inputs.'ignore-preview-releases' ?? "true") -as [string]).Trim() -eq "true"
     $floatingVersionsUse = (($inputs.'floating-versions-use' ?? "tags") -as [string]).Trim().ToLower()
     $autoFix = (($inputs.'auto-fix' ?? "false") -as [string]).Trim() -eq "true"
@@ -95,21 +114,27 @@ catch {
 # Debug: Show parsed input values
 Write-Host "::debug::=== Parsed Input Values ==="
 Write-Host "::debug::auto-fix: $autoFix"
-Write-Host "::debug::check-minor-version: $warnMinor"
+Write-Host "::debug::check-minor-version: $checkMinorVersion"
 Write-Host "::debug::check-releases: $checkReleases"
 Write-Host "::debug::check-release-immutability: $checkReleaseImmutability"
 Write-Host "::debug::ignore-preview-releases: $ignorePreviewReleases"
 Write-Host "::debug::floating-versions-use: $floatingVersionsUse"
 
 # Validate inputs
+if ($checkMinorVersion -notin @("error", "warning", "none")) {
+    $errorMessage = "::error title=Invalid configuration::check-minor-version must be 'error', 'warning', 'none', 'true', or 'false', got '$checkMinorVersion'"
+    Write-Output $errorMessage
+    exit 1
+}
+
 if ($checkReleases -notin @("error", "warning", "none")) {
-    $errorMessage = "::error title=Invalid configuration::check-releases must be 'error', 'warning', or 'none', got '$checkReleases'"
+    $errorMessage = "::error title=Invalid configuration::check-releases must be 'error', 'warning', 'none', 'true', or 'false', got '$checkReleases'"
     Write-Output $errorMessage
     exit 1
 }
 
 if ($checkReleaseImmutability -notin @("error", "warning", "none")) {
-    $errorMessage = "::error title=Invalid configuration::check-release-immutability must be 'error', 'warning', or 'none', got '$checkReleaseImmutability'"
+    $errorMessage = "::error title=Invalid configuration::check-release-immutability must be 'error', 'warning', 'none', 'true', or 'false', got '$checkReleaseImmutability'"
     Write-Output $errorMessage
     exit 1
 }
@@ -300,6 +325,21 @@ function write-actions-warning
     )
 
     Write-Output $message
+}
+
+function write-actions-message
+{
+    param(
+        [string] $message,
+        [string] $severity = "error"  # Can be "error", "warning", or "none"
+    )
+
+    if ($severity -eq "error") {
+        write-actions-error $message
+    } elseif ($severity -eq "warning") {
+        write-actions-warning $message
+    }
+    # If "none", don't write anything
 }
 
 function Get-ApiHeaders
@@ -1032,8 +1072,8 @@ foreach ($majorVersion in $majorVersions)
                 $suggestedCommands += $fixCmd
             }
             
-            # Create v{major}.0 if warnMinor is enabled
-            if ($warnMinor)
+            # Create v{major}.0 if check-minor-version is enabled
+            if ($checkMinorVersion -ne "none")
             {
                 $fixCmd = "git push origin $majorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major).0"
                 $fixed = Invoke-AutoFix -Description "Create missing minor version v$($majorVersion.major).0" -Command $fixCmd
@@ -1046,13 +1086,13 @@ foreach ($majorVersion in $majorVersions)
                     $highestMinor = $newMinorVersion
                 } else {
                     if ($autoFix) { $script:failedFixes++ }
-                    write-actions-error "::error title=Missing version::Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha"
+                    write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha" -severity $checkMinorVersion
                     $suggestedCommands += $fixCmd
                 }
             }
             else
             {
-                # Even if warnMinor is false, we still need $highestMinor set for the rest of the logic
+                # Even if check-minor-version is none, we still need $highestMinor set for the rest of the logic
                 $highestMinor = ConvertTo-Version "$($majorVersion.major).0"
             }
         }
@@ -1106,7 +1146,7 @@ foreach ($majorVersion in $majorVersions)
         }
     }
 
-    if ($warnMinor)
+    if ($checkMinorVersion -ne "none")
     {
         if (-not $majorSha -and $minorSha)
         {
@@ -1117,7 +1157,7 @@ foreach ($majorVersion in $majorVersions)
                 $script:fixedIssues++
             } else {
                 if ($autoFix) { $script:failedFixes++ }
-                write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
                 $suggestedCommands += $fixCmd
             }
         }
@@ -1131,7 +1171,7 @@ foreach ($majorVersion in $majorVersions)
                 $script:fixedIssues++
             } else {
                 if ($autoFix) { $script:failedFixes++ }
-                write-actions-error "::error title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha"
+                write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
                 $suggestedCommands += $fixCmd
             }
         }
@@ -1209,7 +1249,7 @@ foreach ($majorVersion in $majorVersions)
         }
     }
 
-    if ($warnMinor)
+    if ($checkMinorVersion -ne "none")
     {
         if (-not $minorSha)
         {
@@ -1229,7 +1269,7 @@ foreach ($majorVersion in $majorVersions)
                     $script:fixedIssues++
                 } else {
                     if ($autoFix) { $script:failedFixes++ }
-                    write-actions-error "::error title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor"
+                    write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor" -severity $checkMinorVersion
                     $suggestedCommands += $fixCmd
                 }
             }
@@ -1244,7 +1284,7 @@ foreach ($majorVersion in $majorVersions)
                 $script:fixedIssues++
             } else {
                 if ($autoFix) { $script:failedFixes++ }
-                write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+                write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha" -severity $checkMinorVersion
                 $suggestedCommands += $fixCmd
             }
         }
