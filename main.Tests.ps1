@@ -745,8 +745,8 @@ Describe "SemVer Checker" {
                 # Act - enable auto-fix with check-releases=none
                 $result = Invoke-MainScript -AutoFix "true" -CheckReleases "none" -CheckReleaseImmutability "none"
                 
-                # Assert - should show fixed issues count (both v1.0.0 and v2.0.0 attempted)
-                $result.Output | Should -Match "Fixed issues: 2"
+                # Assert - should show fixed issues count (v1.0.0, v1.0, v2.0.0, v2.0 created)
+                $result.Output | Should -Match "Fixed issues: 4"
                 
                 # Should not show failed fixes
                 $result.Output | Should -Match "Failed fixes: 0"
