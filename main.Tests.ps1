@@ -681,4 +681,145 @@ Describe "SemVer Checker" {
             }
         }
     }
+    
+    Context "Floating version validation" {
+        It "Should error when major version tag exists without patch versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create only a major version tag
+            $commit = Get-CommitSha
+            git tag v1 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should error about missing patch versions
+            $result.Output | Should -Match "Floating version without patch version"
+            $result.Output | Should -Match "v1 exists but no corresponding patch versions"
+            $result.Output | Should -Match "v1.0.0"
+            $result.ReturnCode | Should -Be 1
+        }
+        
+        It "Should error when minor version tag exists without patch versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create only a minor version tag
+            $commit = Get-CommitSha
+            git tag v1.0 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should error about missing patch versions
+            $result.Output | Should -Match "Floating version without patch version"
+            $result.Output | Should -Match "v1.0 exists but no corresponding patch versions"
+            $result.Output | Should -Match "v1.0.0"
+            $result.ReturnCode | Should -Be 1
+        }
+        
+        It "Should not error when major version has corresponding patch versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create patch version, minor version, and major version
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1.0 $commit
+            git tag v1 $commit
+            
+            # Run the checker with check-releases=none to focus on floating version validation
+            $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
+            
+            # Should not error about floating version
+            $result.Output | Should -Not -Match "Floating version without patch version"
+            $result.ReturnCode | Should -Be 0
+        }
+        
+        It "Should not error when minor version has corresponding patch versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create patch version, minor version, and major version
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1.0 $commit
+            git tag v1 $commit
+            
+            # Run the checker with check-releases=none
+            $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
+            
+            # Should not error about floating version
+            $result.Output | Should -Not -Match "Floating version without patch version"
+            $result.ReturnCode | Should -Be 0
+        }
+        
+        It "Should not require releases for floating versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create patch version and floating versions
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1.0 $commit
+            git tag v1 $commit
+            
+            # Run the checker with check-releases=error
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "none"
+            
+            # Should not error about missing releases for v1 or v1.0 (floating versions)
+            # Only patch versions require releases
+            $result.Output | Should -Not -Match "v1 .*release"
+            $result.Output | Should -Not -Match "v1.0 .*release"
+            $result.ReturnCode | Should -Be 0
+        }
+        
+        It "Should error when branch floating version exists without patch versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create a major version branch
+            $commit = Get-CommitSha
+            git branch v1 $commit
+            git push origin v1 2>&1 | Out-Null
+            git fetch origin 2>&1 | Out-Null
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should error about missing patch versions
+            $result.Output | Should -Match "Floating version without patch version"
+            $result.Output | Should -Match "v1 exists but no corresponding patch versions"
+            $result.ReturnCode | Should -Be 1
+        }
+        
+        It "Should handle multiple major versions without patch versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create multiple major version tags without patch versions
+            $commit = Get-CommitSha
+            git tag v1 $commit
+            git tag v2 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should error about both
+            $result.Output | Should -Match "v1 exists but no corresponding patch versions"
+            $result.Output | Should -Match "v2 exists but no corresponding patch versions"
+            $result.ReturnCode | Should -Be 1
+        }
+        
+        It "Should validate that v1 has patch version even when v2.0.0 exists" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create v1 without patch, but v2.0.0 with patch
+            $commit = Get-CommitSha
+            git tag v1 $commit
+            git tag v2.0.0 $commit
+            
+            # Run the checker with check-releases=none
+            $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
+            
+            # Should error only about v1 missing patch versions
+            $result.Output | Should -Match "v1 exists but no corresponding patch versions"
+            $result.Output | Should -Not -Match "v2 exists but no corresponding patch versions"
+            $result.ReturnCode | Should -Be 1
+        }
+    }
 }
