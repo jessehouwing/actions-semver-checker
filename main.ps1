@@ -202,31 +202,38 @@ function Invoke-AutoFix
         return $false  # Not in auto-fix mode
     }
     
-    Write-Output "::notice::Auto-fix: $Description"
-    Write-Output "Executing: $Command"
+    Write-Host "Auto-fix: $Description"
+    Write-Host "Executing: $Command"
     
     try
     {
         # Reset LASTEXITCODE to ensure we're not seeing a stale value
         $global:LASTEXITCODE = 0
         
-        # Execute the command
-        Invoke-Expression $Command 2>&1 | Out-Null
+        # Execute the command and capture output
+        $commandOutput = Invoke-Expression $Command 2>&1
+        
+        # Log command output as debug
+        if ($commandOutput) {
+            Write-Output "::debug::Command output: $commandOutput"
+        }
         
         if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -eq 0)
         {
-            Write-Output "::notice::✓ Success: $Description"
+            Write-Host "✓ Success: $Description"
             return $true
         }
         else
         {
-            Write-Output "::error::✗ Failed: $Description (exit code: $LASTEXITCODE)"
+            Write-Host "✗ Failed: $Description (exit code: $LASTEXITCODE)"
+            Write-Output "::debug::Command output: $commandOutput"
             return $false
         }
     }
     catch
     {
-        Write-Output "::error::✗ Failed: $Description - $_"
+        Write-Host "✗ Failed: $Description - $_"
+        Write-Output "::debug::Exception: $_"
         return $false
     }
 }
@@ -752,7 +759,8 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
 
 # Check that floating versions (major/minor/latest) DO NOT have GitHub releases
 # Floating versions should not have releases as they are mutable by design
-if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
+# This check runs when either check-releases or check-release-immutability is enabled
+if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $releases.Count -gt 0)
 {
     foreach ($release in $releases)
     {
@@ -777,44 +785,44 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
             {
                 # Immutable release (with attestations) on a floating version - this is unfixable
                 $script:unfixableIssues++
-                $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
-                $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
+                $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                 & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has an immutable release with attestations, which conflicts with its mutable nature. This cannot be auto-fixed."
                 $suggestedCommands += "# WARNING: Cannot delete immutable release with attestations for $($release.tagName). Floating versions should not have releases."
             }
             else
             {
                 # Mutable release (draft or no attestations) on a floating version - can be auto-fixed by deleting it
-                $fixCmd = "# Delete release for floating version $($release.tagName)"
+                $fixCmd = "gh release delete $($release.tagName) --yes"
                 $fixDescription = "Remove mutable release for floating version $($release.tagName)"
                 
                 # Try to auto-fix if enabled
                 if ($autoFix)
                 {
-                    Write-Output "::notice::Auto-fix: $fixDescription"
+                    Write-Host "Auto-fix: $fixDescription"
                     $deleteSuccess = Remove-GitHubRelease -TagName $release.tagName
                     
                     if ($deleteSuccess)
                     {
-                        Write-Output "::notice::✓ Success: $fixDescription"
+                        Write-Host "✓ Success: $fixDescription"
                         $script:fixedIssues++
                     }
                     else
                     {
-                        Write-Output "::error::✗ Failed: $fixDescription"
+                        Write-Host "✗ Failed: $fixDescription"
                         $script:failedFixes++
-                        $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
-                        $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                        $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
+                        $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                         & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has a mutable release, which should be removed."
-                        $suggestedCommands += "gh release delete $($release.tagName) --yes"
+                        $suggestedCommands += $fixCmd
                     }
                 }
                 else
                 {
-                    $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
-                    $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                    $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
+                    $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                     & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has a mutable release, which should be removed."
-                    $suggestedCommands += "gh release delete $($release.tagName) --yes"
+                    $suggestedCommands += $fixCmd
                 }
             }
         }
@@ -857,6 +865,60 @@ foreach ($majorVersion in $majorVersions)
         Where-Object{ $_.version -eq "v$($majorVersion.major)" } | 
         Select-Object -First 1
     $majorSha = $majorVersion_obj.sha
+    
+    # If no minor versions exist for this major version, we need to create v{major}.0.0 and v{major}.0
+    if (-not $highestMinor)
+    {
+        Write-Output "::debug::No patch versions found for major version v$($majorVersion.major), will create v$($majorVersion.major).0.0 and v$($majorVersion.major).0"
+        
+        # Create v{major}.0.0 using the major version's SHA
+        if ($majorSha)
+        {
+            $fixCmd = "git push origin $majorSha`:refs/tags/v$($majorVersion.major).0.0"
+            $fixed = Invoke-AutoFix -Description "Create missing patch version v$($majorVersion.major).0.0" -Command $fixCmd
+            
+            if ($fixed) {
+                $script:fixedIssues++
+                # Update our tracking to include the new version
+                $newPatchVersion = ConvertTo-Version "$($majorVersion.major).0.0"
+                $patchVersions += $newPatchVersion
+            } else {
+                if ($autoFix) { $script:failedFixes++ }
+                write-actions-error "::error title=Missing version::Version: v$($majorVersion.major).0.0 does not exist and must match: v$($majorVersion.major) ref $majorSha"
+                $suggestedCommands += $fixCmd
+            }
+            
+            # Create v{major}.0 if warnMinor is enabled
+            if ($warnMinor)
+            {
+                $fixCmd = "git push origin $majorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major).0"
+                $fixed = Invoke-AutoFix -Description "Create missing minor version v$($majorVersion.major).0" -Command $fixCmd
+                
+                if ($fixed) {
+                    $script:fixedIssues++
+                    # Update our tracking to include the new version
+                    $newMinorVersion = ConvertTo-Version "$($majorVersion.major).0"
+                    $minorVersions += $newMinorVersion
+                    $highestMinor = $newMinorVersion
+                } else {
+                    if ($autoFix) { $script:failedFixes++ }
+                    write-actions-error "::error title=Missing version::Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha"
+                    $suggestedCommands += $fixCmd
+                }
+            }
+            else
+            {
+                # Even if warnMinor is false, we still need $highestMinor set for the rest of the logic
+                $highestMinor = ConvertTo-Version "$($majorVersion.major).0"
+            }
+        }
+        
+        # If we still don't have highestMinor, skip this major version
+        if (-not $highestMinor)
+        {
+            continue
+        }
+    }
 
     # Determine what they should point to (look in non-prerelease versions)
     $minorVersion_obj = $versionsForCalculation | 
@@ -1127,7 +1189,7 @@ if ($autoFix)
             Write-Output "::error::Some fixes failed. Please review the errors above and fix manually."
         }
         if ($script:unfixableIssues -gt 0) {
-            Write-Output "::error::Some issues cannot be auto-fixed (releases, draft releases, or immutable releases on floating versions). Please fix manually."
+            Write-Output "::error::Some issues cannot be auto-fixed (draft releases must be published manually, or immutable releases with attestations on floating versions). Please fix manually."
         }
     }
     elseif ($script:fixedIssues -gt 0)
