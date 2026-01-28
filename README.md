@@ -262,20 +262,6 @@ jobs:
     permissions:
       contents: write
 ```
-## Permissions
-
-### Read-only Mode (Default)
-No special permissions required. The action only checks and reports issues.
-
-### Auto-fix Mode
-Requires `contents: write` permission to push tag/branch updates:
-
-```yaml
-jobs:
-  check-semver:
-    permissions:
-      contents: write
-```
 
 ## Migration from v1 to v2
 

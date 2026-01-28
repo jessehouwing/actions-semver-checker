@@ -7,9 +7,9 @@ $ignorePreviewReleases = (${env:INPUT_IGNORE-PREVIEW-RELEASES} ?? "false").Trim(
 $useBranches = (${env:INPUT_USE-BRANCHES} ?? "false").Trim() -eq "true"
 $autoFix = (${env:INPUT_AUTO-FIX} ?? "false").Trim() -eq "true"
 
-$tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(.\d+)*$") }
+$tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
 
-$branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Trim() -match "^origin/(v\d+(.\d+)*(-.*)?)$") } | ForEach-Object{ $_.Trim().Replace("origin/", "")}
+$branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Trim() -match "^origin/(v\d+(\.\d+)*(-.*)?)$") } | ForEach-Object{ $_.Trim().Replace("origin/", "")}
 
 $tagVersions = @()
 $branchVersions = @()
@@ -212,6 +212,12 @@ if ($ignorePreviewReleases)
     $versionsForCalculation = $allVersions | Where-Object{ -not $_.isPrerelease }
 }
 
+# If all versions are filtered out (e.g., all are prereleases), use all versions
+if ($versionsForCalculation.Count -eq 0)
+{
+    $versionsForCalculation = $allVersions
+}
+
 $majorVersions = $versionsForCalculation | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major)" } | 
     Select-Object -Unique
@@ -381,19 +387,19 @@ foreach ($majorVersion in $majorVersions)
     }
 }
 
-# For the "latest" tag, use the highest non-prerelease version
-$highestVersion = ($versionsForCalculation | 
+# For the "latest" tag, use the highest non-prerelease version globally
+$globalHighestPatchVersion = ($versionsForCalculation | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major).$($_.semver.minor).$($_.semver.build)" } | 
     Select-Object -Unique | 
     Measure-Object -Max).Maximum
 
 $highestVersion = $versionsForCalculation | 
-    Where-Object{ $_.version -eq "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" } | 
+    Where-Object{ $_.version -eq "v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build)" } | 
     Select-Object -First 1 
 
-if ($latest -and($latest.sha -ne $highestVersion.sha))
+if ($latest -and ($latest.sha -ne $highestVersion.sha))
 {
-    write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $($highestVersion.sha)"
+    write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
     $suggestedCommands += "git push origin $($highestVersion.sha):latest --force"
 }
 
@@ -441,7 +447,7 @@ if ($suggestedCommands -ne "")
             }
         }
         
-        write-output "### Auto-fix completed`n``````" >> $env:GITHUB_STEP_SUMMARY
+        write-output "### Auto-fix completed" >> $env:GITHUB_STEP_SUMMARY
     }
     else
     {
