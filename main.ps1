@@ -4,8 +4,16 @@ $warnMinor = (${env:INPUT_CHECK-MINOR-VERSION} ?? "true").Trim() -eq "true"
 $checkReleases = (${env:INPUT_CHECK-RELEASES} ?? "true").Trim() -eq "true"
 $checkReleaseImmutability = (${env:INPUT_CHECK-RELEASE-IMMUTABILITY} ?? "true").Trim() -eq "true"
 $ignorePreviewReleases = (${env:INPUT_IGNORE-PREVIEW-RELEASES} ?? "false").Trim() -eq "true"
-$useBranches = (${env:INPUT_USE-BRANCHES} ?? "false").Trim() -eq "true"
+$floatingVersionsUse = (${env:INPUT_FLOATING-VERSIONS-USE} ?? "tags").Trim().ToLower()
 $autoFix = (${env:INPUT_AUTO-FIX} ?? "false").Trim() -eq "true"
+
+# Validate floating-versions-use input
+if ($floatingVersionsUse -notin @("tags", "branches")) {
+    write-output "::error title=Invalid configuration::floating-versions-use must be either 'tags' or 'branches', got '$floatingVersionsUse'"
+    exit 1
+}
+
+$useBranches = $floatingVersionsUse -eq "branches"
 
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
 
@@ -60,36 +68,97 @@ function ConvertTo-Version
     }
 }
 
+function Get-GitHubRepoInfo
+{
+    param()
+    
+    try {
+        # Get the repository from git remote
+        $remoteUrl = & git config --get remote.origin.url 2>$null
+        if (-not $remoteUrl) {
+            return $null
+        }
+        
+        # Parse owner/repo from various Git URL formats
+        # SSH: git@github.com:owner/repo.git
+        # HTTPS: https://github.com/owner/repo.git
+        # HTTPS without .git: https://github.com/owner/repo
+        if ($remoteUrl -match 'github\.com[:/]([^/]+)/([^/\.]+)(\.git)?$') {
+            return @{
+                Owner = $matches[1]
+                Repo = $matches[2]
+                Url = "https://github.com/$($matches[1])/$($matches[2])"
+            }
+        }
+        
+        return $null
+    }
+    catch {
+        return $null
+    }
+}
+
 function Get-GitHubReleases
 {
     param()
     
     try {
-        # Check if gh CLI is available and we're in a GitHub repository
-        $ghAvailable = (Get-Command gh -ErrorAction SilentlyContinue) -ne $null
-        if (-not $ghAvailable) {
+        $repoInfo = Get-GitHubRepoInfo
+        if (-not $repoInfo) {
             return @()
         }
         
-        # Get the repository from git remote
-        $remoteUrl = & git config --get remote.origin.url 2>$null
-        if (-not $remoteUrl) {
-            return @()
+        # Use GitHub REST API to get releases
+        $token = $env:GITHUB_TOKEN
+        $headers = @{
+            'Accept' = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
         }
         
-        # Try to get releases using gh CLI
-        $releases = & gh release list --limit 1000 --json tagName,isPrerelease,isDraft 2>$null | ConvertFrom-Json
-        
-        if ($LASTEXITCODE -ne 0) {
-            return @()
+        if ($token) {
+            $headers['Authorization'] = "Bearer $token"
         }
         
-        return $releases
+        $allReleases = @()
+        $page = 1
+        $perPage = 100
+        
+        do {
+            $url = "https://api.github.com/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases?per_page=$perPage&page=$page"
+            
+            $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Get -ErrorAction Stop
+            
+            if ($response.Count -eq 0) {
+                break
+            }
+            
+            foreach ($release in $response) {
+                $allReleases += @{
+                    tagName = $release.tag_name
+                    isPrerelease = $release.prerelease
+                    isDraft = $release.draft
+                }
+            }
+            
+            $page++
+            
+            # Stop if we got less than a full page (no more pages)
+            if ($response.Count -lt $perPage) {
+                break
+            }
+            
+        } while ($page -le 100) # Safety limit: max 10,000 releases
+        
+        return $allReleases
     }
     catch {
+        # Silently fail if API is not accessible
         return @()
     }
 }
+
+# Get repository info for URLs
+$repoInfo = Get-GitHubRepoInfo
 
 # Get GitHub releases if check is enabled
 $releases = @()
@@ -122,6 +191,7 @@ foreach ($tag in $tags)
 }
 
 $latest = & git tag -l latest
+$latestBranch = $null
 if ($latest)
 {
     $latest = @{
@@ -129,6 +199,19 @@ if ($latest)
         ref = "refs/tags/latest"
         sha = & git rev-list -n 1 latest
         semver = $null
+    }
+}
+
+# Also check for latest branch if we're using branches for floating versions
+if ($useBranches) {
+    $latestBranchExists = & git branch --list --quiet --remotes origin/latest
+    if ($latestBranchExists) {
+        $latestBranch = @{
+            version = "latest"
+            ref = "refs/remotes/origin/latest"
+            sha = & git rev-parse refs/remotes/origin/latest
+            semver = $null
+        }
     }
 }
 
@@ -180,7 +263,11 @@ if ($checkReleases -and $releases.Count -gt 0)
             {
                 write-actions-error "::error title=Missing release::Version $($tagVersion.version) does not have a GitHub Release"
                 $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
-                $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
+                if ($repoInfo) {
+                    $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                } else {
+                    $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
+                }
             }
         }
     }
@@ -197,7 +284,11 @@ if ($checkReleaseImmutability -and $releases.Count -gt 0)
             if ($release.isDraft)
             {
                 write-actions-error "::error title=Draft release::Release $($release.tagName) is still in draft status, making it mutable. Publish the release to make it immutable."
-                $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
+                if ($repoInfo) {
+                    $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($release.tagName)"
+                } else {
+                    $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
+                }
             }
         }
     }
@@ -387,7 +478,7 @@ foreach ($majorVersion in $majorVersions)
     }
 }
 
-# For the "latest" tag, use the highest non-prerelease version globally
+# For the "latest" version, use the highest non-prerelease version globally
 $globalHighestPatchVersion = ($versionsForCalculation | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major).$($_.semver.minor).$($_.semver.build)" } | 
     Select-Object -Unique | 
@@ -397,10 +488,34 @@ $highestVersion = $versionsForCalculation |
     Where-Object{ $_.version -eq "v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build)" } | 
     Select-Object -First 1 
 
-if ($latest -and ($latest.sha -ne $highestVersion.sha))
-{
-    write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-    $suggestedCommands += "git push origin $($highestVersion.sha):latest --force"
+# Check latest based on whether we're using branches or tags
+if ($useBranches) {
+    # When using branches, check if latest branch exists and points to correct version
+    if ($latestBranch -and ($latestBranch.sha -ne $highestVersion.sha)) {
+        write-actions-error "::error title=Incorrect version::Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
+        $suggestedCommands += "git push origin $($highestVersion.sha):refs/heads/latest --force"
+    } elseif (-not $latestBranch -and $highestVersion) {
+        write-actions-error "::error title=Missing version::Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
+        $suggestedCommands += "git push origin $($highestVersion.sha):refs/heads/latest"
+    }
+    
+    # Warn if latest exists as a tag when we're using branches
+    if ($latest) {
+        write-actions-warning "::warning title=Latest should be branch::Version: latest exists as a tag but should be a branch when floating-versions-use is 'branches'"
+        $suggestedCommands += "git push origin :refs/tags/latest"
+    }
+} else {
+    # When using tags, check if latest tag exists and points to correct version
+    if ($latest -and ($latest.sha -ne $highestVersion.sha)) {
+        write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
+        $suggestedCommands += "git push origin $($highestVersion.sha):refs/tags/latest --force"
+    }
+    
+    # Warn if latest exists as a branch when we're using tags
+    if ($latestBranch) {
+        write-actions-warning "::warning title=Latest should be tag::Version: latest exists as a branch but should be a tag when floating-versions-use is 'tags'"
+        $suggestedCommands += "git push origin :refs/heads/latest"
+    }
 }
 
 if ($suggestedCommands -ne "")

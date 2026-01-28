@@ -57,7 +57,7 @@ BeforeAll {
             [string]$CheckReleases = "true",
             [string]$CheckReleaseImmutability = "true",
             [string]$IgnorePreviewReleases = "false",
-            [string]$UseBranches = "false",
+            [string]$FloatingVersionsUse = "tags",
             [string]$AutoFix = "false"
         )
         
@@ -65,7 +65,7 @@ BeforeAll {
         ${env:INPUT_CHECK-RELEASES} = $CheckReleases
         ${env:INPUT_CHECK-RELEASE-IMMUTABILITY} = $CheckReleaseImmutability
         ${env:INPUT_IGNORE-PREVIEW-RELEASES} = $IgnorePreviewReleases
-        ${env:INPUT_USE-BRANCHES} = $UseBranches
+        ${env:INPUT_FLOATING-VERSIONS-USE} = $FloatingVersionsUse
         ${env:INPUT_AUTO-FIX} = $AutoFix
         $global:returnCode = 0
         
@@ -494,17 +494,16 @@ Describe "SemVer Checker" {
         
         It "Should suggest creating a release when tag exists but release doesn't" {
             # This test verifies the error message is generated
-            # Note: In real scenarios, gh CLI would query actual releases
-            # For testing, we mock by checking that the check can be disabled
+            # The REST API is used to query actual releases
             
             # Arrange
             git tag v1.0.0
             git tag v1
             
-            # Act - with releases enabled (but gh CLI may not be available in test env)
+            # Act - with releases enabled (REST API will be queried)
             $result = Invoke-MainScript -CheckReleases "true"
             
-            # If gh CLI is available and no releases exist, it would suggest:
+            # If REST API is accessible and no releases exist, it would suggest:
             # gh release create v1.0.0 --draft
             # For now, we just verify the feature doesn't break existing tests
             $result.ReturnCode | Should -BeIn @(0, 1)
@@ -566,50 +565,60 @@ Describe "SemVer Checker" {
             
             # Act - with preview filtering enabled
             # Note: The actual filtering depends on GitHub releases API marking releases as prerelease
-            # In test environment without gh CLI, this validates the feature doesn't break existing tests
+            # In test environment, REST API will be queried
             $result = Invoke-MainScript -IgnorePreviewReleases "true"
             
-            # Assert - should still work (actual filtering requires gh CLI and releases)
+            # Assert - should still work (actual filtering requires REST API and releases)
             $result.ReturnCode | Should -BeIn @(0, 1)
         }
     }
     
-    Context "Branch usage enforcement" {
-        It "Should not enforce branches when use-branches is false" {
+    Context "Floating versions configuration" {
+        It "Should not enforce branches when floating-versions-use is tags" {
             # Arrange
             git tag v1.0.0
             git tag v1
             
-            # Act - don't enforce branches (default behavior)
-            $result = Invoke-MainScript -UseBranches "false"
+            # Act - use tags (default behavior)
+            $result = Invoke-MainScript -FloatingVersionsUse "tags"
             
             # Assert - should work normally with tags
             $result.Output | Should -Not -Match "should be a branch"
         }
         
-        It "Should suggest using branches when use-branches is true and tags exist" {
+        It "Should suggest using branches when floating-versions-use is branches and tags exist" {
             # Arrange
             git tag v1.0.0
             git tag v1
             
             # Act - enforce branches
-            $result = Invoke-MainScript -UseBranches "true"
+            $result = Invoke-MainScript -FloatingVersionsUse "branches"
             
             # Assert - should error that v1 should be a branch
             $result.Output | Should -Match "should be a branch"
             $result.ReturnCode | Should -Be 1
         }
         
-        It "Should suggest creating branches when use-branches is true" {
+        It "Should suggest creating branches when floating-versions-use is branches" {
             # Arrange
             git tag v1.0.0
             
             # Act - enforce branches
-            $result = Invoke-MainScript -UseBranches "true"
+            $result = Invoke-MainScript -FloatingVersionsUse "branches"
             
             # Assert - should suggest creating v1 as a branch, not tag
             $result.Output | Should -Match "refs/heads/v1"
             $result.Output | Should -Not -Match "refs/tags/v1[^.]"
+        }
+        
+        It "Should error on invalid floating-versions-use value" {
+            # Arrange
+            git tag v1.0.0
+            
+            # Act & Assert - invalid value should cause error
+            ${env:INPUT_FLOATING-VERSIONS-USE} = "invalid"
+            $result = & "$PSScriptRoot/main.ps1" 2>&1 | Out-String
+            $result | Should -Match "Invalid configuration"
         }
     }
     

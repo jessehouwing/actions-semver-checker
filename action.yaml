@@ -20,10 +20,10 @@ inputs:
     description: "Ignore preview/pre-release versions when calculating major/minor version tags (options: [true, false], default: false)."
     required: false
     default: "false"
-  use-branches:
-    description: "Require that major and minor versions use branches instead of tags (options: [true, false], default: false)."
+  floating-versions-use:
+    description: "Specify whether floating versions (major/minor like v1, v1.0, and latest) should use tags or branches (options: [tags, branches], default: tags)."
     required: false
-    default: "false"
+    default: "tags"
   auto-fix:
     description: "Automatically fix major/minor versions when a build tag is pushed. Requires contents: write permission (options: [true, false], default: false)."
     required: false
