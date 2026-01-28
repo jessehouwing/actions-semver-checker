@@ -91,13 +91,33 @@ function Get-GitHubReleases
     }
 }
 
+# Get GitHub releases if check is enabled
+$releases = @()
+$releaseMap = @{}
+if ($checkReleases -or $checkReleaseImmutability -or $ignorePreviewReleases)
+{
+    $releases = Get-GitHubReleases
+    # Create a map for quick lookup
+    foreach ($release in $releases)
+    {
+        $releaseMap[$release.tagName] = $release
+    }
+}
+
 foreach ($tag in $tags)
 {
+    $isPrerelease = $false
+    if ($ignorePreviewReleases -and $releaseMap.ContainsKey($tag))
+    {
+        $isPrerelease = $releaseMap[$tag].isPrerelease
+    }
+    
     $tagVersions += @{
         version = $tag
         ref = "refs/tags/$tag"
         sha = & git rev-list -n 1 $tag
         semver = ConvertTo-Version $tag.Substring(1)
+        isPrerelease = $isPrerelease
     }
 }
 
@@ -119,6 +139,7 @@ foreach ($branch in $branches)
         ref = "refs/remotes/origin/$branch"
         sha = & git rev-parse refs/remotes/origin/$branch
         semver = ConvertTo-Version $branch.Substring(1)
+        isPrerelease = $false  # Branches are not considered prereleases
     }
 }
 
@@ -141,13 +162,6 @@ foreach ($tagVersion in $tagVersions)
 
         $suggestedCommands += "git push origin :refs/heads/$($tagVersion.version)"
     }
-}
-
-# Get GitHub releases if check is enabled
-$releases = @()
-if ($checkReleases -or $checkReleaseImmutability -or $ignorePreviewReleases)
-{
-    $releases = Get-GitHubReleases
 }
 
 # Check that every patch version (vX.Y.Z) has a corresponding release
@@ -191,15 +205,22 @@ if ($checkReleaseImmutability -and $releases.Count -gt 0)
 
 $allVersions = $branchVersions + $tagVersions
 
-$majorVersions = $allVersions | 
+# Filter out preview releases if requested
+$versionsForCalculation = $allVersions
+if ($ignorePreviewReleases)
+{
+    $versionsForCalculation = $allVersions | Where-Object{ -not $_.isPrerelease }
+}
+
+$majorVersions = $versionsForCalculation | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major)" } | 
     Select-Object -Unique
 
-$minorVersions = $allVersions | 
+$minorVersions = $versionsForCalculation | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major).$($_.semver.minor)" } | 
     Select-Object -Unique
 
-$patchVersions = $allVersions | 
+$patchVersions = $versionsForCalculation | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major).$($_.semver.minor).$($_.semver.build)" } | 
     Select-Object -Unique
 
@@ -207,11 +228,13 @@ foreach ($majorVersion in $majorVersions)
 {
     $highestMinor = ($minorVersions | Where-Object{ $_.major -eq $majorVersion.major } | Measure-Object -Max).Maximum
 
+    # Check if major/minor versions exist (look in all versions)
     $majorSha = ($allVersions | 
         Where-Object{ $_.version -eq "v$($majorVersion.major)" } | 
         Select-Object -First 1).sha
 
-    $minorSha = ($allVersions | 
+    # Determine what they should point to (look in non-prerelease versions)
+    $minorSha = ($versionsForCalculation | 
         Where-Object{ $_.version -eq "v$($majorVersion.major).$($highestMinor.minor)" } | 
         Select-Object -First 1).sha
 
@@ -234,13 +257,16 @@ foreach ($majorVersion in $majorVersions)
         Where-Object{ $_.major -eq $highestMinor.major -and $_.minor -eq $highestMinor.minor } | 
         Measure-Object -Max).Maximum
     
+    # Check if major/minor/patch versions exist (look in all versions)
     $majorSha = ($allVersions | 
         Where-Object{ $_.version -eq "v$($highestMinor.major)" } | 
         Select-Object -First 1).sha
     $minorSha = ($allVersions | 
         Where-Object{ $_.version -eq "v$($highestMinor.major).$($highestMinor.minor)" } | 
         Select-Object -First 1).sha
-    $patchSha = ($allVersions | 
+    
+    # Determine what they should point to (look in non-prerelease versions)
+    $patchSha = ($versionsForCalculation | 
         Where-Object{ $_.version -eq "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" } | 
         Select-Object -First 1).sha
     
@@ -291,12 +317,13 @@ foreach ($majorVersion in $majorVersions)
     }
 }
 
-$highestVersion = ($allVersions | 
+# For the "latest" tag, use the highest non-prerelease version
+$highestVersion = ($versionsForCalculation | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major).$($_.semver.minor).$($_.semver.build)" } | 
     Select-Object -Unique | 
     Measure-Object -Max).Maximum
 
-$highestVersion = $allVersions | 
+$highestVersion = $versionsForCalculation | 
     Where-Object{ $_.version -eq "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" } | 
     Select-Object -First 1 
 
