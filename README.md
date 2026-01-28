@@ -172,16 +172,20 @@ Check that releases are immutable (not in draft status). Draft releases allow ta
 ```
 
 ### `ignore-preview-releases`
-**Default:** `false`
+**Default:** `true` ✅ **Recommended**
 
-Ignore preview/pre-release versions when calculating which version major/minor tags should point to. When enabled:
+Ignore preview/pre-release versions when calculating which version major/minor tags should point to. When enabled (default):
 - Preview releases are excluded from `v1` and `v1.0` tag calculations
 - If `v1.1.1` (stable) exists and `v1.1.2` (preview), `v1` and `v1.1` will point to `v1.1.1`
 
 ```yaml
+# Default behavior (preview releases ignored)
+- uses: jessehouwing/actions-semver-checker@v2
+
+# Or explicitly set to false to include preview releases
 - uses: jessehouwing/actions-semver-checker@v2
   with:
-    ignore-preview-releases: 'true'
+    ignore-preview-releases: 'false'
 ```
 
 ### `floating-versions-use`
@@ -301,8 +305,8 @@ jobs:
 
       - uses: jessehouwing/actions-semver-checker@v2
         with:
-          ignore-preview-releases: 'true'
-          check-releases: 'true'
+          check-releases: 'error'
+          # ignore-preview-releases: true (default)
 ```
 
 ## Suggested Fixes
@@ -360,10 +364,10 @@ v2 is backward compatible with v1. The main differences:
   - Uses GitHub context via `GITHUB_CONTEXT` for better reliability
   - Link header-based pagination for better API performance
 
-- **Opt-in features (disabled by default):**
-  - `ignore-preview-releases: false` - Set to `true` to exclude prereleases
-  - `floating-versions-use: tags` - Set to `branches` to use branches for floating versions
-  - `auto-fix: false` - Set to `true` to automatically fix issues
+- **Opt-in features:**
+  - `ignore-preview-releases: true` (default) - Set to `false` to include prereleases in floating version calculations
+  - `floating-versions-use: tags` (default) - Set to `branches` to use branches for floating versions
+  - `auto-fix: false` (default) - Set to `true` to automatically fix missing/incorrect tags
 
 If you want warnings instead of errors for release checks:
 

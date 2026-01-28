@@ -21,9 +21,9 @@ inputs:
     required: false
     default: "error"
   ignore-preview-releases:
-    description: "Ignore preview/pre-release versions when calculating major/minor version tags (options: [true, false], default: false)."
+    description: "Ignore preview/pre-release versions when calculating major/minor version tags (options: [true, false], default: true)."
     required: false
-    default: "false"
+    default: "true"
   floating-versions-use:
     description: "Specify whether floating versions (major/minor like v1, v1.0, and latest) should use tags or branches (options: [tags, branches], default: tags)."
     required: false
