@@ -997,6 +997,12 @@ Describe "SemVer Checker" {
             $credHelper = & git config --local credential.helper 2>$null
             # The credential helper should be set (even if empty array)
             $credHelper | Should -Not -BeNullOrEmpty
+            
+            # Verify git user identity is configured for GitHub Actions bot
+            $userName = & git config --local user.name 2>$null
+            $userEmail = & git config --local user.email 2>$null
+            $userName | Should -Be "github-actions[bot]"
+            $userEmail | Should -Be "github-actions[bot]@users.noreply.github.com"
         }
     }
     

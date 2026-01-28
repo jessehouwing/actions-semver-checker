@@ -167,6 +167,10 @@ if ($autoFix) {
         & git config --local credential.helper "" 2>$null
         & git config --local credential.helper "!f() { echo username=x-access-token; echo password=$script:token; }; f" 2>$null
         
+        # Configure git user identity for GitHub Actions bot
+        & git config --local user.name "github-actions[bot]" 2>$null
+        & git config --local user.email "github-actions[bot]@users.noreply.github.com" 2>$null
+        
         # Also set up the URL rewrite to use HTTPS with token
         $remoteUrl = & git config --get remote.origin.url 2>$null
         if ($remoteUrl -and $remoteUrl -match '^https://') {
