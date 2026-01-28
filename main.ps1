@@ -47,9 +47,25 @@ else {
 # If still not found, fall back to git remote
 if (-not $script:repoOwner -or -not $script:repoName) {
     $remoteUrl = & git config --get remote.origin.url 2>$null
-    if ($remoteUrl -and $remoteUrl -match 'github\.com[:/]([^/]+)/([^/]+?)(\.git)?$') {
-        $script:repoOwner = $matches[1]
-        $script:repoName = $matches[2]
+    if ($remoteUrl) {
+        # Parse owner/repo from various Git URL formats
+        # SSH: git@hostname:owner/repo.git
+        # HTTPS: https://hostname/owner/repo.git
+        # Handle both github.com and GitHub Enterprise Server
+        if ($remoteUrl -match '(?:https?://|git@)([^/:]+)[:/]([^/]+)/([^/]+?)(\.git)?$') {
+            $hostname = $matches[1]
+            $script:repoOwner = $matches[2]
+            $script:repoName = $matches[3]
+            
+            # Update server URL based on the parsed hostname
+            if ($hostname -ne "github.com") {
+                $script:serverUrl = "https://$hostname"
+                # For GHE, API URL is typically https://hostname/api/v3
+                if ($script:apiUrl -eq "https://api.github.com") {
+                    $script:apiUrl = "https://$hostname/api/v3"
+                }
+            }
+        }
     }
 }
 
