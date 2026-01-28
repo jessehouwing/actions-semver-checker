@@ -61,7 +61,7 @@ The action helps maintainers ensure their action's version tags are correctly ma
 ## Build, Test & Validation Instructions
 
 ### Running Tests Locally
-```bash
+```shell
 # Install Pester (if not already installed)
 pwsh -Command "Install-Module -Name Pester -Force -Scope CurrentUser"
 
@@ -78,7 +78,7 @@ pwsh -Command "Invoke-Pester -Path ./main.Tests.ps1 -CI"
 ### Manual Testing
 To manually test the action in a repository:
 1. Ensure the repository has git tags following semver (e.g., `v1.0.0`)
-2. Clone with full history: `git clone --depth=0 <repo>`
+2. Clone with full history: `git clone <repo>` (no depth limit)
 3. Run the script: `pwsh -Command "./main.ps1"`
 4. Check the output for any errors or suggested fixes
 
@@ -136,6 +136,6 @@ To manually test the action in a repository:
 
 ### Adding a new input parameter
 1. Add the input to `action.yaml` with description and default
-2. Read the input using `${env:INPUT_<NAME>}` in `main.ps1`
+2. Read the input using `${env:INPUT_<NAME>}` in `main.ps1` (note: hyphens in input names are preserved, e.g., `check-minor-version` becomes `INPUT_CHECK-MINOR-VERSION`)
 3. Add tests for the new parameter's behavior
 4. Document the parameter in README.md
