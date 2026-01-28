@@ -804,6 +804,38 @@ Describe "SemVer Checker" {
             $result.Output | Should -Not -Match "v2 exists but no corresponding patch versions"
             $result.ReturnCode | Should -Be 1
         }
+        
+        It "Should suggest patch version creation using SHA from existing floating version tag" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create a major version tag at a specific commit
+            $commit = Get-CommitSha
+            git tag v1 $commit
+            
+            # Run the checker with check-releases=none
+            $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
+            
+            # Should suggest using the SHA from v1 tag
+            $result.Output | Should -Match "git push origin $commit`:refs/tags/v1\.0\.0"
+            $result.Output | Should -Match "git tag v1\.0\.0 $commit"
+            $result.ReturnCode | Should -Be 1
+        }
+        
+        It "Should suggest patch version creation using SHA from existing floating minor version tag" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create a minor version tag at a specific commit
+            $commit = Get-CommitSha
+            git tag v1.2 $commit
+            
+            # Run the checker with check-releases=none
+            $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "none"
+            
+            # Should suggest using the SHA from v1.2 tag
+            $result.Output | Should -Match "git push origin $commit`:refs/tags/v1\.2\.0"
+            $result.Output | Should -Match "git tag v1\.2\.0 $commit"
+            $result.ReturnCode | Should -Be 1
+        }
     }
     
     Describe "Repository Configuration Validation" {
