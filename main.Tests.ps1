@@ -372,4 +372,105 @@ Describe "SemVer Checker" {
             $result.Output | Should -Match "git push origin :refs/heads/v1.0.0"
         }
     }
+    
+    Context "Parameterized tests for missing versions" {
+        It "Should suggest creating missing versions for <Description>" -TestCases @(
+            @{ 
+                Description = "v2 major version"
+                ExistingTag = "v2.0.0"
+                ExpectedMissingMajor = "v2"
+                ExpectedMissingMinor = "v2.0"
+                CheckMinor = $true
+            },
+            @{ 
+                Description = "v3 major version"
+                ExistingTag = "v3.0.0"
+                ExpectedMissingMajor = "v3"
+                ExpectedMissingMinor = "v3.0"
+                CheckMinor = $true
+            },
+            @{ 
+                Description = "v1.2 minor version"
+                ExistingTag = "v1.2.0"
+                ExpectedMissingMajor = "v1"
+                ExpectedMissingMinor = "v1.2"
+                CheckMinor = $true
+            },
+            @{ 
+                Description = "v2.1 minor version"
+                ExistingTag = "v2.1.0"
+                ExpectedMissingMajor = "v2"
+                ExpectedMissingMinor = "v2.1"
+                CheckMinor = $true
+            }
+        ) {
+            param($Description, $ExistingTag, $ExpectedMissingMajor, $ExpectedMissingMinor, $CheckMinor)
+            
+            # Arrange
+            $commitSha = Get-CommitSha
+            git tag $ExistingTag
+            
+            # Act
+            $result = Invoke-MainScript -CheckMinorVersion ($CheckMinor -as [string])
+            
+            # Assert
+            $result.ReturnCode | Should -Be 1
+            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/$ExpectedMissingMajor[^.]"
+            
+            if ($CheckMinor) {
+                $result.Output | Should -Match "git push origin $commitSha`:refs/tags/$ExpectedMissingMinor[^.]"
+            }
+        }
+    }
+    
+    Context "Parameterized tests for version consistency" {
+        It "Should detect when <Description> doesn't point to latest" -TestCases @(
+            @{ 
+                Description = "v2 doesn't point to latest patch v2.0.1"
+                InitialTags = @("v2.0.0", "v2.0", "v2")
+                NewTag = "v2.0.1"
+                ExpectedForceUpdate = "v2"
+            },
+            @{ 
+                Description = "v3 doesn't point to latest minor v3.1.0"
+                InitialTags = @("v3.0.0", "v3.0", "v3")
+                NewTag = "v3.1.0"
+                NewMinorTag = "v3.1"
+                ExpectedForceUpdate = "v3"
+            },
+            @{ 
+                Description = "v1.2 doesn't point to latest patch v1.2.1"
+                InitialTags = @("v1.2.0", "v1.2", "v1.0.0", "v1.0", "v1")
+                NewTag = "v1.2.1"
+                ExpectedForceUpdate = "v1.2"
+            }
+        ) {
+            param($Description, $InitialTags, $NewTag, $NewMinorTag, $ExpectedForceUpdate)
+            
+            # Arrange: Create initial tags on first commit
+            foreach ($tag in $InitialTags) {
+                git tag $tag
+            }
+            $oldCommitSha = Get-CommitSha
+            
+            # Create a new commit
+            "# Update" | Out-File -FilePath "README.md" -Append
+            git add README.md
+            git commit -m "Update" 2>&1 | Out-Null
+            
+            # Create new version tag
+            git tag $NewTag
+            if ($NewMinorTag) {
+                git tag $NewMinorTag
+            }
+            $newCommitSha = Get-CommitSha
+            
+            # Act
+            $result = Invoke-MainScript
+            
+            # Assert
+            $result.ReturnCode | Should -Be 1
+            $result.Output | Should -Match "git push origin $newCommitSha`:refs/tags/$ExpectedForceUpdate --force"
+        }
+    }
 }
