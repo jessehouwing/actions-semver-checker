@@ -245,7 +245,8 @@ function Invoke-AutoFix
         # Reset LASTEXITCODE to ensure we're not seeing a stale value
         $global:LASTEXITCODE = 0
         
-        # Execute the command and capture output
+        # Execute the command and capture both stdout and stderr
+        # The 2>&1 redirects stderr to stdout, ensuring we capture all output
         $commandOutput = Invoke-Expression $Command 2>&1
         
         if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -eq 0)
@@ -265,6 +266,10 @@ function Invoke-AutoFix
             # Wrap output in stop-commands to prevent workflow command injection
             if ($commandOutput) {
                 Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::error::Command failed: "
+            }
+            else {
+                # If no output captured, still log that the command failed
+                Write-Host "::error::Command failed with no output (exit code: $LASTEXITCODE)"
             }
             return $false
         }
@@ -313,6 +318,65 @@ function Get-ApiHeaders
     }
     
     return $headers
+}
+
+function Test-GitHubPermissions
+{
+    param(
+        [string[]]$RequiredPermissions
+    )
+    
+    try {
+        # Use the pre-obtained repo info
+        if (-not $script:repoInfo) {
+            return $false
+        }
+        
+        # Check token permissions using the GitHub API
+        $headers = Get-ApiHeaders -Token $script:token
+        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)"
+        
+        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+        } else {
+            $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+        }
+        
+        # Check if we have the required permissions from response headers
+        # GitHub returns X-Accepted-OAuth-Scopes and X-OAuth-Scopes headers
+        $permissions = $response.Headers['X-OAuth-Scopes']
+        
+        if (-not $permissions) {
+            # Fallback: Try to determine from the response object itself
+            # For GitHub Apps, permissions are in a different format
+            # We'll attempt a simple write test as a fallback
+            Write-Host "::debug::Unable to determine permissions from headers, assuming sufficient permissions"
+            return $true
+        }
+        
+        # Parse permissions
+        $permissionList = $permissions -split ',' | ForEach-Object { $_.Trim() }
+        
+        $missingPermissions = @()
+        foreach ($required in $RequiredPermissions) {
+            if ($permissionList -notcontains $required) {
+                $missingPermissions += $required
+            }
+        }
+        
+        if ($missingPermissions.Count -gt 0) {
+            $missingList = $missingPermissions -join ', '
+            Write-Host "::debug::Missing permissions: $missingList"
+            return $false
+        }
+        
+        return $true
+    }
+    catch {
+        Write-Host "::debug::Failed to check permissions: $_"
+        # If we can't check permissions, assume we have them (fail open)
+        return $true
+    }
 }
 
 function ConvertTo-Version
@@ -530,8 +594,71 @@ function Remove-GitHubRelease
     }
 }
 
+function New-GitHubDraftRelease
+{
+    param(
+        [string]$TagName
+    )
+    
+    try {
+        # Use the pre-obtained repo info
+        if (-not $script:repoInfo) {
+            return $false
+        }
+        
+        # Create a draft release
+        $headers = Get-ApiHeaders -Token $script:token
+        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases"
+        
+        $body = @{
+            tag_name = $TagName
+            name = $TagName
+            body = "Release $TagName"
+            draft = $true
+        } | ConvertTo-Json
+        
+        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+        } else {
+            $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+        }
+        
+        return $true
+    }
+    catch {
+        # Wrap exception message in stop-commands to prevent workflow command injection
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to create draft release for $TagName : "
+        return $false
+    }
+}
+
 # Get repository info for URLs
 $script:repoInfo = Get-GitHubRepoInfo
+
+# Check permissions if auto-fix is enabled
+if ($autoFix -and $script:repoInfo) {
+    Write-Host "::debug::Checking GitHub token permissions..."
+    
+    # For token permission checks, we need to check if the token has appropriate scopes
+    # GitHub Actions tokens typically have contents: write by default when permissions are not explicitly set
+    # However, actions: write requires explicit permission in the workflow
+    
+    # Check if GITHUB_TOKEN has necessary permissions by examining the context
+    # The GITHUB_TOKEN permissions are set at the workflow/job level
+    # We'll provide a helpful error message if auto-fix operations fail
+    
+    # Note: GitHub API doesn't expose token permissions directly via a simple endpoint
+    # The permissions are workflow-level configuration, not token-level metadata
+    # We'll validate this at the workflow configuration level in documentation
+    # and provide clear error messages when operations fail due to insufficient permissions
+    
+    Write-Host "::debug::Auto-fix is enabled. Ensure your workflow has 'contents: write' permission."
+    Write-Host "::debug::If pushing changes to workflow files, 'actions: write' permission is also required."
+    Write-Host "::debug::Example workflow permissions:"
+    Write-Host "::debug::  permissions:"
+    Write-Host "::debug::    contents: write"
+    Write-Host "::debug::    actions: write"
+}
 
 # Get GitHub releases if check is enabled
 $releases = @()
@@ -746,15 +873,55 @@ if ($checkReleases -ne "none")
             
             if (-not $hasRelease)
             {
-                $script:unfixableIssues++
                 $messageType = if ($checkReleases -eq "error") { "error" } else { "warning" }
                 $messageFunc = if ($checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                 & $messageFunc "::$messageType title=Missing release::Version $($tagVersion.version) does not have a GitHub Release"
-                $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
-                if ($script:repoInfo) {
-                    $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
-                } else {
-                    $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
+                
+                # Try to auto-fix by creating a draft release
+                if ($autoFix)
+                {
+                    $fixDescription = "Create draft release for $($tagVersion.version)"
+                    Write-Host "Auto-fix: $fixDescription"
+                    $createSuccess = New-GitHubDraftRelease -TagName $tagVersion.version
+                    
+                    if ($createSuccess)
+                    {
+                        Write-Host "✓ Success: $fixDescription"
+                        $script:fixedIssues++
+                        
+                        # Log message about manual publishing requirement
+                        $editUrl = "$($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                        Write-Host "⚠ Manual action required: The draft release must be published manually due to marketplace requirements."
+                        Write-Host "   Edit and publish at: $editUrl"
+                        
+                        # Still track this as a manual fix requirement in the summary
+                        if ($script:repoInfo) {
+                            $suggestedCommands += "# Publish the draft release at: $editUrl"
+                        } else {
+                            $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
+                        }
+                    }
+                    else
+                    {
+                        Write-Host "✗ Failed: $fixDescription"
+                        $script:failedFixes++
+                        $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
+                        if ($script:repoInfo) {
+                            $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                        } else {
+                            $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
+                        }
+                    }
+                }
+                else
+                {
+                    $script:unfixableIssues++
+                    $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
+                    if ($script:repoInfo) {
+                        $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                    } else {
+                        $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
+                    }
                 }
             }
         }
