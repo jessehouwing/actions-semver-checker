@@ -216,7 +216,7 @@ function Invoke-AutoFix
         # Log command output as debug using GitHub Actions workflow command
         if ($commandOutput) {
             Write-Host "::group::Command output"
-            Write-Host "::debug::$commandOutput"
+            Write-Host "$commandOutput"
             Write-Host "::endgroup::"
         }
         
@@ -231,7 +231,7 @@ function Invoke-AutoFix
             # Log error details using GitHub Actions workflow command
             if ($commandOutput) {
                 Write-Host "::group::Error details"
-                Write-Host "::error::$commandOutput"
+                Write-Host "$commandOutput"
                 Write-Host "::endgroup::"
             }
             return $false
