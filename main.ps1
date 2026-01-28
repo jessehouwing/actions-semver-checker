@@ -105,6 +105,53 @@ Write-Output "::debug::Check releases: $checkReleases"
 Write-Output "::debug::Check release immutability: $checkReleaseImmutability"
 Write-Output "::debug::Floating versions use: $floatingVersionsUse"
 
+# Validate git repository configuration
+Write-Output "::debug::Validating repository configuration..."
+
+# Check if repository is a shallow clone
+if (Test-Path ".git/shallow") {
+    Write-Output "::error title=Shallow clone detected::Repository is a shallow clone (fetch-depth: 1). This action requires full git history. Please configure your checkout action with 'fetch-depth: 0'.%0A%0AExample:%0A  - uses: actions/checkout@v4%0A    with:%0A      fetch-depth: 0%0A      fetch-tags: true"
+    $global:returnCode = 1
+    exit 1
+}
+
+# Check if tags were fetched
+$allTags = & git tag -l 2>$null
+if (-not $allTags -or $allTags.Count -eq 0) {
+    Write-Output "::warning title=No tags found::No git tags found in repository. This could mean:%0A  1. The repository has no tags yet (expected for new repositories)%0A  2. Tags were not fetched (fetch-tags: false)%0A%0AIf you expect tags to exist, please configure your checkout action with 'fetch-tags: true'.%0A%0AExample:%0A  - uses: actions/checkout@v4%0A    with:%0A      fetch-depth: 0%0A      fetch-tags: true"
+}
+
+# Configure git credentials for auto-fix mode if needed
+if ($autoFix) {
+    Write-Output "::debug::Auto-fix mode enabled, configuring git credentials..."
+    
+    if (-not $script:token) {
+        Write-Output "::error title=Auto-fix requires token::Auto-fix mode is enabled but no GitHub token is available. Please provide a token via the 'token' input or ensure GITHUB_TOKEN is available.%0A%0AExample:%0A  - uses: jessehouwing/actions-semver-checker@v2%0A    with:%0A      auto-fix: true%0A      token: `${{ secrets.GITHUB_TOKEN }}"
+        $global:returnCode = 1
+        exit 1
+    }
+    
+    # Configure git to use token for authentication
+    # This handles cases where checkout action used persist-credentials: false
+    try {
+        # Configure credential helper to use the token
+        & git config --local credential.helper "" 2>$null
+        & git config --local credential.helper "!f() { echo username=x-access-token; echo password=$script:token; }; f" 2>$null
+        
+        # Also set up the URL rewrite to use HTTPS with token
+        $remoteUrl = & git config --get remote.origin.url 2>$null
+        if ($remoteUrl -and $remoteUrl -match '^https://') {
+            Write-Output "::debug::Configured git credential helper for HTTPS authentication"
+        }
+        elseif ($remoteUrl -and $remoteUrl -match '^git@') {
+            Write-Output "::warning title=SSH remote detected::Remote URL uses SSH ($remoteUrl). Auto-fix may fail if SSH credentials are not available. Consider using HTTPS remote with checkout action."
+        }
+    }
+    catch {
+        Write-Output "::warning title=Git configuration warning::Could not configure git credentials: $_"
+    }
+}
+
 $tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
 Write-Output "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
 
