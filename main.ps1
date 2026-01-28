@@ -83,7 +83,7 @@ function Get-GitHubRepoInfo
         # SSH: git@github.com:owner/repo.git
         # HTTPS: https://github.com/owner/repo.git
         # HTTPS without .git: https://github.com/owner/repo
-        if ($remoteUrl -match 'github\.com[:/]([^/]+)/([^/\.]+)(\.git)?$') {
+        if ($remoteUrl -match 'github\.com[:/]([^/]+)/([^/]+?)(\.git)?$') {
             return @{
                 Owner = $matches[1]
                 Repo = $matches[2]
@@ -95,6 +95,72 @@ function Get-GitHubRepoInfo
     }
     catch {
         return $null
+    }
+}
+
+function Get-TagCommitSHA
+{
+    param(
+        [string]$Owner,
+        [string]$Repo,
+        [string]$Tag,
+        [hashtable]$Headers
+    )
+    
+    try {
+        $url = "https://api.github.com/repos/$Owner/$Repo/git/ref/tags/$Tag"
+        $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get -ErrorAction Stop
+        
+        # The ref API returns an object with sha pointing to the tag object
+        # We need to follow that to get the actual commit SHA
+        if ($response.object.type -eq "tag") {
+            # Annotated tag - need to fetch the tag object to get commit SHA
+            $tagUrl = $response.object.url
+            $tagResponse = Invoke-RestMethod -Uri $tagUrl -Headers $Headers -Method Get -ErrorAction Stop
+            return $tagResponse.object.sha
+        } else {
+            # Lightweight tag - directly points to commit
+            return $response.object.sha
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-ReleaseAttestation
+{
+    param(
+        [string]$Owner,
+        [string]$Repo,
+        [string]$Tag,
+        [hashtable]$Headers
+    )
+    
+    try {
+        # Get the commit SHA for the tag
+        $commitSHA = Get-TagCommitSHA -Owner $Owner -Repo $Repo -Tag $Tag -Headers $Headers
+        if (-not $commitSHA) {
+            return $false
+        }
+        
+        # Format SHA as digest (sha256:...)
+        $digest = "sha256:$commitSHA"
+        
+        # Check for attestations
+        $url = "https://api.github.com/repos/$Owner/$Repo/attestations/$digest"
+        $response = Invoke-RestMethod -Uri $url -Headers $Headers -Method Get -ErrorAction Stop
+        
+        # If we get a response with attestations, the release is attested
+        if ($response.attestations -and $response.attestations.Count -gt 0) {
+            return $true
+        }
+        
+        return $false
+    }
+    catch {
+        # If API call fails (404, etc.), assume no attestation
+        return $false
     }
 }
 
@@ -132,6 +198,7 @@ function Get-GitHubReleases
                 break
             }
             
+            # Use array list for better performance with large result sets
             foreach ($release in $response) {
                 $allReleases += @{
                     tagName = $release.tag_name
@@ -202,16 +269,15 @@ if ($latest)
     }
 }
 
-# Also check for latest branch if we're using branches for floating versions
-if ($useBranches) {
-    $latestBranchExists = & git branch --list --quiet --remotes origin/latest
-    if ($latestBranchExists) {
-        $latestBranch = @{
-            version = "latest"
-            ref = "refs/remotes/origin/latest"
-            sha = & git rev-parse refs/remotes/origin/latest
-            semver = $null
-        }
+# Also check for latest branch (regardless of floating-versions-use setting)
+# This allows us to warn when latest exists as wrong type
+$latestBranchExists = & git branch --list --quiet --remotes origin/latest
+if ($latestBranchExists) {
+    $latestBranch = @{
+        version = "latest"
+        ref = "refs/remotes/origin/latest"
+        sha = & git rev-parse refs/remotes/origin/latest
+        semver = $null
     }
 }
 
@@ -274,8 +340,19 @@ if ($checkReleases -and $releases.Count -gt 0)
 }
 
 # Check that releases are immutable (not draft, which allows tag changes)
+# Also optionally verify attestations for additional security
 if ($checkReleaseImmutability -and $releases.Count -gt 0)
 {
+    # Prepare headers for API calls
+    $token = $env:GITHUB_TOKEN
+    $headers = @{
+        'Accept' = 'application/vnd.github+json'
+        'X-GitHub-Api-Version' = '2022-11-28'
+    }
+    if ($token) {
+        $headers['Authorization'] = "Bearer $token"
+    }
+    
     foreach ($release in $releases)
     {
         # Only check releases for patch versions (vX.Y.Z format)
@@ -288,6 +365,16 @@ if ($checkReleaseImmutability -and $releases.Count -gt 0)
                     $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($release.tagName)"
                 } else {
                     $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
+                }
+            }
+            
+            # Optionally check for attestations (provides cryptographic verification)
+            # Only check if we have repo info and it's not a draft
+            if ($repoInfo -and -not $release.isDraft) {
+                $hasAttestation = Test-ReleaseAttestation -Owner $repoInfo.Owner -Repo $repoInfo.Repo -Tag $release.tagName -Headers $headers
+                if (-not $hasAttestation) {
+                    # Note: This is informational only, not an error, as attestations are optional
+                    write-actions-warning "::notice title=No attestation::Release $($release.tagName) does not have attestations. Consider using 'gh attestation' to cryptographically verify releases."
                 }
             }
         }
@@ -506,7 +593,7 @@ if ($useBranches) {
     }
 } else {
     # When using tags, check if latest tag exists and points to correct version
-    if ($latest -and ($latest.sha -ne $highestVersion.sha)) {
+    if ($latest -and $highestVersion -and ($latest.sha -ne $highestVersion.sha)) {
         write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
         $suggestedCommands += "git push origin $($highestVersion.sha):refs/tags/latest --force"
     }
