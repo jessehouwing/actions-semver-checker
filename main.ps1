@@ -1342,6 +1342,18 @@ if ($useBranches) {
 }
 
 #############################################################################
+# DIFF VISUALIZATION (Before Final Summary)
+#############################################################################
+
+# If auto-fix is enabled and there are issues, show what will be changed
+if ($autoFix -and $State.Issues.Count -gt 0) {
+    $diffs = Get-StateDiff -State $State
+    if ($diffs.Count -gt 0) {
+        Write-StateDiff -Diffs $diffs
+    }
+}
+
+#############################################################################
 # FINAL SUMMARY AND EXIT
 #############################################################################
 
