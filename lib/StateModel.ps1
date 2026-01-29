@@ -380,11 +380,7 @@ function Write-RepositoryStateSummary {
         [RepositoryState]$State
     )
     
-    Write-Host ""
-    Write-Host ("=" * 77)
-    Write-Host " Current Repository State"
-    Write-Host ("=" * 77)
-    Write-Host ""
+    Write-Host "##[group]Current Repository State"
     
     # Tags
     Write-Host "Tags: $($State.Tags.Count)"
@@ -435,6 +431,7 @@ function Write-RepositoryStateSummary {
     
     Write-Host ("=" * 77)
     Write-Host ""
+    Write-Host "##[endgroup]"
 }
 
 function Write-ValidationSummary {
@@ -612,6 +609,7 @@ function Write-StateDiff {
         return
     }
     
+    Write-Host "##[group]Planned Changes (Auto-fix Preview)"
     Write-Host ""
     Write-Host ("=" * 77)
     Write-Host " Planned Changes (Auto-fix Preview)"
@@ -659,4 +657,5 @@ function Write-StateDiff {
     Write-Host ""
     Write-Host ("=" * 77)
     Write-Host ""
+    Write-Host "##[endgroup]"
 }

@@ -214,9 +214,7 @@ function Get-ManualInstructions
         return
     }
     
-    Write-Output ""
-    Write-Output "### Manual Remediation Instructions"
-    Write-Output ""
+    Write-Host "##[group]Manual Remediation Instructions"
     
     if ($GroupByType) {
         # Group by action type
@@ -271,6 +269,7 @@ function Get-ManualInstructions
         
         Write-Output "::$stopToken::"
     }
+    Write-Host "##[endgroup]"
 }
 
 function Write-ManualInstructionsToStepSummary

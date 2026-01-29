@@ -1244,7 +1244,13 @@ if ($autoFix -and $State.Issues.Count -gt 0) {
 }
 
 # Now execute all auto-fixes
+if ($autoFix -and $State.Issues.Count -gt 0) {
+    Write-Host "##[group]Executing Auto-fixes"
+}
 Invoke-AllAutoFixes -State $State -AutoFix $autoFix
+if ($autoFix -and $State.Issues.Count -gt 0) {
+    Write-Host "##[endgroup]"
+}
 
 #############################################################################
 # LOG UNRESOLVED ISSUES
