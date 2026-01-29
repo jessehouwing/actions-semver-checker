@@ -58,7 +58,8 @@ BeforeAll {
             [string]$CheckReleaseImmutability = "none",
             [string]$IgnorePreviewReleases = "false",
             [string]$FloatingVersionsUse = "tags",
-            [string]$AutoFix = "false"
+            [string]$AutoFix = "false",
+            [string]$IgnoreVersions = ""
         )
         
         # Create inputs JSON object
@@ -69,6 +70,7 @@ BeforeAll {
             'ignore-preview-releases' = $IgnorePreviewReleases
             'floating-versions-use' = $FloatingVersionsUse
             'auto-fix' = $AutoFix
+            'ignore-versions' = $IgnoreVersions
         }
         $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
         $global:returnCode = 0
@@ -993,16 +995,17 @@ Describe "SemVer Checker" {
             # Should show auto-fix summary
             $result.Output | Should -Match "Fixed issues:"
             
-            # Verify git config was attempted (credential helper should be configured)
-            $credHelper = & git config --local credential.helper 2>$null
-            # The credential helper should be set (even if empty array)
-            $credHelper | Should -Not -BeNullOrEmpty
-            
             # Verify git user identity is configured for GitHub Actions bot
+            # This proves the credential setup code ran
             $userName = & git config --local user.name 2>$null
             $userEmail = & git config --local user.email 2>$null
             $userName | Should -Be "github-actions[bot]"
             $userEmail | Should -Be "github-actions[bot]@users.noreply.github.com"
+            
+            # SECURITY: Verify the token is NOT embedded directly in git config output
+            # (the token should be passed via environment variables instead)
+            $allConfig = & git config --local --list 2>$null
+            $allConfig | Should -Not -Match "test-token-12345" -Because "Token should not be embedded in git config"
         }
     }
     
@@ -1938,4 +1941,353 @@ exit 0
             $result.ReturnCode | Should -BeIn @(0, 1)
         }
     }
+    
+    Context "Ignore Versions Configuration" {
+        It "Should skip validation for versions in ignore-versions list" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create two patch versions without floating versions
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v2.0.0 $commit
+            
+            # v2.0.0 will have missing v2 and v2.0, but we'll ignore it
+            $result = Invoke-MainScript -IgnoreVersions "v2.0.0"
+            
+            # Check State object for issues - v1 issues should exist, v2 issues should not
+            $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
+            $v2Issues = $global:State.Issues | Where-Object { $_.Version -like "v2*" }
+            
+            # Should have issues for v1 (missing v1, v1.0)
+            $v1Issues.Count | Should -BeGreaterThan 0
+            # Should NOT have issues for v2 (it's ignored)
+            $v2Issues.Count | Should -Be 0
+        }
+        
+        It "Should support wildcard patterns in ignore-versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create multiple versions
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1.1.0 $commit
+            git tag v2.0.0 $commit
+            
+            # Ignore all v1.* versions
+            $result = Invoke-MainScript -IgnoreVersions "v1.*"
+            
+            # Check State object - v1.x issues should not exist, v2.x issues should
+            $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
+            $v2Issues = $global:State.Issues | Where-Object { $_.Version -like "v2*" }
+            
+            # Should NOT have issues for v1.x versions (ignored)
+            $v1Issues.Count | Should -Be 0
+            # Should have issues for v2.x versions
+            $v2Issues.Count | Should -BeGreaterThan 0
+        }
+        
+        It "Should handle multiple comma-separated versions in ignore-versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v2.0.0 $commit
+            git tag v3.0.0 $commit
+            
+            # Ignore v1.0.0 and v2.0.0, but not v3.0.0
+            $result = Invoke-MainScript -IgnoreVersions "v1.0.0,v2.0.0"
+            
+            # Check State object
+            $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
+            $v2Issues = $global:State.Issues | Where-Object { $_.Version -like "v2*" }
+            $v3Issues = $global:State.Issues | Where-Object { $_.Version -like "v3*" }
+            
+            # v1 and v2 should be ignored
+            $v1Issues.Count | Should -Be 0
+            $v2Issues.Count | Should -Be 0
+            # v3 should have issues
+            $v3Issues.Count | Should -BeGreaterThan 0
+        }
+        
+        It "Should silently skip invalid ignore-versions patterns but process valid ones" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1 $commit
+            git tag v1.0 $commit
+            git tag v2.0.0 $commit
+            git tag v2 $commit
+            git tag v2.0 $commit
+            
+            # Use mix of invalid and valid patterns - ignore v2.0.0
+            $result = Invoke-MainScript -IgnoreVersions "invalid-pattern,v2.0.0"
+            
+            # v1 is complete (v1, v1.0, v1.0.0 all exist and point to same commit)
+            # v2.0.0 is ignored, but v2 and v2.0 still exist and will have issues
+            # since their "target" patch version is ignored
+            $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
+            
+            # v1 should have no issues (all versions exist)
+            $v1Issues.Count | Should -Be 0
+            # Script completes (return code doesn't matter for this test)
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should handle empty ignore-versions gracefully" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Empty ignore-versions
+            $result = Invoke-MainScript -IgnoreVersions ""
+            
+            # Should work normally - issues should be detected
+            $global:State.Issues.Count | Should -BeGreaterThan 0
+            $result.ReturnCode | Should -Be 1
+        }
+        
+        It "Should handle ignore-versions with extra whitespace and commas" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1 $commit
+            git tag v1.0 $commit
+            
+            # Malformed input with extra whitespace and commas - only v1.0.0 should be parsed as valid
+            # Since v1, v1.0, and v1.0.0 all exist and point to same commit, this should pass
+            # But v1.0.0 being ignored means floating versions won't find their patch target
+            $result = Invoke-MainScript -IgnoreVersions "  v1.0.0 , , ,  "
+            
+            # The ignore-versions parsing should handle the malformed input gracefully
+            # (extra whitespace and empty entries between commas)
+            # Script completes without crashing
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should support newline-separated ignore-versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v2.0.0 $commit
+            git tag v3.0.0 $commit
+            
+            # Use newline-separated format (like multi-line YAML input)
+            $newlineSeparated = "v1.0.0`nv2.0.0"
+            $result = Invoke-MainScript -IgnoreVersions $newlineSeparated
+            
+            # Check State object - v1 and v2 should be ignored
+            $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
+            $v2Issues = $global:State.Issues | Where-Object { $_.Version -like "v2*" }
+            $v3Issues = $global:State.Issues | Where-Object { $_.Version -like "v3*" }
+            
+            $v1Issues.Count | Should -Be 0
+            $v2Issues.Count | Should -Be 0
+            $v3Issues.Count | Should -BeGreaterThan 0
+        }
+        
+        It "Should support JSON array format for ignore-versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v2.0.0 $commit
+            git tag v3.0.0 $commit
+            
+            # Use JSON array format
+            $jsonArray = '["v1.0.0", "v2.0.0"]'
+            $result = Invoke-MainScript -IgnoreVersions $jsonArray
+            
+            # Check State object - v1 and v2 should be ignored
+            $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
+            $v2Issues = $global:State.Issues | Where-Object { $_.Version -like "v2*" }
+            $v3Issues = $global:State.Issues | Where-Object { $_.Version -like "v3*" }
+            
+            $v1Issues.Count | Should -Be 0
+            $v2Issues.Count | Should -Be 0
+            $v3Issues.Count | Should -BeGreaterThan 0
+        }
+        
+        It "Should support mixed newline and comma separators" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v2.0.0 $commit
+            git tag v3.0.0 $commit
+            git tag v4.0.0 $commit
+            
+            # Mix of newlines and commas
+            $mixedFormat = "v1.0.0,v2.0.0`nv3.0.0"
+            $result = Invoke-MainScript -IgnoreVersions $mixedFormat
+            
+            # Check State object - v1, v2, v3 should be ignored
+            $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
+            $v2Issues = $global:State.Issues | Where-Object { $_.Version -like "v2*" }
+            $v3Issues = $global:State.Issues | Where-Object { $_.Version -like "v3*" }
+            $v4Issues = $global:State.Issues | Where-Object { $_.Version -like "v4*" }
+            
+            $v1Issues.Count | Should -Be 0
+            $v2Issues.Count | Should -Be 0
+            $v3Issues.Count | Should -Be 0
+            $v4Issues.Count | Should -BeGreaterThan 0
+        }
+    }
+    
+    Context "Parameterized Input Validation Tests" {
+        It "Should normalize <InputName> value '<InputValue>' to '<Expected>'" -TestCases @(
+            @{ InputName = "check-minor-version"; InputValue = "true"; Expected = "error" }
+            @{ InputName = "check-minor-version"; InputValue = "false"; Expected = "none" }
+            @{ InputName = "check-minor-version"; InputValue = "error"; Expected = "error" }
+            @{ InputName = "check-minor-version"; InputValue = "warning"; Expected = "warning" }
+            @{ InputName = "check-minor-version"; InputValue = "none"; Expected = "none" }
+            @{ InputName = "check-releases"; InputValue = "true"; Expected = "error" }
+            @{ InputName = "check-releases"; InputValue = "false"; Expected = "none" }
+            @{ InputName = "check-release-immutability"; InputValue = "true"; Expected = "error" }
+            @{ InputName = "check-release-immutability"; InputValue = "false"; Expected = "none" }
+        ) {
+            param($InputName, $InputValue, $Expected)
+            
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1.0 $commit
+            git tag v1 $commit
+            
+            # Build inputs dynamically
+            $inputsObject = @{
+                'check-minor-version' = "true"
+                'check-releases' = "none"
+                'check-release-immutability' = "none"
+                'ignore-preview-releases' = "false"
+                'floating-versions-use' = "tags"
+                'auto-fix' = "false"
+            }
+            $inputsObject[$InputName] = $InputValue
+            $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
+            
+            # Should not crash with any of these inputs
+            $result = & "$PSScriptRoot/main.ps1" 2>&1 | Out-String
+            
+            # Basic validation - script should complete without parsing error
+            $result | Should -Not -Match "Invalid configuration.*$InputName"
+        }
+    }
+    
+    Context "Parameterized API Error Classification Tests" {
+        It "Should handle HTTP <StatusCode> errors gracefully" -TestCases @(
+            @{ StatusCode = 404; Description = "Not Found" }
+            @{ StatusCode = 422; Description = "Unprocessable Entity" }
+            @{ StatusCode = 500; Description = "Internal Server Error" }
+            @{ StatusCode = 502; Description = "Bad Gateway" }
+            @{ StatusCode = 503; Description = "Service Unavailable" }
+            @{ StatusCode = 429; Description = "Too Many Requests" }
+        ) {
+            param($StatusCode, $Description)
+            
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API to return specific error
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                throw [System.Net.WebException]::new("The remote server returned an error: ($StatusCode) $Description.")
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
+            # Run with release checking
+            $result = Invoke-MainScript -CheckReleases "error"
+            
+            # Clean up mock
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle error gracefully
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "Invoke-WithRetry Behavior" {
+        BeforeAll {
+            # Load the GitHubApi module to access Invoke-WithRetry
+            . "$PSScriptRoot/lib/GitHubApi.ps1"
+        }
+        
+        It "Should succeed on first attempt if no error" {
+            $counter = @{ Value = 0 }
+            $result = Invoke-WithRetry -ScriptBlock {
+                $counter.Value++
+                return "success"
+            } -MaxRetries 3 -OperationDescription "test operation"
+            
+            $result | Should -Be "success"
+            $counter.Value | Should -Be 1
+        }
+        
+        It "Should retry on retryable errors and eventually succeed" {
+            $counter = @{ Value = 0 }
+            $result = Invoke-WithRetry -ScriptBlock {
+                $counter.Value++
+                if ($counter.Value -lt 2) {
+                    throw [System.Net.WebException]::new("Connection timeout")
+                }
+                return "success after retry"
+            } -MaxRetries 3 -InitialDelaySeconds 0 -OperationDescription "retry test"
+            
+            $result | Should -Be "success after retry"
+            $counter.Value | Should -Be 2
+        }
+        
+        It "Should throw after max retries on persistent retryable errors" {
+            $counter = @{ Value = 0 }
+            {
+                Invoke-WithRetry -ScriptBlock {
+                    $counter.Value++
+                    throw [System.Net.WebException]::new("Connection timeout")
+                } -MaxRetries 3 -InitialDelaySeconds 0 -OperationDescription "max retry test"
+            } | Should -Throw
+            
+            $counter.Value | Should -Be 3
+        }
+        
+        It "Should not retry on non-retryable errors" {
+            $counter = @{ Value = 0 }
+            {
+                Invoke-WithRetry -ScriptBlock {
+                    $counter.Value++
+                    throw "Invalid input parameter"
+                } -MaxRetries 3 -InitialDelaySeconds 0 -OperationDescription "non-retryable test"
+            } | Should -Throw
+            
+            $counter.Value | Should -Be 1
+        }
+        
+        It "Should retry on HTTP <ErrorCode> status codes" -TestCases @(
+            @{ ErrorCode = "429"; Description = "rate limit" }
+            @{ ErrorCode = "500"; Description = "internal server error" }
+            @{ ErrorCode = "502"; Description = "bad gateway" }
+            @{ ErrorCode = "503"; Description = "service unavailable" }
+        ) {
+            param($ErrorCode, $Description)
+            
+            $counter = @{ Value = 0 }
+            $result = Invoke-WithRetry -ScriptBlock {
+                $counter.Value++
+                if ($counter.Value -lt 2) {
+                    throw "HTTP $ErrorCode - $Description"
+                }
+                return "recovered"
+            } -MaxRetries 3 -InitialDelaySeconds 0 -OperationDescription "HTTP $ErrorCode test"
+            
+            $result | Should -Be "recovered"
+            $counter.Value | Should -Be 2
+        }
+    }
+    
 }

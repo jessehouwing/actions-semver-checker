@@ -176,11 +176,14 @@ function Get-GitHubReleases
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases?per_page=100"
         
         do {
-            # Use a wrapper to allow for test mocking
-            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
-            } else {
-                $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+            # Use retry logic for transient failures
+            $response = Invoke-WithRetry -OperationDescription "Get releases page" -ScriptBlock {
+                # Use a wrapper to allow for test mocking
+                if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                    Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                } else {
+                    Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                }
             }
             $releases = $response.Content | ConvertFrom-Json
             
@@ -412,9 +415,6 @@ function New-GitHubRelease
         return @{ Success = $false; ReleaseId = $null; Unfixable = $isUnfixable }
     }
 }
-
-# Backward compatibility alias
-Set-Alias -Name New-GitHubDraftRelease -Value New-GitHubRelease
 
 function Publish-GitHubRelease
 {

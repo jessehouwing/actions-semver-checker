@@ -215,4 +215,63 @@ Describe "RemediationAction Classes" {
             $action.Priority | Should -Be 10
         }
     }
+    
+    Context "Parameterized Priority Tests" {
+        It "Action <ActionType> should have priority <ExpectedPriority>" -TestCases @(
+            @{ ActionType = "DeleteTagAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 0; Force = $false; ExpectedPriority = 10 }
+            @{ ActionType = "DeleteBranchAction"; Version = "v1"; Sha = $null; ReleaseId = 0; Force = $false; ExpectedPriority = 10 }
+            @{ ActionType = "DeleteReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 123; Force = $false; ExpectedPriority = 10 }
+            @{ ActionType = "CreateTagAction"; Version = "v1.0.0"; Sha = "abc123"; ReleaseId = 0; Force = $false; ExpectedPriority = 20 }
+            @{ ActionType = "CreateBranchAction"; Version = "v1"; Sha = "abc123"; ReleaseId = 0; Force = $false; ExpectedPriority = 20 }
+            @{ ActionType = "UpdateTagAction"; Version = "v1.0.0"; Sha = "abc123"; ReleaseId = 0; Force = $true; ExpectedPriority = 20 }
+            @{ ActionType = "UpdateBranchAction"; Version = "v1"; Sha = "abc123"; ReleaseId = 0; Force = $true; ExpectedPriority = 20 }
+            @{ ActionType = "CreateReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 0; Force = $false; ExpectedPriority = 30 }
+            @{ ActionType = "PublishReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 123; Force = $false; ExpectedPriority = 40 }
+            @{ ActionType = "RepublishReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 0; Force = $false; ExpectedPriority = 45 }
+        ) {
+            param($ActionType, $Version, $Sha, $ReleaseId, $Force, $ExpectedPriority)
+            
+            $action = switch ($ActionType) {
+                "DeleteTagAction" { [DeleteTagAction]::new($Version) }
+                "DeleteBranchAction" { [DeleteBranchAction]::new($Version) }
+                "DeleteReleaseAction" { [DeleteReleaseAction]::new($Version, $ReleaseId) }
+                "CreateTagAction" { [CreateTagAction]::new($Version, $Sha) }
+                "CreateBranchAction" { [CreateBranchAction]::new($Version, $Sha) }
+                "UpdateTagAction" { [UpdateTagAction]::new($Version, $Sha, $Force) }
+                "UpdateBranchAction" { [UpdateBranchAction]::new($Version, $Sha, $Force) }
+                "CreateReleaseAction" { [CreateReleaseAction]::new($Version, $true) }
+                "PublishReleaseAction" { [PublishReleaseAction]::new($Version, $ReleaseId) }
+                "RepublishReleaseAction" { [RepublishReleaseAction]::new($Version) }
+            }
+            
+            $action.Priority | Should -Be $ExpectedPriority
+        }
+    }
+    
+    Context "Parameterized Manual Command Format Tests" {
+        It "<ActionType> should generate command matching '<Pattern>'" -TestCases @(
+            @{ ActionType = "DeleteTagAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 0; Pattern = "git tag -d v1.0.0" }
+            @{ ActionType = "DeleteBranchAction"; Version = "v1"; Sha = $null; ReleaseId = 0; Pattern = "git branch -d v1" }
+            @{ ActionType = "DeleteReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 123; Pattern = "gh release delete v1.0.0" }
+            @{ ActionType = "CreateTagAction"; Version = "v1.0.0"; Sha = "abc123"; ReleaseId = 0; Pattern = "git push origin abc123:refs/tags/v1.0.0" }
+            @{ ActionType = "CreateBranchAction"; Version = "v1"; Sha = "abc123"; ReleaseId = 0; Pattern = "git push origin abc123:refs/heads/v1" }
+            @{ ActionType = "PublishReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 123; Pattern = "gh release edit v1.0.0 --draft=false" }
+        ) {
+            param($ActionType, $Version, $Sha, $ReleaseId, $Pattern)
+            
+            $action = switch ($ActionType) {
+                "DeleteTagAction" { [DeleteTagAction]::new($Version) }
+                "DeleteBranchAction" { [DeleteBranchAction]::new($Version) }
+                "DeleteReleaseAction" { [DeleteReleaseAction]::new($Version, $ReleaseId) }
+                "CreateTagAction" { [CreateTagAction]::new($Version, $Sha) }
+                "CreateBranchAction" { [CreateBranchAction]::new($Version, $Sha) }
+                "PublishReleaseAction" { [PublishReleaseAction]::new($Version, $ReleaseId) }
+            }
+            
+            $commands = $action.GetManualCommands($script:state)
+            $joinedCommands = $commands -join "`n"
+            $escapedPattern = [regex]::Escape($Pattern)
+            $joinedCommands | Should -Match $escapedPattern
+        }
+    }
 }

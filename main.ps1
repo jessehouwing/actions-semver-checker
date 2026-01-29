@@ -11,6 +11,10 @@
 # 4. Auto-fix issues when enabled (requires contents: write permission)
 #############################################################################
 
+# NOTE: Enable strict mode during development for better error detection:
+# Set-StrictMode -Version Latest
+# Disabled by default to avoid breaking existing test infrastructure.
+
 #############################################################################
 # MODULE IMPORTS
 #############################################################################
@@ -28,6 +32,29 @@
 
 # Initialize repository state - this is the ONLY script-level variable
 $script:State = [RepositoryState]::new()
+
+# Track temporary files for cleanup
+$script:AskpassScriptPath = $null
+
+#############################################################################
+# CLEANUP FUNCTION
+# Ensures sensitive data and temporary files are cleaned up even on error
+#############################################################################
+
+function Invoke-Cleanup {
+    # Cleanup: Remove temporary askpass script if created
+    if ($script:AskpassScriptPath -and (Test-Path $script:AskpassScriptPath -ErrorAction SilentlyContinue)) {
+        Remove-Item -Path $script:AskpassScriptPath -Force -ErrorAction SilentlyContinue
+    }
+    
+    # Cleanup: Clear sensitive environment variables
+    $env:GIT_ASKPASS_TOKEN = $null
+    $env:GIT_PASSWORD = $null
+    $env:GIT_USERNAME = $null
+}
+
+# Register cleanup to run on script termination (handles errors, Ctrl+C, etc.)
+$null = Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action { Invoke-Cleanup } -ErrorAction SilentlyContinue
 
 #############################################################################
 # REPOSITORY DETECTION
@@ -114,12 +141,61 @@ try {
     $floatingVersionsUse = (($inputs.'floating-versions-use' ?? "tags") -as [string]).Trim().ToLower()
     $autoFix = (($inputs.'auto-fix' ?? "false") -as [string]).Trim() -eq "true"
     
-    # Parse new inputs
-    $ignoreVersionsInput = (($inputs.'ignore-versions' ?? "") -as [string]).Trim()
-    $ignoreVersions = if ($ignoreVersionsInput) { 
-        $ignoreVersionsInput -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
-    } else { 
-        @() 
+    # Parse new inputs with validation
+    # Supports multiple formats:
+    # 1. Comma-separated: "v1.0.0, v2.0.0"
+    # 2. Line-separated (newlines): "v1.0.0\nv2.0.0"
+    # 3. JSON array: ["v1.0.0", "v2.0.0"]
+    $ignoreVersionsRaw = $inputs.'ignore-versions'
+    $ignoreVersions = @()
+    
+    if ($ignoreVersionsRaw) {
+        $rawVersions = @()
+        
+        # Check if it's a JSON array (either already parsed or as string)
+        if ($ignoreVersionsRaw -is [array]) {
+            # Already parsed as array by ConvertFrom-Json
+            $rawVersions = $ignoreVersionsRaw
+        }
+        elseif ($ignoreVersionsRaw -is [string]) {
+            $trimmedInput = $ignoreVersionsRaw.Trim()
+            
+            # Check if it looks like a JSON array
+            if ($trimmedInput.StartsWith('[') -and $trimmedInput.EndsWith(']')) {
+                try {
+                    $parsed = $trimmedInput | ConvertFrom-Json
+                    if ($parsed -is [array]) {
+                        $rawVersions = $parsed
+                    }
+                }
+                catch {
+                    Write-Host "::warning title=Invalid JSON in ignore-versions::Failed to parse JSON array. Treating as comma/newline-separated list."
+                    # Fall through to comma/newline parsing
+                }
+            }
+            
+            # If not parsed as JSON array, split by comma and newline
+            if ($rawVersions.Count -eq 0 -and $trimmedInput) {
+                $rawVersions = $trimmedInput -split '[,\r\n]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+            }
+        }
+        
+        # Validate each version pattern
+        foreach ($ver in $rawVersions) {
+            $verTrimmed = "$ver".Trim()
+            if (-not $verTrimmed) { continue }
+            
+            # Validate version pattern: vX, vX.Y, vX.Y.Z, or wildcards like v1.*, v2.0.*
+            if ($verTrimmed -match '^v\d+(\.\d+){0,2}(\.\*)?$' -or $verTrimmed -match '^v\d+\.\*$') {
+                $ignoreVersions += $verTrimmed
+            } else {
+                Write-Host "::warning title=Invalid ignore-versions pattern::Pattern '$verTrimmed' does not match expected format (vX, vX.Y, vX.Y.Z, or wildcard like v1.*). Skipping."
+            }
+        }
+    }
+    
+    if ($ignoreVersions.Count -gt 0) {
+        Write-Host "::debug::Ignoring versions: $($ignoreVersions -join ', ')"
     }
     
     # Set configuration in State
@@ -214,9 +290,39 @@ if ($autoFix) {
     # Configure git to use token for authentication
     # This handles cases where checkout action used persist-credentials: false
     try {
-        # Configure credential helper to use the token
-        & git config --local credential.helper "" 2>$null
-        & git config --local credential.helper "!f() { echo username=x-access-token; echo password=$($script:State.Token); }; f" 2>$null
+        # SECURITY: Use environment variable for token instead of embedding in command
+        # This prevents the token from being exposed in process listings or git config output
+        $env:GIT_ASKPASS_TOKEN = $script:State.Token
+        
+        # Create a minimal askpass script that returns credentials from environment
+        $askpassScript = @'
+#!/bin/sh
+case "$1" in
+    Username*) echo "x-access-token" ;;
+    Password*) echo "$GIT_ASKPASS_TOKEN" ;;
+esac
+'@
+        
+        # For Windows/PowerShell, use a different approach with credential helper
+        if ($IsWindows -or (-not $IsLinux -and -not $IsMacOS)) {
+            # Windows: Use credential helper with environment variable
+            & git config --local credential.helper "" 2>$null
+            $env:GIT_PASSWORD = $script:State.Token
+            $env:GIT_USERNAME = "x-access-token"
+            # Configure git to use environment variables for credentials
+            & git config --local credential.helper "!f() { echo username=`$GIT_USERNAME; echo password=`$GIT_PASSWORD; }; f" 2>$null
+        }
+        else {
+            # Unix: Use GIT_ASKPASS with a temporary script
+            $askpassPath = Join-Path ([System.IO.Path]::GetTempPath()) "git-askpass-$([guid]::NewGuid().ToString('N').Substring(0, 8)).sh"
+            $askpassScript | Out-File -FilePath $askpassPath -Encoding utf8 -Force
+            chmod +x $askpassPath 2>$null
+            $env:GIT_ASKPASS = $askpassPath
+            $env:GIT_TERMINAL_PROMPT = "0"
+            
+            # Store path for cleanup later
+            $script:AskpassScriptPath = $askpassPath
+        }
         
         # Configure git user identity for GitHub Actions bot
         & git config --local user.name "github-actions[bot]" 2>$null
@@ -246,7 +352,6 @@ $branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Tri
 $tagVersions = @()
 $branchVersions = @()
 
-$suggestedCommands = @()
 
 # Auto-fix tracking variables are initialized in GLOBAL STATE section above
 
@@ -257,81 +362,51 @@ $suggestedCommands = @()
 # - Write-SafeOutput, write-actions-* -> lib/Logging.ps1
 # - ConvertTo-Version -> lib/VersionParser.ps1
 # - Get-ApiHeaders, Get-GitHubRepoInfo, Get-GitHubReleases, etc. -> lib/GitHubApi.ps1
-# - Invoke-AutoFix, Get-ImmutableReleaseRemediationCommands -> lib/Remediation.ps1
+# - Invoke-AllAutoFixes, Get-ManualInstructions -> lib/Remediation.ps1
+# - Write-RepositoryStateSummary -> lib/StateModel.ps1
 #############################################################################
 
-#############################################################################
-# STATE SUMMARY DISPLAY
-#############################################################################
-
-function Write-StateSummary {
+function Test-VersionIgnored {
+    <#
+    .SYNOPSIS
+    Check if a version should be ignored based on the ignore-versions configuration.
+    
+    .PARAMETER Version
+    The version string to check (e.g., "v1.0.0").
+    
+    .PARAMETER IgnoreVersions
+    Array of version patterns to ignore.
+    
+    .OUTPUTS
+    Returns $true if the version should be ignored, $false otherwise.
+    #>
     param(
-        [array]$Tags,
-        [array]$Branches,
-        [array]$Releases,
-        [string]$Title = "Repository State Summary"
+        [string]$Version,
+        [string[]]$IgnoreVersions
     )
     
+    if (-not $IgnoreVersions -or $IgnoreVersions.Count -eq 0) {
+        return $false
+    }
     
-    Write-Host "##[group]$Title"
-    
-    Write-Host "Tags: $($Tags.Count)" -ForegroundColor White
-    if ($Tags.Count -gt 0 -and $Tags.Count -le 20) {
-        foreach ($tag in ($Tags | Sort-Object version)) {
-            $shaShort = if ($tag.sha -and $tag.sha.Length -ge 7) { $tag.sha.Substring(0, 7) } else { "unknown" }
-            $versionType = if ($tag.isMajorVersion) { "major" } elseif ($tag.isMinorVersion) { "minor" } else { "patch" }
-            Write-Host "  $($tag.version) -> $shaShort ($versionType)" -ForegroundColor Gray
+    foreach ($pattern in $IgnoreVersions) {
+        # Exact match
+        if ($Version -eq $pattern) {
+            Write-Host "::debug::Ignoring version $Version (matches ignore pattern: $pattern)"
+            return $true
         }
-    } elseif ($Tags.Count -gt 20) {
-        Write-Host "  (showing first 10 of $($Tags.Count) tags)" -ForegroundColor Gray
-        foreach ($tag in ($Tags | Sort-Object version | Select-Object -First 10)) {
-            $shaShort = if ($tag.sha -and $tag.sha.Length -ge 7) { $tag.sha.Substring(0, 7) } else { "unknown" }
-            $versionType = if ($tag.isMajorVersion) { "major" } elseif ($tag.isMinorVersion) { "minor" } else { "patch" }
-            Write-Host "  $($tag.version) -> $shaShort ($versionType)" -ForegroundColor Gray
+        
+        # Support wildcard patterns (e.g., "v1.*" matches "v1.0.0", "v1.1.0", etc.)
+        if ($pattern -match '\*') {
+            $regexPattern = '^' + [regex]::Escape($pattern).Replace('\*', '.*') + '$'
+            if ($Version -match $regexPattern) {
+                Write-Host "::debug::Ignoring version $Version (matches wildcard pattern: $pattern)"
+                return $true
+            }
         }
     }
     
-    Write-Host ""
-    Write-Host "Branches: $($Branches.Count)" -ForegroundColor White
-    if ($Branches.Count -gt 0 -and $Branches.Count -le 15) {
-        foreach ($branch in ($Branches | Sort-Object version)) {
-            $shaShort = if ($branch.sha -and $branch.sha.Length -ge 7) { $branch.sha.Substring(0, 7) } else { "unknown" }
-            $versionType = if ($branch.isMajorVersion) { "major" } elseif ($branch.isMinorVersion) { "minor" } else { "patch" }
-            Write-Host "  $($branch.version) -> $shaShort ($versionType)" -ForegroundColor Gray
-        }
-    } elseif ($Branches.Count -gt 15) {
-        Write-Host "  (showing first 10 of $($Branches.Count) branches)" -ForegroundColor Gray
-        foreach ($branch in ($Branches | Sort-Object version | Select-Object -First 10)) {
-            $shaShort = if ($branch.sha -and $branch.sha.Length -ge 7) { $branch.sha.Substring(0, 7) } else { "unknown" }
-            $versionType = if ($branch.isMajorVersion) { "major" } elseif ($branch.isMinorVersion) { "minor" } else { "patch" }
-            Write-Host "  $($branch.version) -> $shaShort ($versionType)" -ForegroundColor Gray
-        }
-    }
-    
-    Write-Host ""
-    Write-Host "Releases: $($Releases.Count)" -ForegroundColor White
-    if ($Releases.Count -gt 0 -and $Releases.Count -le 15) {
-        foreach ($release in ($Releases | Sort-Object tagName)) {
-            $status = @()
-            if ($release.isDraft) { $status += "draft" }
-            if ($release.isPrerelease) { $status += "prerelease" }
-            $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
-            $immutableSymbol = if ($release.isImmutable) { "🔒" } else { "🔓" }
-            Write-Host "  $immutableSymbol $($release.tagName)$statusStr" -ForegroundColor Gray
-        }
-    } elseif ($Releases.Count -gt 15) {
-        Write-Host "  (showing first 10 of $($Releases.Count) releases)" -ForegroundColor Gray
-        foreach ($release in ($Releases | Sort-Object tagName | Select-Object -First 10)) {
-            $status = @()
-            if ($release.isDraft) { $status += "draft" }
-            if ($release.isPrerelease) { $status += "prerelease" }
-            $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
-            $immutableSymbol = if ($release.isImmutable) { "🔒" } else { "🔓" }
-            Write-Host "  $immutableSymbol $($release.tagName)$statusStr" -ForegroundColor Gray
-        }
-    }
-    
-    Write-Host "##[endgroup]"
+    return $false
 }
 
 #############################################################################
@@ -381,6 +456,11 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none" -or $ign
 
 foreach ($tag in $tags)
 {
+    # Skip ignored versions
+    if (Test-VersionIgnored -Version $tag -IgnoreVersions $ignoreVersions) {
+        continue
+    }
+    
     $isPrerelease = $false
     if ($ignorePreviewReleases -and $releaseMap.ContainsKey($tag))
     {
@@ -436,6 +516,11 @@ if ($latestBranchExists) {
 
 foreach ($branch in $branches)
 {
+    # Skip ignored versions
+    if (Test-VersionIgnored -Version $branch -IgnoreVersions $ignoreVersions) {
+        continue
+    }
+    
     # Determine if this is a patch version (vX.Y.Z) or a floating version (vX or vX.Y)
     # Strip any prerelease suffix (e.g., -beta) before counting parts
     $versionWithoutPrefix = $branch.Substring(1)
@@ -508,7 +593,6 @@ foreach ($tagVersion in $tagVersions)
             if (-not $autoFix)
             {
                 write-actions-warning "::warning $message"
-                $suggestedCommands += $fixCmd
             }
         }
         else
@@ -545,14 +629,13 @@ foreach ($tagVersion in $tagVersions)
             if (-not $autoFix)
             {
                 write-actions-error "::error $message"
-                $suggestedCommands += $fixCmd
             }
         }
     }
 }
 
 # Display current repository state summary
-Write-StateSummary -Tags $tagVersions -Branches $branchVersions -Releases $releases -Title "Current Repository State"
+Write-RepositoryStateSummary -Tags $tagVersions -Branches $branchVersions -Releases $releases -Title "Current Repository State"
 
 # Validate that floating versions (vX or vX.Y) have corresponding patch versions
 $allVersions = $tagVersions + $branchVersions
@@ -624,11 +707,8 @@ if ($checkReleases -ne "none")
                 {
                     if ($shouldAutoPublish) {
                         # When auto-publishing, suggest creating as non-draft
-                        $suggestedCommands += "gh release create $($tagVersion.version) --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
                     } else {
                         # When not auto-publishing, suggest creating as draft
-                        $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
-                        $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
                     }
                 }
             }
@@ -649,7 +729,7 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
             {
                 $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
                 
-                $issue = [ValidationIssue]::new("draft_release", $messageType, "Release $($release.tagName) is still in draft status, making it mutable")
+                $issue = [ValidationIssue]::new("draft_release", $messageType, "Release $($release.tagName) is still in draft status, publish it mutable")
                 $issue.Version = $release.tagName
                 $issue.IsAutoFixable = $true
                 $issue.RemediationAction = [PublishReleaseAction]::new($release.tagName, $release.id)
@@ -658,9 +738,7 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                 if (-not $autoFix)
                 {
                     if ($repoInfo) {
-                        $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($release.tagName)"
                     } else {
-                        $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
                     }
                 }
             }
@@ -685,9 +763,6 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                             
                             if (-not $autoFix) {
                                 write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but remains mutable and can be modified via force-push. Enable 'auto-fix' to automatically republish, or see: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/preventing-changes-to-your-releases"
-                                $suggestedCommands += "# Manually republish release $($release.tagName) to make it immutable"
-                                $suggestedCommands += "gh release edit $($release.tagName) --draft=true"
-                                $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
                             }
                         }
                     }
@@ -732,7 +807,6 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
                 $issue.Status = "unfixable"
                 $State.AddIssue($issue)
                 
-                $suggestedCommands += "# WARNING: Cannot delete immutable release for $($release.tagName). Floating versions should not have releases."
             }
             else
             {
@@ -751,7 +825,6 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
                     $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
                     $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                     & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has a mutable release, which should be removed."
-                    $suggestedCommands += $fixCmd
                 }
             }
         }
@@ -824,7 +897,6 @@ foreach ($majorVersion in $majorVersions)
             
             if (-not $autoFix)
             {
-                $suggestedCommands += $fixCmd
             }
             
             # Create v{major}.0 if check-minor-version is enabled
@@ -849,7 +921,6 @@ foreach ($majorVersion in $majorVersions)
                 if (-not $autoFix)
                 {
                     write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha" -severity $checkMinorVersion
-                    $suggestedCommands += $fixCmd
                 }
             }
             else
@@ -890,9 +961,6 @@ foreach ($majorVersion in $majorVersions)
             if (-not $autoFix)
             {
                 write-actions-error "::error title=Version should be branch::Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled"
-                $suggestedCommands += "git branch v$($majorVersion.major) $majorSha"
-                $suggestedCommands += "git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major)"
-                $suggestedCommands += "git push origin :refs/tags/v$($majorVersion.major)"
             }
         }
         
@@ -911,9 +979,6 @@ foreach ($majorVersion in $majorVersions)
             if (-not $autoFix)
             {
                 write-actions-error "::error title=Version should be branch::Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled"
-                $suggestedCommands += "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha"
-                $suggestedCommands += "git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor)"
-                $suggestedCommands += "git push origin :refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
             }
         }
     }
@@ -941,7 +1006,6 @@ foreach ($majorVersion in $majorVersions)
             if (-not $autoFix)
             {
                 write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
-                $suggestedCommands += $fixCmd
             }
         }
 
@@ -967,7 +1031,6 @@ foreach ($majorVersion in $majorVersions)
             if (-not $autoFix)
             {
                 write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
-                $suggestedCommands += $fixCmd
             }
         }
     }
@@ -1024,7 +1087,6 @@ foreach ($majorVersion in $majorVersions)
         if (-not $autoFix)
         {
             write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-            $suggestedCommands += $fixCmd
         }
     }
 
@@ -1045,7 +1107,6 @@ foreach ($majorVersion in $majorVersions)
         if (-not $autoFix)
         {
             write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
-            $suggestedCommands += $fixCmd
         }
     }
 
@@ -1070,7 +1131,6 @@ foreach ($majorVersion in $majorVersions)
         if (-not $autoFix)
         {
             write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
-            $suggestedCommands += $fixCmd
         }
     }
 
@@ -1106,7 +1166,6 @@ foreach ($majorVersion in $majorVersions)
                 if (-not $autoFix)
                 {
                     write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor" -severity $checkMinorVersion
-                    $suggestedCommands += $fixCmd
                 }
             }
         }
@@ -1133,7 +1192,6 @@ foreach ($majorVersion in $majorVersions)
             if (-not $autoFix)
             {
                 write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha" -severity $checkMinorVersion
-                $suggestedCommands += $fixCmd
             }
         }
     }
@@ -1169,7 +1227,6 @@ if ($useBranches) {
         if (-not $autoFix)
         {
             write-actions-error "::error title=Incorrect version::Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-            $suggestedCommands += $fixCmd
         }
     } elseif (-not $latestBranch -and $highestVersion) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest"
@@ -1187,14 +1244,12 @@ if ($useBranches) {
         if (-not $autoFix)
         {
             write-actions-error "::error title=Missing version::Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-            $suggestedCommands += $fixCmd
         }
     }
     
     # Warn if latest exists as a tag when we're using branches
     if ($latest) {
         write-actions-warning "::warning title=Latest should be branch::Version: latest exists as a tag but should be a branch when floating-versions-use is 'branches'"
-        $suggestedCommands += "git push origin :refs/tags/latest"
     }
 } else {
     # When using tags, check if latest tag exists and points to correct version
@@ -1215,14 +1270,12 @@ if ($useBranches) {
         if (-not $autoFix)
         {
             write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-            $suggestedCommands += $fixCmd
         }
     }
     
     # Warn if latest exists as a branch when we're using tags
     if ($latestBranch) {
         write-actions-warning "::warning title=Latest should be tag::Version: latest exists as a branch but should be a tag when floating-versions-use is 'tags'"
-        $suggestedCommands += "git push origin :refs/heads/latest"
     }
 }
 
@@ -1238,9 +1291,9 @@ if ($autoFix -and $State.Issues.Count -gt 0) {
     }
 }
 
-# Now execute all auto-fixes
+# Now execute all auto-fixes (or mark as unfixable when auto-fix is disabled)
 if ($autoFix -and $State.Issues.Count -gt 0) {
-    Write-Host "##[group]Executing Auto-fixes"
+    Write-Host "##[group]Verifying potential solutions"
 }
 Invoke-AllAutoFixes -State $State -AutoFix $autoFix
 if ($autoFix -and $State.Issues.Count -gt 0) {
@@ -1310,5 +1363,9 @@ else
 # Set globals for test harness compatibility and exit
 $global:returnCode = $exitCode
 $global:State = $script:State  # Make State accessible to tests
+
+# Cleanup sensitive data and temporary files
+Invoke-Cleanup
+
 exit $exitCode
 

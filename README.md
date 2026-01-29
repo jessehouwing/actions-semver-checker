@@ -242,18 +242,41 @@ This automatic republishing helps migrate repositories to GitHub's immutable rel
 ### `ignore-versions`
 **Default:** `""` (empty)
 
-Comma-separated list of versions to ignore during validation. This is useful for skipping legacy or problematic versions that you don't want to validate.
+List of versions to ignore during validation. This is useful for skipping legacy or problematic versions that you don't want to validate.
+
+**Supported formats:**
 
 ```yaml
-- uses: jessehouwing/actions-semver-checker@v2
-  with:
-    ignore-versions: 'v1.0.0,v2.0.0,v3.0.0-alpha'
+# Comma-separated
+ignore-versions: 'v1.0.0,v2.0.0,v3.0.0-alpha'
+
+# Newline-separated (using YAML literal block)
+ignore-versions: |
+  v1.0.0
+  v2.0.0
+  v3.0.0-alpha
+
+# JSON array
+ignore-versions: '["v1.0.0", "v2.0.0", "v3.0.0-alpha"]'
+```
+
+**Wildcard support:**
+
+You can use wildcards to match multiple versions:
+
+```yaml
+# Ignore all v1.x versions
+ignore-versions: 'v1.*'
+
+# Ignore all preview releases and specific version
+ignore-versions: 'v1.0.0,*-alpha,*-beta'
 ```
 
 **Use cases:**
 - Skip validation for legacy versions that don't follow current standards
 - Ignore problematic versions that can't be fixed
 - Exclude pre-release versions from validation
+- Bulk ignore version ranges using wildcards
 
 ## Examples
 

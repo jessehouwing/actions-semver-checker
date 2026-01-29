@@ -7,6 +7,7 @@
 
 #############################################################################
 # Version Reference Class
+# Represents a version reference (tag or branch) with parsed version info
 #############################################################################
 
 class VersionRef {
@@ -71,6 +72,7 @@ class VersionRef {
 
 #############################################################################
 # Release Information Class
+# Represents a GitHub Release with immutability and prerelease status
 #############################################################################
 
 class ReleaseInfo {
@@ -306,166 +308,98 @@ class RepositoryState {
 }
 
 #############################################################################
-# Remediation Plan Class
-#############################################################################
-
-class RemediationPlan {
-    [ValidationIssue[]]$AllIssues
-    [hashtable]$DependencyGraph
-    
-    RemediationPlan([ValidationIssue[]]$issues) {
-        $this.AllIssues = $issues
-        $this.DependencyGraph = @{}
-        $this.BuildDependencyGraph()
-    }
-    
-    hidden [void]BuildDependencyGraph() {
-        # Build a graph of issue dependencies
-        foreach ($issue in $this.AllIssues) {
-            if ($issue.Dependencies.Count -gt 0) {
-                $this.DependencyGraph[$issue.Type + ":" + $issue.Version] = $issue.Dependencies
-            }
-        }
-    }
-    
-    [ValidationIssue[]]GetExecutionOrder() {
-        # Topological sort to determine execution order based on dependencies
-        $visited = @{}
-        $sorted = [System.Collections.ArrayList]::new()
-        
-        foreach ($issue in $this.AllIssues) {
-            $this.Visit($issue, $visited, $sorted)
-        }
-        
-        return $sorted.ToArray()
-    }
-    
-    hidden [void]Visit([ValidationIssue]$issue, [hashtable]$visited, [System.Collections.ArrayList]$sorted) {
-        $key = $issue.Type + ":" + $issue.Version
-        
-        if ($visited.ContainsKey($key)) {
-            return
-        }
-        
-        # Mark as visiting to detect cycles
-        $visited[$key] = "visiting"
-        
-        # Visit dependencies first
-        foreach ($dep in $issue.Dependencies) {
-            $depIssue = $this.AllIssues | Where-Object { ($_.Type + ":" + $_.Version) -eq $dep } | Select-Object -First 1
-            if ($depIssue) {
-                $depKey = $depIssue.Type + ":" + $depIssue.Version
-                # Check for circular dependency
-                if ($visited.ContainsKey($depKey) -and $visited[$depKey] -eq "visiting") {
-                    Write-Warning "Circular dependency detected: $key -> $depKey"
-                    continue
-                }
-                $this.Visit($depIssue, $visited, $sorted)
-            }
-        }
-        
-        # Mark as fully visited
-        $visited[$key] = "visited"
-        [void]$sorted.Add($issue)
-    }
-}
-
-#############################################################################
 # State Summary Functions
 #############################################################################
 
 function Write-RepositoryStateSummary {
+    <#
+    .SYNOPSIS
+    Writes a summary of the repository state (tags, branches, releases) to the console.
+    
+    .PARAMETER Tags
+    Array of tag objects (hashtables or VersionRef objects) with version, sha, isMajorVersion/IsMajor, isMinorVersion/IsMinor properties.
+    
+    .PARAMETER Branches
+    Array of branch objects (hashtables or VersionRef objects) with version, sha, isMajorVersion/IsMajor, isMinorVersion/IsMinor properties.
+    
+    .PARAMETER Releases
+    Array of release objects (hashtables or ReleaseInfo objects) with tagName/TagName, isDraft/IsDraft, isPrerelease/IsPrerelease, isImmutable/IsImmutable properties.
+    
+    .PARAMETER Title
+    Optional title for the grouped output. Default is "Current Repository State".
+    #>
     param(
-        [Parameter(Mandatory)]
-        [RepositoryState]$State
+        [array]$Tags = @(),
+        [array]$Branches = @(),
+        [array]$Releases = @(),
+        [string]$Title = "Current Repository State"
     )
     
-    Write-Host "##[group]Current Repository State"
+    Write-Host "##[group]$Title"
     
     # Tags
-    Write-Host "Tags: $($State.Tags.Count)"
-    if ($State.Tags.Count -gt 0) {
-        $tagsToShow = $State.Tags | Select-Object -First 20
-        foreach ($tag in $tagsToShow) {
-            $typeLabel = if ($tag.IsMajor) { "major" } elseif ($tag.IsMinor) { "minor" } else { "patch" }
-            $sha = if ($tag.Sha) { $tag.Sha.Substring(0, [Math]::Min(7, $tag.Sha.Length)) } else { "null" }
-            Write-Host "  $($tag.Version) -> $sha ($typeLabel)"
+    Write-Host "Tags: $($Tags.Count)" -ForegroundColor White
+    if ($Tags.Count -gt 0) {
+        $maxToShow = if ($Tags.Count -gt 20) { 10 } else { $Tags.Count }
+        if ($Tags.Count -gt 20) {
+            Write-Host "  (showing first $maxToShow of $($Tags.Count) tags)" -ForegroundColor Gray
         }
-        if ($State.Tags.Count -gt 20) {
-            Write-Host "  ... and $($State.Tags.Count - 20) more"
+        $tagsToShow = $Tags | Sort-Object { $_.version ?? $_.Version } | Select-Object -First $maxToShow
+        foreach ($tag in $tagsToShow) {
+            $version = $tag.version ?? $tag.Version
+            $sha = $tag.sha ?? $tag.Sha
+            $shaShort = if ($sha -and $sha.Length -ge 7) { $sha.Substring(0, 7) } else { "unknown" }
+            $isMajor = $tag.isMajorVersion ?? $tag.IsMajor
+            $isMinor = $tag.isMinorVersion ?? $tag.IsMinor
+            $typeLabel = if ($isMajor) { "major" } elseif ($isMinor) { "minor" } else { "patch" }
+            Write-Host "  $version -> $shaShort ($typeLabel)" -ForegroundColor Gray
         }
     }
     Write-Host ""
     
     # Branches
-    Write-Host "Branches: $($State.Branches.Count)"
-    if ($State.Branches.Count -gt 0) {
-        $branchesToShow = $State.Branches | Select-Object -First 15
-        foreach ($branch in $branchesToShow) {
-            $typeLabel = if ($branch.IsMajor) { "major" } elseif ($branch.IsMinor) { "minor" } else { "patch" }
-            $sha = if ($branch.Sha) { $branch.Sha.Substring(0, [Math]::Min(7, $branch.Sha.Length)) } else { "null" }
-            Write-Host "  $($branch.Version) -> $sha ($typeLabel)"
+    Write-Host "Branches: $($Branches.Count)" -ForegroundColor White
+    if ($Branches.Count -gt 0) {
+        $maxToShow = if ($Branches.Count -gt 15) { 10 } else { $Branches.Count }
+        if ($Branches.Count -gt 15) {
+            Write-Host "  (showing first $maxToShow of $($Branches.Count) branches)" -ForegroundColor Gray
         }
-        if ($State.Branches.Count -gt 15) {
-            Write-Host "  ... and $($State.Branches.Count - 15) more"
+        $branchesToShow = $Branches | Sort-Object { $_.version ?? $_.Version } | Select-Object -First $maxToShow
+        foreach ($branch in $branchesToShow) {
+            $version = $branch.version ?? $branch.Version
+            $sha = $branch.sha ?? $branch.Sha
+            $shaShort = if ($sha -and $sha.Length -ge 7) { $sha.Substring(0, 7) } else { "unknown" }
+            $isMajor = $branch.isMajorVersion ?? $branch.IsMajor
+            $isMinor = $branch.isMinorVersion ?? $branch.IsMinor
+            $typeLabel = if ($isMajor) { "major" } elseif ($isMinor) { "minor" } else { "patch" }
+            Write-Host "  $version -> $shaShort ($typeLabel)" -ForegroundColor Gray
         }
     }
     Write-Host ""
     
     # Releases
-    Write-Host "Releases: $($State.Releases.Count)"
-    if ($State.Releases.Count -gt 0) {
-        $releasesToShow = $State.Releases | Select-Object -First 15
+    Write-Host "Releases: $($Releases.Count)" -ForegroundColor White
+    if ($Releases.Count -gt 0) {
+        $maxToShow = if ($Releases.Count -gt 15) { 10 } else { $Releases.Count }
+        if ($Releases.Count -gt 15) {
+            Write-Host "  (showing first $maxToShow of $($Releases.Count) releases)" -ForegroundColor Gray
+        }
+        $releasesToShow = $Releases | Sort-Object { $_.tagName ?? $_.TagName } | Select-Object -First $maxToShow
         foreach ($release in $releasesToShow) {
+            $tagName = $release.tagName ?? $release.TagName
+            $isDraft = $release.isDraft ?? $release.IsDraft
+            $isPrerelease = $release.isPrerelease ?? $release.IsPrerelease
+            $isImmutable = $release.isImmutable ?? $release.IsImmutable
             $status = @()
-            if ($release.IsDraft) { $status += "draft" }
-            if ($release.IsPrerelease) { $status += "prerelease" }
+            if ($isDraft) { $status += "draft" }
+            if ($isPrerelease) { $status += "prerelease" }
             $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
-            Write-Host "  $($release.TagName)$statusStr"
-        }
-        if ($State.Releases.Count -gt 15) {
-            Write-Host "  ... and $($State.Releases.Count - 15) more"
+            $immutableSymbol = if ($isImmutable) { "🔒" } else { "🔓" }
+            Write-Host "  $immutableSymbol $tagName$statusStr" -ForegroundColor Gray
         }
     }
-    Write-Host ""
     
-    Write-Host ("=" * 77)
-    Write-Host ""
     Write-Host "##[endgroup]"
-}
-
-function Write-ValidationSummary {
-    param(
-        [Parameter(Mandatory)]
-        [RepositoryState]$State
-    )
-    
-    Write-Host ""
-    Write-Host ("=" * 77)
-    Write-Host " Validation Summary"
-    Write-Host ("=" * 77)
-    Write-Host ""
-    
-    $errors = $State.GetErrorIssues()
-    $warnings = $State.GetWarningIssues()
-    
-    Write-Host "Issues found: $($State.Issues.Count)"
-    Write-Host "  Errors: $($errors.Count)"
-    Write-Host "  Warnings: $($warnings.Count)"
-    Write-Host ""
-    
-    if ($State.AutoFix) {
-        $autoFixable = $State.GetAutoFixableIssues()
-        $manualFix = $State.GetManualFixIssues()
-        
-        Write-Host "Auto-fixable: $($autoFixable.Count)"
-        Write-Host "Manual fix required: $($manualFix.Count)"
-        Write-Host "Unfixable: $($State.GetUnfixableIssuesCount())"
-        Write-Host ""
-    }
-    
-    Write-Host ("=" * 77)
-    Write-Host ""
 }
 
 function Get-StateDiff {

@@ -13,7 +13,6 @@ class RemediationAction {
     [string]$Description
     [string]$Version
     [int]$Priority  # Lower number = higher priority (for ordering)
-    [bool]$IncludeCommentsInManualCommands = $false  # Control whether to include explanatory comments
     
     RemediationAction([string]$description, [string]$version) {
         $this.Description = $description
