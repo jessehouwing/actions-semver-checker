@@ -277,4 +277,191 @@ Describe "RemediationAction Classes" {
             $joinedCommands | Should -Match $escapedPattern
         }
     }
+    
+    Context "ConvertTagToBranchAction" {
+        It "Should create action with correct properties" {
+            $action = [ConvertTagToBranchAction]::new("v1", "abc123")
+            
+            $action.Name | Should -Be "v1"
+            $action.Sha | Should -Be "abc123"
+            $action.Priority | Should -Be 25
+            $action.Description | Should -Be "Convert tag to branch"
+            $action.Version | Should -Be "v1"
+        }
+        
+        It "Should generate delete-only commands when branch already exists" {
+            # Set up state with existing branch - VersionRef requires 4 params: (version, ref, sha, type)
+            $branch = [VersionRef]::new("v1", "refs/heads/v1", "abc123", "branch")
+            $script:state.Branches = @($branch)
+            
+            $action = [ConvertTagToBranchAction]::new("v1", "abc123")
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 1
+            $commands[0] | Should -Be "git push origin :refs/tags/v1"
+        }
+        
+        It "Should generate create-then-delete commands when branch does not exist" {
+            # No branches in state
+            $script:state.Branches = @()
+            
+            $action = [ConvertTagToBranchAction]::new("v1", "abc123")
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 2
+            $commands[0] | Should -Be "git push origin abc123:refs/heads/v1"
+            $commands[1] | Should -Be "git push origin :refs/tags/v1"
+        }
+        
+        It "Should return empty commands when issue is unfixable" {
+            # Create an issue marked as unfixable - ValidationIssue takes (type, severity, message)
+            $action = [ConvertTagToBranchAction]::new("v1", "abc123")
+            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Tag has immutable release")
+            $issue.Version = "v1"
+            $issue.RemediationAction = $action
+            $issue.Status = "unfixable"
+            $script:state.Issues = @($issue)
+            
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 0
+        }
+    }
+    
+    Context "ConvertBranchToTagAction" {
+        It "Should create action with correct properties" {
+            $action = [ConvertBranchToTagAction]::new("v1.0.0", "abc123")
+            
+            $action.Name | Should -Be "v1.0.0"
+            $action.Sha | Should -Be "abc123"
+            $action.Priority | Should -Be 25
+            $action.Description | Should -Be "Convert branch to tag"
+            $action.Version | Should -Be "v1.0.0"
+        }
+        
+        It "Should generate delete-only commands when tag already exists" {
+            # Set up state with existing tag - VersionRef requires 4 params: (version, ref, sha, type)
+            $tag = [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
+            $script:state.Tags = @($tag)
+            
+            $action = [ConvertBranchToTagAction]::new("v1.0.0", "abc123")
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 1
+            $commands[0] | Should -Be "git push origin :refs/heads/v1.0.0"
+        }
+        
+        It "Should generate create-then-delete commands when tag does not exist" {
+            # No tags in state
+            $script:state.Tags = @()
+            
+            $action = [ConvertBranchToTagAction]::new("v1.0.0", "abc123")
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 2
+            $commands[0] | Should -Be "git push origin abc123:refs/tags/v1.0.0"
+            $commands[1] | Should -Be "git push origin :refs/heads/v1.0.0"
+        }
+    }
+    
+    Context "ConvertTagToBranchAction Execution" {
+        BeforeEach {
+            # Mock the external functions
+            Mock Test-ReleaseImmutability { return $false }
+            Mock New-GitHubRef { return @{ Success = $true; RequiresManualFix = $false } }
+            Mock Remove-GitHubRef { return $true }
+        }
+        
+        It "Should mark issue unfixable when tag has immutable release" {
+            # Mock immutability check to return true
+            Mock Test-ReleaseImmutability { return $true }
+            
+            # Create issue for the action - ValidationIssue takes (type, severity, message)
+            $action = [ConvertTagToBranchAction]::new("v1", "abc123")
+            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Tag should be branch")
+            $issue.Version = "v1"
+            $issue.RemediationAction = $action
+            $issue.Status = "pending"
+            $script:state.Issues = @($issue)
+            
+            $result = $action.Execute($script:state)
+            
+            $result | Should -Be $false
+            $issue.Status | Should -Be "unfixable"
+            $issue.Message | Should -Match "immutable"
+        }
+        
+        It "Should delete tag only when branch already exists" {
+            # Set up state with existing branch - VersionRef requires 4 params
+            $branch = [VersionRef]::new("v1", "refs/heads/v1", "abc123", "branch")
+            $script:state.Branches = @($branch)
+            
+            $action = [ConvertTagToBranchAction]::new("v1", "abc123")
+            $result = $action.Execute($script:state)
+            
+            $result | Should -Be $true
+            # Should call Remove-GitHubRef for tag, not New-GitHubRef for branch
+            Should -Invoke Remove-GitHubRef -Times 1 -ParameterFilter { $RefName -eq "refs/tags/v1" }
+            Should -Not -Invoke New-GitHubRef
+        }
+        
+        It "Should mark issue manual_fix_required when workflow permission error occurs" {
+            Mock New-GitHubRef { return @{ Success = $false; RequiresManualFix = $true } }
+            
+            # Create issue for the action - ValidationIssue takes (type, severity, message)
+            $action = [ConvertTagToBranchAction]::new("v1", "abc123")
+            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Tag should be branch")
+            $issue.Version = "v1"
+            $issue.RemediationAction = $action
+            $issue.Status = "pending"
+            $script:state.Issues = @($issue)
+            $script:state.Branches = @()  # No existing branch
+            
+            $result = $action.Execute($script:state)
+            
+            $result | Should -Be $false
+            $issue.Status | Should -Be "manual_fix_required"
+            $issue.Message | Should -Match "workflows.*permission"
+        }
+    }
+    
+    Context "ConvertBranchToTagAction Execution" {
+        BeforeEach {
+            Mock New-GitHubRef { return @{ Success = $true; RequiresManualFix = $false } }
+            Mock Remove-GitHubRef { return $true }
+        }
+        
+        It "Should delete branch only when tag already exists" {
+            # Set up state with existing tag - VersionRef requires 4 params
+            $tag = [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
+            $script:state.Tags = @($tag)
+            
+            $action = [ConvertBranchToTagAction]::new("v1.0.0", "abc123")
+            $result = $action.Execute($script:state)
+            
+            $result | Should -Be $true
+            # Should call Remove-GitHubRef for branch, not New-GitHubRef for tag
+            Should -Invoke Remove-GitHubRef -Times 1 -ParameterFilter { $RefName -eq "refs/heads/v1.0.0" }
+            Should -Not -Invoke New-GitHubRef
+        }
+        
+        It "Should mark issue manual_fix_required when workflow permission error occurs" {
+            Mock New-GitHubRef { return @{ Success = $false; RequiresManualFix = $true } }
+            
+            # Create issue for the action - ValidationIssue takes (type, severity, message)
+            $action = [ConvertBranchToTagAction]::new("v1.0.0", "abc123")
+            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Branch should be tag")
+            $issue.Version = "v1.0.0"
+            $issue.RemediationAction = $action
+            $issue.Status = "pending"
+            $script:state.Issues = @($issue)
+            $script:state.Tags = @()  # No existing tag
+            
+            $result = $action.Execute($script:state)
+            
+            $result | Should -Be $false
+            $issue.Status | Should -Be "manual_fix_required"
+            $issue.Message | Should -Match "workflows.*permission"
+        }
+    }
 }

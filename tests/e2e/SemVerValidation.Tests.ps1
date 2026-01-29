@@ -1793,7 +1793,7 @@ exit 0
             $result.Output | Should -Match "git push origin :refs/tags/v1"
         }
     }
-    
+
     Context "Version Logic - Source SHA Fallback" {
         It "Should use source SHA when no matching versions exist" {
             Initialize-TestRepo -Path $script:testRepoPath -WithRemote
@@ -1807,6 +1807,116 @@ exit 0
             
             # Should suggest creating floating versions from the patch version's SHA
             $result.Output | Should -Match "git push origin $commit"
+        }
+    }
+
+    Context "Ref Conversion Actions - Auto-fix and Edge Cases" {
+        It "Should delete branch only when tag already exists (ConvertBranchToTagAction)" {
+            # Tests delete-only behavior when target ref type exists
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            # Create both tag and branch for v1.0
+            git tag v1.0 $commit
+            git tag v1.0.0 $commit
+            git tag v1 $commit
+            git branch v1.0-branch $commit
+            git push origin v1.0-branch:v1.0 2>&1 | Out-Null
+            git branch -D v1.0-branch 2>&1 | Out-Null
+            
+            # Run the checker (tags mode - branch should be flagged as wrong ref type)
+            $result = Invoke-MainScript -FloatingVersionsUse "tags"
+            
+            # Should suggest deleting the branch since tag exists
+            $result.Output | Should -Match "git push origin :refs/heads/v1.0"
+            # Should NOT suggest creating a tag (it already exists)
+            $result.Output | Should -Not -Match "git push origin $commit`:refs/tags/v1.0"
+        }
+        
+        It "Should delete tag only when branch already exists (ConvertTagToBranchAction)" {
+            # Tests delete-only behavior when target ref type exists
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            # Create patch version and floating versions as both tag and branch
+            git tag v2.0.0 $commit
+            git tag v2 $commit
+            git branch v2-branch $commit
+            git push origin v2-branch:v2 2>&1 | Out-Null
+            git branch -D v2-branch 2>&1 | Out-Null
+            
+            # Run the checker (branches mode - tag should be flagged as wrong ref type)
+            $result = Invoke-MainScript -FloatingVersionsUse "branches" -CheckMinorVersion "false"
+            
+            # Should suggest deleting the tag since branch exists
+            $result.Output | Should -Match "git push origin :refs/tags/v2[^.]"
+            # Should NOT suggest creating a branch (it already exists)
+            $result.Output | Should -Not -Match "git push origin $commit`:refs/heads/v2[^.]"
+        }
+        
+        It "Should flag wrong_ref_type for floating tags when floating-versions-use is branches" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1.0 $commit  # Floating minor as tag (wrong in branches mode)
+            git tag v1 $commit    # Floating major as tag (wrong in branches mode)
+            
+            $result = Invoke-MainScript -FloatingVersionsUse "branches"
+            
+            # Should flag both floating tags as wrong ref type
+            $result.Output | Should -Match "is a tag but should be a branch"
+            $result.Output | Should -Match "git push origin :refs/tags/v1[^.]"
+            $result.Output | Should -Match "git push origin :refs/tags/v1.0[^.]"
+            $result.Output | Should -Match "git push origin $commit`:refs/heads/v1[^.]"
+            $result.Output | Should -Match "git push origin $commit`:refs/heads/v1.0[^.]"
+        }
+        
+        It "Should flag wrong_ref_type for floating branches when floating-versions-use is tags" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            # Create floating versions as branches (wrong in tags mode)
+            git branch v1.0-branch $commit
+            git push origin v1.0-branch:v1.0 2>&1 | Out-Null
+            git branch -D v1.0-branch 2>&1 | Out-Null
+            git branch v1-branch $commit
+            git push origin v1-branch:v1 2>&1 | Out-Null
+            git branch -D v1-branch 2>&1 | Out-Null
+            
+            $result = Invoke-MainScript -FloatingVersionsUse "tags"
+            
+            # Should flag both floating branches as wrong ref type
+            $result.Output | Should -Match "is a branch but should be a tag"
+            $result.Output | Should -Match "git push origin :refs/heads/v1[^.]"
+            $result.Output | Should -Match "git push origin :refs/heads/v1.0[^.]"
+        }
+        
+        It "Should convert patch branches to tags even when floating-versions-use is branches" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            # Create patch version as branch (wrong - patches should always be tags)
+            git branch v3.0.0-branch $commit
+            git push origin v3.0.0-branch:v3.0.0 2>&1 | Out-Null
+            git branch -D v3.0.0-branch 2>&1 | Out-Null
+            # Floating versions as branches (correct in branches mode)
+            git branch v3.0-branch $commit
+            git push origin v3.0-branch:v3.0 2>&1 | Out-Null
+            git branch -D v3.0-branch 2>&1 | Out-Null
+            git branch v3-branch $commit
+            git push origin v3-branch:v3 2>&1 | Out-Null
+            git branch -D v3-branch 2>&1 | Out-Null
+            
+            $result = Invoke-MainScript -FloatingVersionsUse "branches"
+            
+            # Patch branch should be flagged as wrong ref type (patches are always tags)
+            $result.Output | Should -Match "v3.0.0.*is a branch but should be a tag"
+            $result.Output | Should -Match "git push origin :refs/heads/v3.0.0"
+            # Floating branches should NOT be flagged (they're correct in branches mode)
+            $result.Output | Should -Not -Match "v3[^.0].*is a branch but should be a tag"
+            $result.Output | Should -Not -Match "v3.0[^.0].*is a branch but should be a tag"
         }
     }
     
