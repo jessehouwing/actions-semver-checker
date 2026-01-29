@@ -406,9 +406,11 @@ function Publish-GitHubRelease
             draft = $false
         } | ConvertTo-Json
         
+        # Use error variable to capture errors without writing to error stream
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $response = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         } else {
+            # Suppress PowerShell error output by using try/catch and error variable
             $response = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         }
         
@@ -462,7 +464,7 @@ function Republish-GitHubRelease
         # Get repo info from State
         $repoInfo = Get-GitHubRepoInfo -State $State
         if (-not $repoInfo) {
-            return @{ Success = $false; Reason = "No repo info available" }
+            return @{ Success = $false; Reason = "No repo info available"; Unfixable = $false }
         }
         
         $headers = Get-ApiHeaders -Token $State.Token
@@ -486,7 +488,7 @@ function Republish-GitHubRelease
         
         if ($isImmutable) {
             Write-Host "::debug::Release $TagName is already immutable, skipping"
-            return @{ Success = $true; Reason = "Already immutable" }
+            return @{ Success = $true; Reason = "Already immutable"; Unfixable = $false }
         }
         
         # If not already in draft, make it a draft first
@@ -511,15 +513,17 @@ function Republish-GitHubRelease
         $publishResult = Publish-GitHubRelease -State $State -TagName $TagName -ReleaseId $releaseId
         
         if ($publishResult.Success) {
-            return @{ Success = $true; Reason = "Republished successfully" }
+            return @{ Success = $true; Reason = "Republished successfully"; Unfixable = $false }
         } else {
-            return @{ Success = $false; Reason = "Failed to publish" }
+            # Propagate the unfixable status from Publish-GitHubRelease
+            $isUnfixable = $publishResult.ContainsKey('Unfixable') -and $publishResult.Unfixable
+            return @{ Success = $false; Reason = "Failed to publish"; Unfixable = $isUnfixable }
         }
     }
     catch {
         $errorMessage = $_.Exception.Message
         Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to republish release for $TagName : "
-        return @{ Success = $false; Reason = $errorMessage }
+        return @{ Success = $false; Reason = $errorMessage; Unfixable = $false }
     }
 }
 
