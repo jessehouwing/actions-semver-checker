@@ -1292,25 +1292,15 @@ if ($autoFix)
         Write-Output "::notice::No issues found!"
     }
     
-    # Show suggested commands for unfixable issues or failed fixes
-    if ($suggestedCommands -ne "")
-    {
-        $suggestedCommands = $suggestedCommands | Select-Object -unique
-        Write-Output ""
-        Write-Output "### Manual fixes required for unfixable or failed issues:"
-        Write-Output ($suggestedCommands -join "`n")
-        write-output "### Manual fixes required:`n```````n$($suggestedCommands -join "`n")`n``````" >> $env:GITHUB_STEP_SUMMARY
-    }
+    # Use new function to show manual remediation instructions
+    Get-ManualInstructions -State $State -GroupByType $false
+    Write-ManualInstructionsToStepSummary -State $State
 }
 else
 {
-    # Not in auto-fix mode, just show suggested commands if any
-    if ($suggestedCommands -ne "")
-    {
-        $suggestedCommands = $suggestedCommands | Select-Object -unique
-        Write-Output ($suggestedCommands -join "`n")
-        write-output "### Suggested fix:`n```````n$($suggestedCommands -join "`n")`n``````" >> $env:GITHUB_STEP_SUMMARY
-    }
+    # Not in auto-fix mode, show manual instructions for all issues
+    Get-ManualInstructions -State $State -GroupByType $false
+    Write-ManualInstructionsToStepSummary -State $State
 }
 
 # Set global for test harness compatibility and exit

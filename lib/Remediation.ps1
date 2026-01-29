@@ -185,6 +185,154 @@ function Get-ManualFixCommands
     return $commands | Select-Object -Unique
 }
 
+function Get-ManualInstructions
+{
+    <#
+    .SYNOPSIS
+    Prints manual remediation instructions for all issues that need manual intervention
+    
+    .DESCRIPTION
+    Extracts and displays manual fix commands from RemediationAction objects for issues
+    that are unfixable or failed. Groups commands by action type for better readability.
+    
+    .PARAMETER State
+    The RepositoryState object containing all validation issues
+    
+    .PARAMETER GroupByType
+    If true, groups commands by remediation action type. Default is false.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        [bool]$GroupByType = $false
+    )
+    
+    $issuesNeedingManualFix = $State.Issues | Where-Object { 
+        $_.Status -eq "unfixable" -or $_.Status -eq "failed" 
+    }
+    
+    if ($issuesNeedingManualFix.Count -eq 0) {
+        return
+    }
+    
+    Write-Output ""
+    Write-Output "### Manual Remediation Instructions"
+    Write-Output ""
+    
+    if ($GroupByType) {
+        # Group by action type
+        $grouped = $issuesNeedingManualFix | Group-Object { 
+            if ($_.RemediationAction) {
+                $_.RemediationAction.GetType().Name
+            } else {
+                "Other"
+            }
+        }
+        
+        foreach ($group in $grouped) {
+            Write-Output "#### $($group.Name) ($($group.Count) issue(s))"
+            Write-Output ""
+            
+            foreach ($issue in $group.Group) {
+                Write-Output "**$($issue.Version):** $($issue.Message)"
+                
+                if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
+                    $commands = $issue.RemediationAction.GetManualCommands($State)
+                    foreach ($cmd in $commands) {
+                        Write-Output "  ``````"
+                        Write-Output "  $cmd"
+                        Write-Output "  ``````"
+                    }
+                } elseif ($issue.ManualFixCommand) {
+                    Write-Output "  ``````"
+                    Write-Output "  $($issue.ManualFixCommand)"
+                    Write-Output "  ``````"
+                }
+                Write-Output ""
+            }
+        }
+    }
+    else {
+        # List all issues with their commands
+        foreach ($issue in $issuesNeedingManualFix) {
+            $statusEmoji = if ($issue.Status -eq "failed") { "❌" } else { "⚠️" }
+            Write-Output "$statusEmoji **$($issue.Version):** $($issue.Message)"
+            
+            if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
+                $commands = $issue.RemediationAction.GetManualCommands($State)
+                if ($commands) {
+                    Write-Output "``````bash"
+                    foreach ($cmd in $commands) {
+                        Write-Output "$cmd"
+                    }
+                    Write-Output "``````"
+                }
+            } elseif ($issue.ManualFixCommand) {
+                Write-Output "``````bash"
+                Write-Output "$($issue.ManualFixCommand)"
+                Write-Output "``````"
+            }
+            Write-Output ""
+        }
+    }
+}
+
+function Write-ManualInstructionsToStepSummary
+{
+    <#
+    .SYNOPSIS
+    Writes manual remediation instructions to GitHub Actions step summary
+    
+    .DESCRIPTION
+    Formats and writes manual fix commands to the GITHUB_STEP_SUMMARY file
+    for easy viewing in the GitHub Actions UI.
+    
+    .PARAMETER State
+    The RepositoryState object containing all validation issues
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State
+    )
+    
+    if (-not $env:GITHUB_STEP_SUMMARY) {
+        return
+    }
+    
+    $issuesNeedingManualFix = $State.Issues | Where-Object { 
+        $_.Status -eq "unfixable" -or $_.Status -eq "failed" 
+    }
+    
+    if ($issuesNeedingManualFix.Count -eq 0) {
+        return
+    }
+    
+    # Write to step summary
+    "## Manual Remediation Required" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+    "" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+    
+    foreach ($issue in $issuesNeedingManualFix) {
+        $statusEmoji = if ($issue.Status -eq "failed") { "❌" } else { "⚠️" }
+        "$statusEmoji **$($issue.Version):** $($issue.Message)" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        
+        if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
+            $commands = $issue.RemediationAction.GetManualCommands($State)
+            if ($commands) {
+                "``````bash" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+                foreach ($cmd in $commands) {
+                    $cmd | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+                }
+                "``````" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+            }
+        } elseif ($issue.ManualFixCommand) {
+            "``````bash" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+            $issue.ManualFixCommand | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+            "``````" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        }
+        "" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+    }
+}
+
 function Invoke-AllAutoFixes
 {
     <#
