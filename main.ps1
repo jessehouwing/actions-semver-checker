@@ -25,25 +25,11 @@
 # GLOBAL STATE
 #############################################################################
 
-$global:returnCode = 0
-
-# Initialize repository state
+# Initialize repository state - this is the ONLY script-level variable
 $script:State = [RepositoryState]::new()
 
-# GitHub context from environment (will be moved to State)
-$script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
-$script:serverUrl = $env:GITHUB_SERVER_URL ?? "https://github.com"
-$script:token = $env:GITHUB_TOKEN ?? ""
-$script:repoOwner = $null
-$script:repoName = $null
-
-# Auto-fix tracking (will be moved to State)
-$script:fixedIssues = 0
-$script:failedFixes = 0
-$script:unfixableIssues = 0
-
-# Issue tracking for reporting (will be moved to State)
-$script:issuesFound = @()
+# Initialize global return code for error tracking (used by write-actions-error)
+$global:returnCode = 0
 
 #############################################################################
 # REPOSITORY DETECTION
@@ -58,15 +44,13 @@ $script:State.Token = $env:GITHUB_TOKEN ?? ""
 if ($env:GITHUB_REPOSITORY) {
     $parts = $env:GITHUB_REPOSITORY -split '/', 2
     if ($parts.Count -eq 2 -and $parts[0] -and $parts[1]) {
-        $script:repoOwner = $parts[0]
-        $script:repoName = $parts[1]
         $script:State.RepoOwner = $parts[0]
         $script:State.RepoName = $parts[1]
     }
 }
 
 # If still not found, fall back to git remote
-if (-not $script:repoOwner -or -not $script:repoName) {
+if (-not $script:State.RepoOwner -or -not $script:State.RepoName) {
     $remoteUrl = & git config --get remote.origin.url 2>$null
     if ($remoteUrl) {
         # Parse owner/repo from various Git URL formats
@@ -75,18 +59,14 @@ if (-not $script:repoOwner -or -not $script:repoName) {
         # Handle both github.com and GitHub Enterprise Server
         if ($remoteUrl -match '(?:https?://|git@)([^/:]+)[:/]([^/]+)/([^/]+?)(\.git)?$') {
             $hostname = $matches[1]
-            $script:repoOwner = $matches[2]
-            $script:repoName = $matches[3]
             $script:State.RepoOwner = $matches[2]
             $script:State.RepoName = $matches[3]
             
             # Update server URL based on the parsed hostname
             if ($hostname -ne "github.com") {
-                $script:serverUrl = "https://$hostname"
                 $script:State.ServerUrl = "https://$hostname"
                 # For GHE, API URL is typically https://hostname/api/v3
-                if ($script:apiUrl -eq "https://api.github.com") {
-                    $script:apiUrl = "https://$hostname/api/v3"
+                if ($script:State.ApiUrl -eq "https://api.github.com") {
                     $script:State.ApiUrl = "https://$hostname/api/v3"
                 }
             }
@@ -127,7 +107,6 @@ try {
     }
     
     # Parse inputs with defaults
-    $script:token = $inputs.token ?? $script:token
     $script:State.Token = $inputs.token ?? $script:State.Token
     
     $checkMinorVersion = Normalize-CheckInput -value (($inputs.'check-minor-version' ?? "true") -as [string]) -default "error"
@@ -187,10 +166,10 @@ if ($floatingVersionsUse -notin @("tags", "branches")) {
 $useBranches = $floatingVersionsUse -eq "branches"
 
 # Debug output
-Write-Host "::debug::Repository: $script:repoOwner/$script:repoName"
-Write-Host "::debug::API URL: $script:apiUrl"
-Write-Host "::debug::Server URL: $script:serverUrl"
-Write-Host "::debug::Token available: $(if ($script:token) { 'Yes' } else { 'No' })"
+Write-Host "::debug::Repository: $($script:State.RepoOwner)/$($script:State.RepoName)"
+Write-Host "::debug::API URL: $($script:State.ApiUrl)"
+Write-Host "::debug::Server URL: $($script:State.ServerUrl)"
+Write-Host "::debug::Token available: $(if ($script:State.Token) { 'Yes' } else { 'No' })"
 Write-Host "::debug::Check releases: $checkReleases"
 Write-Host "::debug::Check release immutability: $checkReleaseImmutability"
 Write-Host "::debug::Floating versions use: $floatingVersionsUse"
@@ -217,7 +196,7 @@ if (-not $allTags -or $allTags.Count -eq 0) {
 if ($autoFix) {
     Write-Host "::debug::Auto-fix mode enabled, configuring git credentials..."
     
-    if (-not $script:token) {
+    if (-not $script:State.Token) {
         $errorMessage = "::error title=Auto-fix requires token::Auto-fix mode is enabled but no GitHub token is available. Please provide a token via the 'token' input or ensure GITHUB_TOKEN is available.%0A%0AExample:%0A  - uses: jessehouwing/actions-semver-checker@v2%0A    with:%0A      auto-fix: true%0A      token: `${{ secrets.GITHUB_TOKEN }}"
         Write-Output $errorMessage
         $global:returnCode = 1
@@ -229,7 +208,7 @@ if ($autoFix) {
     try {
         # Configure credential helper to use the token
         & git config --local credential.helper "" 2>$null
-        & git config --local credential.helper "!f() { echo username=x-access-token; echo password=$script:token; }; f" 2>$null
+        & git config --local credential.helper "!f() { echo username=x-access-token; echo password=$($script:State.Token); }; f" 2>$null
         
         # Configure git user identity for GitHub Actions bot
         & git config --local user.name "github-actions[bot]" 2>$null
@@ -355,10 +334,10 @@ function Write-StateSummary {
 #############################################################################
 
 # Get repository info for URLs
-$script:repoInfo = Get-GitHubRepoInfo
+$repoInfo = Get-GitHubRepoInfo -State $script:State
 
 # Check permissions if auto-fix is enabled
-if ($autoFix -and $script:repoInfo) {
+if ($autoFix -and $repoInfo) {
     Write-Host "::debug::Checking GitHub token permissions..."
     
     # For token permission checks, we need to check if the token has appropriate scopes
@@ -385,9 +364,9 @@ if ($autoFix -and $script:repoInfo) {
 # Get GitHub releases if check is enabled
 $releases = @()
 $releaseMap = @{}
-if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none" -or $ignorePreviewReleases) -and $script:repoInfo)
+if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none" -or $ignorePreviewReleases) -and $repoInfo)
 {
-    $releases = Get-GitHubReleases
+    $releases = Get-GitHubReleases -State $script:State
     # Create a map for quick lookup
     foreach ($release in $releases)
     {
@@ -498,25 +477,25 @@ foreach ($tagVersion in $tagVersions)
                 # Keep branch, remove tag
                 $fixCmd = "git push origin :refs/tags/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous tag for $($tagVersion.version) (keeping branch)"
-                $apiAction = { Remove-GitHubRef -RefName "refs/tags/$($tagVersion.version)" }
+                $apiAction = { Remove-GitHubRef -State $State -RefName "refs/tags/$($tagVersion.version)" }
             }
             else
             {
                 # Keep tag, remove branch (default)
                 $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous branch for $($tagVersion.version) (keeping tag)"
-                $apiAction = { Remove-GitHubRef -RefName "refs/heads/$($tagVersion.version)" }
+                $apiAction = { Remove-GitHubRef -State $State -RefName "refs/heads/$($tagVersion.version)" }
             }
             
-            $fixed = Invoke-AutoFix -Description $fixDescription -Command $fixCmd -ApiAction $apiAction
+            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description $fixDescription -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed)
             {
-                $script:fixedIssues++
+                $State.FixedIssues++
             }
             else
             {
-                if ($autoFix) { $script:failedFixes++ }
+                if ($autoFix) { $State.FailedFixes++ }
                 write-actions-warning "::warning $message"
                 $suggestedCommands += $fixCmd
             }
@@ -529,25 +508,25 @@ foreach ($tagVersion in $tagVersions)
                 # Keep branch, remove tag
                 $fixCmd = "git push origin :refs/tags/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous tag for $($tagVersion.version) (keeping branch at $($branchVersion.sha))"
-                $apiAction = { Remove-GitHubRef -RefName "refs/tags/$($tagVersion.version)" }
+                $apiAction = { Remove-GitHubRef -State $State -RefName "refs/tags/$($tagVersion.version)" }
             }
             else
             {
                 # Keep tag, remove branch (default)
                 $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous branch for $($tagVersion.version) (keeping tag at $($tagVersion.sha))"
-                $apiAction = { Remove-GitHubRef -RefName "refs/heads/$($tagVersion.version)" }
+                $apiAction = { Remove-GitHubRef -State $State -RefName "refs/heads/$($tagVersion.version)" }
             }
             
-            $fixed = Invoke-AutoFix -Description $fixDescription -Command $fixCmd -ApiAction $apiAction
+            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description $fixDescription -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed)
             {
-                $script:fixedIssues++
+                $State.FixedIssues++
             }
             else
             {
-                if ($autoFix) { $script:failedFixes++ }
+                if ($autoFix) { $State.FailedFixes++ }
                 write-actions-error "::error $message"
                 $suggestedCommands += $fixCmd
             }
@@ -621,27 +600,27 @@ if ($checkReleases -ne "none")
                 {
                     $fixDescription = "Create draft release for $($tagVersion.version)"
                     Write-Host "Auto-fix: $fixDescription"
-                    $releaseId = New-GitHubDraftRelease -TagName $tagVersion.version
+                    $releaseId = New-GitHubDraftRelease -State $State -TagName $tagVersion.version
                     
                     if ($releaseId)
                     {
                         Write-Host "✓ Success: $fixDescription"
-                        $script:fixedIssues++
+                        $State.FixedIssues++
                         
                         # Now try to publish the draft release
                         $publishDescription = "Publish draft release for $($tagVersion.version)"
                         Write-Host "Auto-fix: $publishDescription"
-                        $publishResult = Publish-GitHubRelease -TagName $tagVersion.version -ReleaseId $releaseId
+                        $publishResult = Publish-GitHubRelease -State $State -TagName $tagVersion.version -ReleaseId $releaseId
                         
                         if ($publishResult.Success)
                         {
                             Write-Host "✓ Success: $publishDescription"
-                            $script:fixedIssues++
+                            $State.FixedIssues++
                         }
                         elseif ($publishResult.Unfixable)
                         {
                             Write-Host "✗ Unfixable: $publishDescription (tag used by immutable release)"
-                            $script:unfixableIssues++
+                            $State.UnfixableIssues++
                             
                             # Use helper function to get remediation commands
                             $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $tagVersion.version
@@ -650,14 +629,14 @@ if ($checkReleases -ne "none")
                         else
                         {
                             Write-Host "✗ Failed: $publishDescription"
-                            $script:failedFixes++
+                            $State.FailedFixes++
                             
                             # Log message about manual publishing requirement
-                            $editUrl = "$($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                            $editUrl = "$($repoInfo.Url)/releases/edit/$($tagVersion.version)"
                             Write-Host "::warning title=Manual action required::The draft release $($tagVersion.version) must be published manually. Edit and publish at: $editUrl"
                             
-                            if ($script:repoInfo) {
-                                $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                            if ($repoInfo) {
+                                $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
                             } else {
                                 $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
                             }
@@ -666,10 +645,10 @@ if ($checkReleases -ne "none")
                     else
                     {
                         Write-Host "✗ Failed: $fixDescription"
-                        $script:failedFixes++
+                        $State.FailedFixes++
                         $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
-                        if ($script:repoInfo) {
-                            $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                        if ($repoInfo) {
+                            $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
                         } else {
                             $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
                         }
@@ -677,10 +656,10 @@ if ($checkReleases -ne "none")
                 }
                 else
                 {
-                    $script:unfixableIssues++
+                    $State.UnfixableIssues++
                     $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
-                    if ($script:repoInfo) {
-                        $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                    if ($repoInfo) {
+                        $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
                     } else {
                         $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
                     }
@@ -710,17 +689,17 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                 {
                     $publishDescription = "Publish draft release for $($release.tagName)"
                     Write-Host "Auto-fix: $publishDescription"
-                    $publishResult = Publish-GitHubRelease -TagName $release.tagName -ReleaseId $release.id
+                    $publishResult = Publish-GitHubRelease -State $State -TagName $release.tagName -ReleaseId $release.id
                     
                     if ($publishResult.Success)
                     {
                         Write-Host "✓ Success: $publishDescription"
-                        $script:fixedIssues++
+                        $State.FixedIssues++
                     }
                     elseif ($publishResult.Unfixable)
                     {
                         Write-Host "✗ Unfixable: $publishDescription (tag used by immutable release)"
-                        $script:unfixableIssues++
+                        $State.UnfixableIssues++
                         
                         # Use helper function to get remediation commands
                         $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $release.tagName
@@ -729,10 +708,10 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                     else
                     {
                         Write-Host "✗ Failed: $publishDescription"
-                        $script:failedFixes++
+                        $State.FailedFixes++
                         
-                        if ($script:repoInfo) {
-                            $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($release.tagName)"
+                        if ($repoInfo) {
+                            $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($release.tagName)"
                         } else {
                             $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
                         }
@@ -740,9 +719,9 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                 }
                 else
                 {
-                    $script:unfixableIssues++
-                    if ($script:repoInfo) {
-                        $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($release.tagName)"
+                    $State.UnfixableIssues++
+                    if ($repoInfo) {
+                        $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($release.tagName)"
                     } else {
                         $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
                     }
@@ -752,8 +731,8 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
             {
                 # Check if the release is truly immutable using GraphQL
                 # Only check if we have repo info
-                if ($script:repoInfo) {
-                    $isImmutable = Test-ReleaseImmutability -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
+                if ($repoInfo) {
+                    $isImmutable = Test-ReleaseImmutability -Owner $repoInfo.Owner -Repo $repoInfo.Repo -Tag $release.tagName -Token $State.Token -ApiUrl $State.ApiUrl
                     if (-not $isImmutable) {
                         # Non-draft release that is not immutable can still be force-pushed
                         write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but is not immutable, making it mutable via force-push. Consider using 'gh attestation' to make it truly immutable."
@@ -781,16 +760,16 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
         {
             # Check if the release is truly immutable using GraphQL
             $isImmutable = $false
-            if (-not $release.isDraft -and $script:repoInfo)
+            if (-not $release.isDraft -and $repoInfo)
             {
                 # Check immutability via GitHub's GraphQL API
-                $isImmutable = Test-ReleaseImmutability -Owner $script:repoInfo.Owner -Repo $script:repoInfo.Repo -Tag $release.tagName -Token $script:token -ApiUrl $script:apiUrl
+                $isImmutable = Test-ReleaseImmutability -Owner $repoInfo.Owner -Repo $repoInfo.Repo -Tag $release.tagName -Token $State.Token -ApiUrl $State.ApiUrl
             }
             
             if ($isImmutable)
             {
                 # Immutable release on a floating version - this is unfixable
-                $script:unfixableIssues++
+                $State.UnfixableIssues++
                 $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
                 $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                 & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has an immutable release, which conflicts with its mutable nature. This cannot be auto-fixed."
@@ -806,17 +785,17 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
                 if ($autoFix)
                 {
                     Write-Host "Auto-fix: $fixDescription"
-                    $deleteSuccess = Remove-GitHubRelease -TagName $release.tagName
+                    $deleteSuccess = Remove-GitHubRelease -State $State -TagName $release.tagName
                     
                     if ($deleteSuccess)
                     {
                         Write-Host "✓ Success: $fixDescription"
-                        $script:fixedIssues++
+                        $State.FixedIssues++
                     }
                     else
                     {
                         Write-Host "✗ Failed: $fixDescription"
-                        $script:failedFixes++
+                        $State.FailedFixes++
                         $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
                         $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                         & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has a mutable release, which should be removed."
@@ -888,16 +867,16 @@ foreach ($majorVersion in $majorVersions)
         if ($majorSha)
         {
             $fixCmd = "git push origin $majorSha`:refs/tags/v$($majorVersion.major).0.0"
-            $apiAction = { New-GitHubRef -RefName "refs/tags/v$($majorVersion.major).0.0" -Sha $majorSha -Force $false }
-            $fixed = Invoke-AutoFix -Description "Create missing patch version v$($majorVersion.major).0.0" -Command $fixCmd -ApiAction $apiAction
+            $apiAction = { New-GitHubRef -State $State -RefName "refs/tags/v$($majorVersion.major).0.0" -Sha $majorSha -Force $false }
+            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing patch version v$($majorVersion.major).0.0" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
-                $script:fixedIssues++
+                $State.FixedIssues++
                 # Update our tracking to include the new version
                 $newPatchVersion = ConvertTo-Version "$($majorVersion.major).0.0"
                 $patchVersions += $newPatchVersion
             } else {
-                if ($autoFix) { $script:failedFixes++ }
+                if ($autoFix) { $State.FailedFixes++ }
                 write-actions-error "::error title=Missing version::Version: v$($majorVersion.major).0.0 does not exist and must match: v$($majorVersion.major) ref $majorSha"
                 $suggestedCommands += $fixCmd
             }
@@ -907,17 +886,17 @@ foreach ($majorVersion in $majorVersions)
             {
                 $fixCmd = "git push origin $majorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major).0"
                 $refType = $useBranches ? 'heads' : 'tags'
-                $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($majorVersion.major).0" -Sha $majorSha -Force $false }
-                $fixed = Invoke-AutoFix -Description "Create missing minor version v$($majorVersion.major).0" -Command $fixCmd -ApiAction $apiAction
+                $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($majorVersion.major).0" -Sha $majorSha -Force $false }
+                $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing minor version v$($majorVersion.major).0" -Command $fixCmd -ApiAction $apiAction
                 
                 if ($fixed) {
-                    $script:fixedIssues++
+                    $State.FixedIssues++
                     # Update our tracking to include the new version
                     $newMinorVersion = ConvertTo-Version "$($majorVersion.major).0"
                     $minorVersions += $newMinorVersion
                     $highestMinor = $newMinorVersion
                 } else {
-                    if ($autoFix) { $script:failedFixes++ }
+                    if ($autoFix) { $State.FailedFixes++ }
                     write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha" -severity $checkMinorVersion
                     $suggestedCommands += $fixCmd
                 }
@@ -949,16 +928,16 @@ foreach ($majorVersion in $majorVersions)
         {
             $fixCmd = "git branch v$($majorVersion.major) $majorSha && git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major) && git push origin :refs/tags/v$($majorVersion.major)"
             $apiAction = { 
-                $createBranch = New-GitHubRef -RefName "refs/heads/v$($majorVersion.major)" -Sha $majorSha -Force $false
-                $deleteTag = Remove-GitHubRef -RefName "refs/tags/v$($majorVersion.major)"
+                $createBranch = New-GitHubRef -State $State -RefName "refs/heads/v$($majorVersion.major)" -Sha $majorSha -Force $false
+                $deleteTag = Remove-GitHubRef -State $State -RefName "refs/tags/v$($majorVersion.major)"
                 return ($createBranch -and $deleteTag)
             }
-            $fixed = Invoke-AutoFix -Description "Convert major version v$($majorVersion.major) from tag to branch" -Command $fixCmd -ApiAction $apiAction
+            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Convert major version v$($majorVersion.major) from tag to branch" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
-                $script:fixedIssues++
+                $State.FixedIssues++
             } else {
-                if ($autoFix) { $script:failedFixes++ }
+                if ($autoFix) { $State.FailedFixes++ }
                 write-actions-error "::error title=Version should be branch::Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled"
                 $suggestedCommands += "git branch v$($majorVersion.major) $majorSha"
                 $suggestedCommands += "git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major)"
@@ -970,16 +949,16 @@ foreach ($majorVersion in $majorVersions)
         {
             $fixCmd = "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha && git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor) && git push origin :refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
             $apiAction = {
-                $createBranch = New-GitHubRef -RefName "refs/heads/v$($majorVersion.major).$($highestMinor.minor)" -Sha $minorSha -Force $false
-                $deleteTag = Remove-GitHubRef -RefName "refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
+                $createBranch = New-GitHubRef -State $State -RefName "refs/heads/v$($majorVersion.major).$($highestMinor.minor)" -Sha $minorSha -Force $false
+                $deleteTag = Remove-GitHubRef -State $State -RefName "refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
                 return ($createBranch -and $deleteTag)
             }
-            $fixed = Invoke-AutoFix -Description "Convert minor version v$($majorVersion.major).$($highestMinor.minor) from tag to branch" -Command $fixCmd -ApiAction $apiAction
+            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Convert minor version v$($majorVersion.major).$($highestMinor.minor) from tag to branch" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
-                $script:fixedIssues++
+                $State.FixedIssues++
             } else {
-                if ($autoFix) { $script:failedFixes++ }
+                if ($autoFix) { $State.FailedFixes++ }
                 write-actions-error "::error title=Version should be branch::Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled"
                 $suggestedCommands += "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha"
                 $suggestedCommands += "git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor)"
@@ -994,13 +973,13 @@ foreach ($majorVersion in $majorVersions)
         {
             $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major)"
             $refType = $useBranches ? 'heads' : 'tags'
-            $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($majorVersion.major)" -Sha $minorSha -Force $false }
-            $fixed = Invoke-AutoFix -Description "Create missing major version v$($majorVersion.major) pointing to minor version" -Command $fixCmd -ApiAction $apiAction
+            $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($majorVersion.major)" -Sha $minorSha -Force $false }
+            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing major version v$($majorVersion.major) pointing to minor version" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
-                $script:fixedIssues++
+                $State.FixedIssues++
             } else {
-                if ($autoFix) { $script:failedFixes++ }
+                if ($autoFix) { $State.FailedFixes++ }
                 write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
                 $suggestedCommands += $fixCmd
             }
@@ -1010,13 +989,13 @@ foreach ($majorVersion in $majorVersions)
         {
             $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major) --force"
             $refType = $useBranches ? 'heads' : 'tags'
-            $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($majorVersion.major)" -Sha $minorSha -Force $true }
-            $fixed = Invoke-AutoFix -Description "Update major version v$($majorVersion.major) to match minor version" -Command $fixCmd -ApiAction $apiAction
+            $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($majorVersion.major)" -Sha $minorSha -Force $true }
+            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update major version v$($majorVersion.major) to match minor version" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
-                $script:fixedIssues++
+                $State.FixedIssues++
             } else {
-                if ($autoFix) { $script:failedFixes++ }
+                if ($autoFix) { $State.FailedFixes++ }
                 write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
                 $suggestedCommands += $fixCmd
             }
@@ -1057,13 +1036,13 @@ foreach ($majorVersion in $majorVersions)
     {
         $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major) --force"
         $refType = $useBranches ? 'heads' : 'tags'
-        $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($highestMinor.major)" -Sha $patchSha -Force $true }
-        $fixed = Invoke-AutoFix -Description "Update major version v$($highestMinor.major) to match patch version" -Command $fixCmd -ApiAction $apiAction
+        $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($highestMinor.major)" -Sha $patchSha -Force $true }
+        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update major version v$($highestMinor.major) to match patch version" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
-            $script:fixedIssues++
+            $State.FixedIssues++
         } else {
-            if ($autoFix) { $script:failedFixes++ }
+            if ($autoFix) { $State.FailedFixes++ }
             write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             $suggestedCommands += $fixCmd
         }
@@ -1072,13 +1051,13 @@ foreach ($majorVersion in $majorVersions)
     if (-not $patchSha -and $sourceShaForPatch)
     {
         $fixCmd = "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
-        $apiAction = { New-GitHubRef -RefName "refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Sha $sourceShaForPatch -Force $false }
-        $fixed = Invoke-AutoFix -Description "Create missing patch version v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Command $fixCmd -ApiAction $apiAction
+        $apiAction = { New-GitHubRef -State $State -RefName "refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Sha $sourceShaForPatch -Force $false }
+        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing patch version v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
-            $script:fixedIssues++
+            $State.FixedIssues++
         } else {
-            if ($autoFix) { $script:failedFixes++ }
+            if ($autoFix) { $State.FailedFixes++ }
             write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
             $suggestedCommands += $fixCmd
         }
@@ -1088,13 +1067,13 @@ foreach ($majorVersion in $majorVersions)
     {
         $fixCmd = "git push origin $sourceShaForPatch`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestPatch.major)"
         $refType = $useBranches ? 'heads' : 'tags'
-        $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($highestPatch.major)" -Sha $sourceShaForPatch -Force $false }
-        $fixed = Invoke-AutoFix -Description "Create missing major version v$($highestPatch.major)" -Command $fixCmd -ApiAction $apiAction
+        $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($highestPatch.major)" -Sha $sourceShaForPatch -Force $false }
+        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing major version v$($highestPatch.major)" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
-            $script:fixedIssues++
+            $State.FixedIssues++
         } else {
-            if ($autoFix) { $script:failedFixes++ }
+            if ($autoFix) { $State.FailedFixes++ }
             write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
             $suggestedCommands += $fixCmd
         }
@@ -1115,13 +1094,13 @@ foreach ($majorVersion in $majorVersions)
             if ($sourceShaForMinor) {
                 $fixCmd = "git push origin $sourceShaForMinor`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor)"
                 $refType = $useBranches ? 'heads' : 'tags'
-                $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($highestMinor.major).$($highestMinor.minor)" -Sha $sourceShaForMinor -Force $false }
-                $fixed = Invoke-AutoFix -Description "Create missing minor version v$($highestMinor.major).$($highestMinor.minor)" -Command $fixCmd -ApiAction $apiAction
+                $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($highestMinor.major).$($highestMinor.minor)" -Sha $sourceShaForMinor -Force $false }
+                $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing minor version v$($highestMinor.major).$($highestMinor.minor)" -Command $fixCmd -ApiAction $apiAction
                 
                 if ($fixed) {
-                    $script:fixedIssues++
+                    $State.FixedIssues++
                 } else {
-                    if ($autoFix) { $script:failedFixes++ }
+                    if ($autoFix) { $State.FailedFixes++ }
                     write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor" -severity $checkMinorVersion
                     $suggestedCommands += $fixCmd
                 }
@@ -1132,13 +1111,13 @@ foreach ($majorVersion in $majorVersions)
         {
             $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor) --force"
             $refType = $useBranches ? 'heads' : 'tags'
-            $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($highestMinor.major).$($highestMinor.minor)" -Sha $patchSha -Force $true }
-            $fixed = Invoke-AutoFix -Description "Update minor version v$($highestMinor.major).$($highestMinor.minor) to match patch version" -Command $fixCmd -ApiAction $apiAction
+            $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($highestMinor.major).$($highestMinor.minor)" -Sha $patchSha -Force $true }
+            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update minor version v$($highestMinor.major).$($highestMinor.minor) to match patch version" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
-                $script:fixedIssues++
+                $State.FixedIssues++
             } else {
-                if ($autoFix) { $script:failedFixes++ }
+                if ($autoFix) { $State.FailedFixes++ }
                 write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha" -severity $checkMinorVersion
                 $suggestedCommands += $fixCmd
             }
@@ -1161,25 +1140,25 @@ if ($useBranches) {
     # When using branches, check if latest branch exists and points to correct version
     if ($latestBranch -and ($latestBranch.sha -ne $highestVersion.sha)) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest --force"
-        $apiAction = { New-GitHubRef -RefName "refs/heads/latest" -Sha $highestVersion.sha -Force $true }
-        $fixed = Invoke-AutoFix -Description "Update latest branch to match highest version" -Command $fixCmd -ApiAction $apiAction
+        $apiAction = { New-GitHubRef -State $State -RefName "refs/heads/latest" -Sha $highestVersion.sha -Force $true }
+        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update latest branch to match highest version" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
-            $script:fixedIssues++
+            $State.FixedIssues++
         } else {
-            if ($autoFix) { $script:failedFixes++ }
+            if ($autoFix) { $State.FailedFixes++ }
             write-actions-error "::error title=Incorrect version::Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
             $suggestedCommands += $fixCmd
         }
     } elseif (-not $latestBranch -and $highestVersion) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest"
-        $apiAction = { New-GitHubRef -RefName "refs/heads/latest" -Sha $highestVersion.sha -Force $false }
-        $fixed = Invoke-AutoFix -Description "Create missing latest branch" -Command $fixCmd -ApiAction $apiAction
+        $apiAction = { New-GitHubRef -State $State -RefName "refs/heads/latest" -Sha $highestVersion.sha -Force $false }
+        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing latest branch" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
-            $script:fixedIssues++
+            $State.FixedIssues++
         } else {
-            if ($autoFix) { $script:failedFixes++ }
+            if ($autoFix) { $State.FailedFixes++ }
             write-actions-error "::error title=Missing version::Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
             $suggestedCommands += $fixCmd
         }
@@ -1194,13 +1173,13 @@ if ($useBranches) {
     # When using tags, check if latest tag exists and points to correct version
     if ($latest -and $highestVersion -and ($latest.sha -ne $highestVersion.sha)) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/tags/latest --force"
-        $apiAction = { New-GitHubRef -RefName "refs/tags/latest" -Sha $highestVersion.sha -Force $true }
-        $fixed = Invoke-AutoFix -Description "Update latest tag to match highest version" -Command $fixCmd -ApiAction $apiAction
+        $apiAction = { New-GitHubRef -State $State -RefName "refs/tags/latest" -Sha $highestVersion.sha -Force $true }
+        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update latest tag to match highest version" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
-            $script:fixedIssues++
+            $State.FixedIssues++
         } else {
-            if ($autoFix) { $script:failedFixes++ }
+            if ($autoFix) { $State.FailedFixes++ }
             write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
             $suggestedCommands += $fixCmd
         }
@@ -1218,37 +1197,38 @@ if ($useBranches) {
 #############################################################################
 
 # Display summary based on auto-fix mode
+# Note: $global:returnCode may have already been set to 1 by write-actions-error calls
+$exitCode = $global:returnCode ?? 0
+
 if ($autoFix)
 {
     Write-Output ""
     Write-Output "### Auto-fix Summary"
-    Write-Output "✓ Fixed issues: $script:fixedIssues"
-    Write-Output "✗ Failed fixes: $script:failedFixes"
-    Write-Output "⚠ Unfixable issues: $script:unfixableIssues"
+    Write-Output "✓ Fixed issues: $($State.FixedIssues)"
+    Write-Output "✗ Failed fixes: $($State.FailedFixes)"
+    Write-Output "⚠ Unfixable issues: $($State.UnfixableIssues)"
     
     # Only fail if there are failed fixes or unfixable issues
-    if ($script:failedFixes -gt 0 -or $script:unfixableIssues -gt 0)
+    if ($State.FailedFixes -gt 0 -or $State.UnfixableIssues -gt 0)
     {
-        $global:returnCode = 1
+        $exitCode = 1
         Write-Output ""
-        if ($script:failedFixes -gt 0) {
+        if ($State.FailedFixes -gt 0) {
             Write-Output "::error::Some fixes failed. Please review the errors above and fix manually."
         }
-        if ($script:unfixableIssues -gt 0) {
+        if ($State.UnfixableIssues -gt 0) {
             Write-Output "::error::Some issues cannot be auto-fixed (draft releases must be published manually, or immutable releases on floating versions). Please fix manually."
         }
     }
-    elseif ($script:fixedIssues -gt 0)
+    elseif ($State.FixedIssues -gt 0)
     {
         # Issues were found and all were fixed successfully
-        $global:returnCode = 0
         Write-Output ""
         Write-Output "::notice::All issues were successfully fixed!"
     }
     else
     {
         # No issues were found
-        $global:returnCode = 0
         Write-Output ""
         Write-Output "::notice::No issues found!"
     }
@@ -1274,4 +1254,6 @@ else
     }
 }
 
-exit $global:returnCode
+# Set global for test harness compatibility and exit
+$global:returnCode = $exitCode
+exit $exitCode
