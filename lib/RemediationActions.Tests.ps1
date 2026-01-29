@@ -86,15 +86,36 @@ Describe "RemediationAction Classes" {
             
             $action.TagName | Should -Be "v1.0.0"
             $action.IsDraft | Should -Be $true
+            $action.AutoPublish | Should -Be $false
             $action.Priority | Should -Be 30
         }
         
-        It "Should generate correct manual commands" {
-            $action = [CreateReleaseAction]::new("v1.0.0", $true)
+        It "Should create action with auto-publish" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $true, $true)
+            
+            $action.TagName | Should -Be "v1.0.0"
+            $action.IsDraft | Should -Be $true
+            $action.AutoPublish | Should -Be $true
+            $action.Priority | Should -Be 30
+        }
+        
+        It "Should generate correct manual commands for draft" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $true, $false)
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 1
             $commands[0] | Should -Match "gh release create v1.0.0 --draft"
+            $commands[0] | Should -Not -Match "^#"
+        }
+        
+        It "Should generate correct manual commands for auto-publish" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $true, $true)
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 1
+            $commands[0] | Should -Match "gh release create v1.0.0"
+            $commands[0] | Should -Not -Match "--draft"
+            $commands[0] | Should -Not -Match "^#"
         }
     }
     
@@ -113,6 +134,24 @@ Describe "RemediationAction Classes" {
             
             $commands.Count | Should -Be 1
             $commands[0] | Should -Match "gh release edit v1.0.0 --draft=false"
+            $commands[0] | Should -Not -Match "^#"
+            $commands[0] | Should -Not -Match "# Or edit at"
+        }
+    }
+    
+    Context "RepublishReleaseAction" {
+        It "Should generate manual commands without comments" {
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 2
+            $commands[0] | Should -Match "gh release edit v1.0.0 --draft=true"
+            $commands[1] | Should -Match "gh release edit v1.0.0 --draft=false"
+            
+            # Verify no comment lines
+            foreach ($cmd in $commands) {
+                $cmd | Should -Not -Match "^#"
+            }
         }
     }
     
