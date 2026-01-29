@@ -125,15 +125,18 @@ class PublishReleaseAction : RemediationAction {
             Write-Host "✓ Success: Published release for $($this.TagName)"
             return $true
         } else {
-            Write-Host "✗ Failed: Publish release for $($this.TagName)"
-            
             # Check if this is an unfixable error (422 - tag used by immutable release)
             if ($result.Unfixable) {
+                Write-Host "✗ Unfixable: Cannot publish release for $($this.TagName) - tag was previously used by an immutable release"
                 # Find this issue in the state and mark it as unfixable
                 $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "draft_release" } | Select-Object -First 1
                 if ($issue) {
                     $issue.Status = "unfixable"
+                    # Update message to be more helpful
+                    $issue.Message = "Release $($this.TagName) cannot be published because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list."
                 }
+            } else {
+                Write-Host "✗ Failed: Publish release for $($this.TagName)"
             }
             
             return $false
@@ -141,6 +144,11 @@ class PublishReleaseAction : RemediationAction {
     }
     
     [string[]] GetManualCommands([RepositoryState]$state) {
+        # Check if the issue is unfixable - if so, return empty array
+        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "draft_release" } | Select-Object -First 1
+        if ($issue -and $issue.Status -eq "unfixable") {
+            return @()
+        }
         return @("gh release edit $($this.TagName) --draft=false")
     }
 }
@@ -224,15 +232,18 @@ class CreateTagAction : RemediationAction {
             Write-Host "✓ Success: Created tag $($this.TagName)"
             return $true
         } else {
-            Write-Host "✗ Failed: Create tag $($this.TagName)"
-            
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
+                Write-Host "✗ Unfixable: Cannot create tag $($this.TagName) - requires 'workflows' permission to modify workflow files"
                 # Find this issue in the state and mark it as requiring manual fix (unfixable by automation)
                 $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.RemediationAction -eq $this } | Select-Object -First 1
                 if ($issue) {
                     $issue.Status = "unfixable"
+                    # Update message to be more helpful
+                    $issue.Message = "Version $($this.TagName) cannot be created by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please create manually."
                 }
+            } else {
+                Write-Host "✗ Failed: Create tag $($this.TagName)"
             }
             
             return $false
@@ -265,14 +276,17 @@ class UpdateTagAction : RemediationAction {
             Write-Host "✓ Success: Updated tag $($this.TagName)"
             return $true
         } else {
-            Write-Host "✗ Failed: Update tag $($this.TagName)"
-            
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
+                Write-Host "✗ Unfixable: Cannot update tag $($this.TagName) - requires 'workflows' permission to modify workflow files"
                 $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.RemediationAction -eq $this } | Select-Object -First 1
                 if ($issue) {
                     $issue.Status = "unfixable"
+                    # Update message to be more helpful
+                    $issue.Message = "Version $($this.TagName) cannot be updated by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please update manually."
                 }
+            } else {
+                Write-Host "✗ Failed: Update tag $($this.TagName)"
             }
             
             return $false
@@ -336,14 +350,17 @@ class CreateBranchAction : RemediationAction {
             Write-Host "✓ Success: Created branch $($this.BranchName)"
             return $true
         } else {
-            Write-Host "✗ Failed: Create branch $($this.BranchName)"
-            
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
+                Write-Host "✗ Unfixable: Cannot create branch $($this.BranchName) - requires 'workflows' permission to modify workflow files"
                 $issue = $state.Issues | Where-Object { $_.Version -eq $this.BranchName -and $_.RemediationAction -eq $this } | Select-Object -First 1
                 if ($issue) {
                     $issue.Status = "unfixable"
+                    # Update message to be more helpful
+                    $issue.Message = "Version $($this.BranchName) cannot be created by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please create manually."
                 }
+            } else {
+                Write-Host "✗ Failed: Create branch $($this.BranchName)"
             }
             
             return $false
@@ -376,14 +393,17 @@ class UpdateBranchAction : RemediationAction {
             Write-Host "✓ Success: Updated branch $($this.BranchName)"
             return $true
         } else {
-            Write-Host "✗ Failed: Update branch $($this.BranchName)"
-            
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
+                Write-Host "✗ Unfixable: Cannot update branch $($this.BranchName) - requires 'workflows' permission to modify workflow files"
                 $issue = $state.Issues | Where-Object { $_.Version -eq $this.BranchName -and $_.RemediationAction -eq $this } | Select-Object -First 1
                 if ($issue) {
                     $issue.Status = "unfixable"
+                    # Update message to be more helpful
+                    $issue.Message = "Version $($this.BranchName) cannot be updated by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please update manually."
                 }
+            } else {
+                Write-Host "✗ Failed: Update branch $($this.BranchName)"
             }
             
             return $false

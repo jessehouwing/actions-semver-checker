@@ -62,14 +62,13 @@ function Invoke-AutoFix
             else
             {
                 Write-Host "✗ Failed: $Description (exit code: $LASTEXITCODE)"
-                # Log error output prominently using GitHub Actions error command
-                # Wrap output in stop-commands to prevent workflow command injection
+                # Log error output at debug level to avoid cluttering error messages
                 if ($commandOutput) {
-                    Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::error::Command failed: "
+                    Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::debug::Command output: "
                 }
                 else {
                     # If no output captured, still log that the command failed
-                    Write-Host "::error::Command failed with no output (exit code: $LASTEXITCODE)"
+                    Write-Host "::debug::Command failed with no output (exit code: $LASTEXITCODE)"
                 }
                 return $false
             }
@@ -79,7 +78,7 @@ function Invoke-AutoFix
     {
         Write-Host "✗ Failed: $Description"
         # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message ([string]$_) -Prefix "::error::Exception: "
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Exception details: "
         return $false
     }
 }
@@ -395,7 +394,7 @@ function Invoke-AllAutoFixes
             }
             catch {
                 Write-Host "✗ Failed: $($action.Description)"
-                Write-SafeOutput -Message ([string]$_) -Prefix "::error::Exception during auto-fix: "
+                Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Exception during auto-fix: "
                 $issue.Status = "failed"
             }
         }

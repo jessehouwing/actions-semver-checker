@@ -319,7 +319,8 @@ function Write-StateSummary {
             if ($release.isDraft) { $status += "draft" }
             if ($release.isPrerelease) { $status += "prerelease" }
             $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
-            Write-Host "  $($release.tagName)$statusStr" -ForegroundColor Gray
+            $immutableSymbol = if ($release.IsImmutable) { "🔒" } else { "🔓" }
+            Write-Host "  $immutableSymbol $($release.tagName)$statusStr" -ForegroundColor Gray
         }
     } elseif ($Releases.Count -gt 15) {
         Write-Host "  (showing first 10 of $($Releases.Count) releases)" -ForegroundColor Gray
@@ -328,7 +329,8 @@ function Write-StateSummary {
             if ($release.isDraft) { $status += "draft" }
             if ($release.isPrerelease) { $status += "prerelease" }
             $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
-            Write-Host "  $($release.tagName)$statusStr" -ForegroundColor Gray
+            $immutableSymbol = if ($release.IsImmutable) { "🔒" } else { "🔓" }
+            Write-Host "  $immutableSymbol $($release.tagName)$statusStr" -ForegroundColor Gray
         }
     }
     
@@ -1272,9 +1274,6 @@ if ($autoFix)
     {
         $exitCode = 1
         Write-Output ""
-        if ($State.GetFailedFixesCount() -gt 0) {
-            Write-Output "::error::Some fixes failed. Please review the errors above and fix manually."
-        }
         if ($State.GetUnfixableIssuesCount() -gt 0) {
             Write-Output "::error::Some issues cannot be auto-fixed (draft releases must be published manually, or immutable releases on floating versions). Please fix manually."
         }
