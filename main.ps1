@@ -8,9 +8,12 @@ $script:repoOwner = $null
 $script:repoName = $null
 
 # Parse repository owner and name from GITHUB_REPOSITORY
-if ($env:GITHUB_REPOSITORY -and $env:GITHUB_REPOSITORY -match "^([^/]+)/(.+)$") {
-    $script:repoOwner = $matches[1]
-    $script:repoName = $matches[2]
+if ($env:GITHUB_REPOSITORY) {
+    $parts = $env:GITHUB_REPOSITORY -split '/', 2
+    if ($parts.Count -eq 2 -and $parts[0] -and $parts[1]) {
+        $script:repoOwner = $parts[0]
+        $script:repoName = $parts[1]
+    }
 }
 
 # If still not found, fall back to git remote
