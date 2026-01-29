@@ -479,7 +479,7 @@ Describe "SemVer Checker" {
             
             # Assert
             # Should warn about ambiguous version
-            $result.Output | Should -Match "::warning.*Ambiguous version: v1.0.0"
+            $result.Output | Should -Match "::warning.*exists as both tag.*and branch.*same SHA"
             $result.Output | Should -Match "git push origin :refs/heads/v1.0.0"
         }
         
@@ -503,7 +503,7 @@ Describe "SemVer Checker" {
             # Assert
             $result.ReturnCode | Should -Be 1
             # Should error about ambiguous version
-            $result.Output | Should -Match "::error.*Ambiguous version: v1.0.0"
+            $result.Output | Should -Match "::error.*exists as both tag.*and branch.*different SHAs"
             $result.Output | Should -Match "git push origin :refs/heads/v1.0.0"
         }
         
@@ -1725,8 +1725,8 @@ exit 0
             # Run the checker
             $result = Invoke-MainScript
             
-            # Should detect the ambiguous refname
-            $result.Output | Should -Match "ambiguous|conflict"
+            # Should detect the ambiguous refname (exists as both tag and branch)
+            $result.Output | Should -Match "exists as both tag.*and branch"
         }
         
         It "Should handle branch/tag conflict with floating-versions-use setting" {

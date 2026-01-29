@@ -21,7 +21,6 @@
         'PSAvoidInvokingEmptyMembers',
         'PSAvoidNullOrEmptyHelpMessageAttribute',
         'PSAvoidShouldContinueWithoutForce',
-        'PSAvoidTrailingWhitespace',
         'PSAvoidUsingComputerNameHardcoded',
         'PSAvoidUsingConvertToSecureStringWithPlainText',
         'PSAvoidUsingDeprecatedManifestFields',

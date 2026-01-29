@@ -586,8 +586,6 @@ foreach ($tagVersion in $tagVersions)
         # This causes confusion for users and must be resolved
         #############################################################################
         
-        $message = "title=Ambiguous version: $($tagVersion.version)::Exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha))"
-        
         # Determine which reference to keep based on floating-versions-use setting
         $keepBranch = ($useBranches -eq $true)
         
@@ -595,7 +593,7 @@ foreach ($tagVersion in $tagVersions)
         {
             # Same SHA - can auto-fix by removing the non-preferred reference
             $severity = "warning"
-            $issue = [ValidationIssue]::new("ambiguous_reference", $severity, "Version $($tagVersion.version) exists as both tag and branch (same SHA)")
+            $issue = [ValidationIssue]::new("ambiguous_reference", $severity, "Version $($tagVersion.version) exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha)) - same SHA")
             $issue.Version = $tagVersion.version
             $issue.CurrentSha = $tagVersion.sha
             $State.AddIssue($issue)
@@ -621,17 +619,12 @@ foreach ($tagVersion in $tagVersions)
             } else {
                 $issue.RemediationAction = [DeleteBranchAction]::new($tagVersion.version)
             }
-            
-            if (-not $autoFix)
-            {
-                Write-ActionsWarning "::warning $message"
-            }
         }
         else
         {
             # Different SHAs - can auto-fix by removing the non-preferred reference
             $severity = "error"
-            $issue = [ValidationIssue]::new("ambiguous_reference", $severity, "Version $($tagVersion.version) exists as both tag and branch (different SHAs)")
+            $issue = [ValidationIssue]::new("ambiguous_reference", $severity, "Version $($tagVersion.version) exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha)) - different SHAs")
             $issue.Version = $tagVersion.version
             $issue.CurrentSha = $tagVersion.sha
             $State.AddIssue($issue)
@@ -656,11 +649,6 @@ foreach ($tagVersion in $tagVersions)
                 $issue.RemediationAction = [DeleteTagAction]::new($tagVersion.version)
             } else {
                 $issue.RemediationAction = [DeleteBranchAction]::new($tagVersion.version)
-            }
-            
-            if (-not $autoFix)
-            {
-                Write-ActionsError "::error $message"
             }
         }
     }
@@ -734,15 +722,6 @@ if ($checkReleases -ne "none")
                 $shouldAutoPublish = ($checkReleaseImmutability -ne "none")
                 $issue.RemediationAction = [CreateReleaseAction]::new($tagVersion.version, $true, $shouldAutoPublish)
                 $State.AddIssue($issue)
-                
-                if (-not $autoFix)
-                {
-                    if ($shouldAutoPublish) {
-                        # When auto-publishing, suggest creating as non-draft
-                    } else {
-                        # When not auto-publishing, suggest creating as draft
-                    }
-                }
             }
         }
     }
@@ -766,13 +745,6 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                 $issue.IsAutoFixable = $true
                 $issue.RemediationAction = [PublishReleaseAction]::new($release.tagName, $release.id)
                 $State.AddIssue($issue)
-                
-                if (-not $autoFix)
-                {
-                    if ($repoInfo) {
-                    } else {
-                    }
-                }
             }
             else
             {
@@ -787,15 +759,11 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                         # Only if check-release-immutability is enabled (error or warning)
                         if ($checkReleaseImmutability -ne "none") {
                             # Try to republish the release to make it immutable
-                            $issue = [ValidationIssue]::new("non_immutable_release", "warning", "Release $($release.tagName) is not immutable")
+                            $issue = [ValidationIssue]::new("non_immutable_release", "warning", "Release $($release.tagName) is published but remains mutable and can be modified via force-push. See: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/preventing-changes-to-your-releases")
                             $issue.Version = $release.tagName
                             $issue.IsAutoFixable = $true
                             $issue.RemediationAction = [RepublishReleaseAction]::new($release.tagName)
                             $State.AddIssue($issue)
-                            
-                            if (-not $autoFix) {
-                                Write-ActionsWarning "::warning title=Mutable release::Release $($release.tagName) is published but remains mutable and can be modified via force-push. Enable 'auto-fix' to automatically republish, or see: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/preventing-changes-to-your-releases"
-                            }
                         }
                     }
                 }
@@ -831,33 +799,23 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
             {
                 # Immutable release on a floating version - this is unfixable
                 $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
-                $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "Write-ActionsError" } else { "Write-ActionsWarning" }
-                & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has an immutable release, which conflicts with its mutable nature. This cannot be auto-fixed."
                 
-                $issue = [ValidationIssue]::new("immutable_floating_release", $messageType, "Floating version $($release.tagName) has an immutable release")
+                $issue = [ValidationIssue]::new("immutable_floating_release", $messageType, "Floating version $($release.tagName) has an immutable release, which conflicts with its mutable nature. This cannot be auto-fixed.")
                 $issue.Version = $release.tagName
                 $issue.Status = "unfixable"
                 $State.AddIssue($issue)
-                
             }
             else
             {
                 # Mutable release (draft or not immutable) on a floating version - can be auto-fixed by deleting it
                 $fixCmd = "gh release delete $($release.tagName) --yes"
                 
-                $issue = [ValidationIssue]::new("mutable_floating_release", "warning", "Floating version $($release.tagName) has a mutable release")
+                $issue = [ValidationIssue]::new("mutable_floating_release", "warning", "Floating version $($release.tagName) has a mutable release, which should be removed.")
                 $issue.Version = $release.tagName
                 $issue.ManualFixCommand = $fixCmd
                 $issue.IsAutoFixable = $true
                 $issue.RemediationAction = [DeleteReleaseAction]::new($release.tagName, $release.id)
                 $State.AddIssue($issue)
-                
-                if (-not $autoFix)
-                {
-                    $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
-                    $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "Write-ActionsError" } else { "Write-ActionsWarning" }
-                    & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has a mutable release, which should be removed."
-                }
             }
         }
     }
@@ -917,7 +875,7 @@ foreach ($majorVersion in $majorVersions)
         {
             $fixCmd = "git push origin $majorSha`:refs/tags/v$($majorVersion.major).0.0"
             
-            $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version v$($majorVersion.major).0.0 does not exist and must match v$($majorVersion.major)")
+            $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version: v$($majorVersion.major).0.0 does not exist and must match: v$($majorVersion.major) ref $majorSha")
             $issue.Version = "v$($majorVersion.major).0.0"
             $issue.ExpectedSha = $majorSha
             $issue.ManualFixCommand = $fixCmd
@@ -927,16 +885,12 @@ foreach ($majorVersion in $majorVersions)
             # Use RemediationAction class
             $issue.RemediationAction = [CreateTagAction]::new("v$($majorVersion.major).0.0", $majorSha)
             
-            if (-not $autoFix)
-            {
-            }
-            
             # Create v{major}.0 if check-minor-version is enabled
             if ($checkMinorVersion -ne "none")
             {
                 $fixCmd = "git push origin $majorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major).0"
                 
-                $issue = [ValidationIssue]::new("missing_minor_version", $checkMinorVersion, "Version v$($majorVersion.major).0 does not exist and must match v$($majorVersion.major)")
+                $issue = [ValidationIssue]::new("missing_minor_version", $checkMinorVersion, "Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha")
                 $issue.Version = "v$($majorVersion.major).0"
                 $issue.ExpectedSha = $majorSha
                 $issue.ManualFixCommand = $fixCmd
@@ -948,11 +902,6 @@ foreach ($majorVersion in $majorVersions)
                     $issue.RemediationAction = [CreateBranchAction]::new("v$($majorVersion.major).0", $majorSha)
                 } else {
                     $issue.RemediationAction = [CreateTagAction]::new("v$($majorVersion.major).0", $majorSha)
-                }
-                
-                if (-not $autoFix)
-                {
-                    Write-ActionsMessage -Message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha" -Severity $checkMinorVersion
                 }
             }
             else
@@ -982,36 +931,26 @@ foreach ($majorVersion in $majorVersions)
         {
             $fixCmd = "git branch v$($majorVersion.major) $majorSha && git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major) && git push origin :refs/tags/v$($majorVersion.major)"
             
-            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Major version v$($majorVersion.major) is a tag but should be a branch")
+            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled")
             $issue.Version = "v$($majorVersion.major)"
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
             # Note: Not auto-fixable - requires creating branch AND deleting tag in sequence
             $issue.IsAutoFixable = $false
-            
-            if (-not $autoFix)
-            {
-                Write-ActionsError "::error title=Version should be branch::Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled"
-            }
         }
         
         if ($minorVersion_obj -and $minorVersion_obj.ref -match "^refs/tags/")
         {
             $fixCmd = "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha && git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor) && git push origin :refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
             
-            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch")
+            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled")
             $issue.Version = "v$($majorVersion.major).$($highestMinor.minor)"
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
             # Note: Not auto-fixable - requires creating branch AND deleting tag in sequence
             $issue.IsAutoFixable = $false
-            
-            if (-not $autoFix)
-            {
-                Write-ActionsError "::error title=Version should be branch::Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled"
-            }
         }
     }
 
@@ -1021,7 +960,7 @@ foreach ($majorVersion in $majorVersions)
         {
             $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major)"
             
-            $issue = [ValidationIssue]::new("missing_major_version", $checkMinorVersion, "Version v$($majorVersion.major) does not exist and must match v$($highestMinor.major).$($highestMinor.minor)")
+            $issue = [ValidationIssue]::new("missing_major_version", $checkMinorVersion, "Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha")
             $issue.Version = "v$($majorVersion.major)"
             $issue.ExpectedSha = $minorSha
             $issue.ManualFixCommand = $fixCmd
@@ -1034,18 +973,13 @@ foreach ($majorVersion in $majorVersions)
             } else {
                 $issue.RemediationAction = [CreateTagAction]::new("v$($majorVersion.major)", $minorSha)
             }
-            
-            if (-not $autoFix)
-            {
-                Write-ActionsMessage -Message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -Severity $checkMinorVersion
-            }
         }
 
         if ($majorSha -and $minorSha -and ($majorSha -ne $minorSha))
         {
             $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major) --force"
             
-            $issue = [ValidationIssue]::new("incorrect_version", $checkMinorVersion, "Version v$($majorVersion.major) points to wrong SHA")
+            $issue = [ValidationIssue]::new("incorrect_version", $checkMinorVersion, "Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha")
             $issue.Version = "v$($majorVersion.major)"
             $issue.CurrentSha = $majorSha
             $issue.ExpectedSha = $minorSha
@@ -1058,11 +992,6 @@ foreach ($majorVersion in $majorVersions)
                 $issue.RemediationAction = [UpdateBranchAction]::new("v$($majorVersion.major)", $minorSha, $true)
             } else {
                 $issue.RemediationAction = [UpdateTagAction]::new("v$($majorVersion.major)", $minorSha, $true)
-            }
-            
-            if (-not $autoFix)
-            {
-                Write-ActionsMessage -Message "::$($checkMinorVersion) title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -Severity $checkMinorVersion
             }
         }
     }
@@ -1101,7 +1030,7 @@ foreach ($majorVersion in $majorVersions)
     {
         $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major) --force"
         
-        $issue = [ValidationIssue]::new("incorrect_version", "error", "Version v$($highestMinor.major) points to wrong SHA")
+        $issue = [ValidationIssue]::new("incorrect_version", "error", "Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha")
         $issue.Version = "v$($highestMinor.major)"
         $issue.CurrentSha = $majorSha
         $issue.ExpectedSha = $patchSha
@@ -1115,18 +1044,13 @@ foreach ($majorVersion in $majorVersions)
         } else {
             $issue.RemediationAction = [UpdateTagAction]::new("v$($highestMinor.major)", $patchSha, $true)
         }
-        
-        if (-not $autoFix)
-        {
-            Write-ActionsError "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
-        }
     }
 
     if (-not $patchSha -and $sourceShaForPatch)
     {
         $fixCmd = "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
         
-        $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist")
+        $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch")
         $issue.Version = "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
         $issue.ExpectedSha = $sourceShaForPatch
         $issue.ManualFixCommand = $fixCmd
@@ -1135,18 +1059,13 @@ foreach ($majorVersion in $majorVersions)
         $issue.IsAutoFixable = $true
         # Use RemediationAction class
         $issue.RemediationAction = [CreateTagAction]::new("v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)", $sourceShaForPatch)
-        
-        if (-not $autoFix)
-        {
-            Write-ActionsError "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
-        }
     }
 
     if (-not $majorSha)
     {
         $fixCmd = "git push origin $sourceShaForPatch`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestPatch.major)"
         
-        $issue = [ValidationIssue]::new("missing_major_version", "error", "Version v$($majorVersion.major) does not exist")
+        $issue = [ValidationIssue]::new("missing_major_version", "error", "Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch")
         $issue.Version = "v$($majorVersion.major)"
         $issue.ExpectedSha = $sourceShaForPatch
         $issue.ManualFixCommand = $fixCmd
@@ -1158,11 +1077,6 @@ foreach ($majorVersion in $majorVersions)
             $issue.RemediationAction = [CreateBranchAction]::new("v$($highestPatch.major)", $sourceShaForPatch)
         } else {
             $issue.RemediationAction = [CreateTagAction]::new("v$($highestPatch.major)", $sourceShaForPatch)
-        }
-        
-        if (-not $autoFix)
-        {
-            Write-ActionsError "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
         }
     }
 
@@ -1181,7 +1095,7 @@ foreach ($majorVersion in $majorVersions)
             if ($sourceShaForMinor) {
                 $fixCmd = "git push origin $sourceShaForMinor`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor)"
                 
-                $issue = [ValidationIssue]::new("missing_minor_version", $checkMinorVersion, "Version v$($highestMinor.major).$($highestMinor.minor) does not exist")
+                $issue = [ValidationIssue]::new("missing_minor_version", $checkMinorVersion, "Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor")
                 $issue.Version = "v$($highestMinor.major).$($highestMinor.minor)"
                 $issue.ExpectedSha = $sourceShaForMinor
                 $issue.ManualFixCommand = $fixCmd
@@ -1194,11 +1108,6 @@ foreach ($majorVersion in $majorVersions)
                 } else {
                     $issue.RemediationAction = [CreateTagAction]::new("v$($highestMinor.major).$($highestMinor.minor)", $sourceShaForMinor)
                 }
-                
-                if (-not $autoFix)
-                {
-                    Write-ActionsMessage -Message "::$($checkMinorVersion) title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor" -Severity $checkMinorVersion
-                }
             }
         }
 
@@ -1206,7 +1115,7 @@ foreach ($majorVersion in $majorVersions)
         {
             $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor) --force"
             
-            $issue = [ValidationIssue]::new("incorrect_minor_version", $checkMinorVersion, "Version v$($highestMinor.major).$($highestMinor.minor) points to wrong SHA")
+            $issue = [ValidationIssue]::new("incorrect_minor_version", $checkMinorVersion, "Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha")
             $issue.Version = "v$($highestMinor.major).$($highestMinor.minor)"
             $issue.CurrentSha = $minorSha
             $issue.ExpectedSha = $patchSha
@@ -1219,11 +1128,6 @@ foreach ($majorVersion in $majorVersions)
                 $issue.RemediationAction = [UpdateBranchAction]::new("v$($highestMinor.major).$($highestMinor.minor)", $patchSha, $true)
             } else {
                 $issue.RemediationAction = [UpdateTagAction]::new("v$($highestMinor.major).$($highestMinor.minor)", $patchSha, $true)
-            }
-            
-            if (-not $autoFix)
-            {
-                Write-ActionsMessage -Message "::$($checkMinorVersion) title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha" -Severity $checkMinorVersion
             }
         }
     }
@@ -1245,7 +1149,7 @@ if ($useBranches) {
     if ($latestBranch -and ($latestBranch.sha -ne $highestVersion.sha)) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest --force"
         
-        $issue = [ValidationIssue]::new("incorrect_latest_branch", "error", "Latest branch points to wrong SHA")
+        $issue = [ValidationIssue]::new("incorrect_latest_branch", "error", "Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)")
         $issue.Version = "latest"
         $issue.CurrentSha = $latestBranch.sha
         $issue.ExpectedSha = $highestVersion.sha
@@ -1255,15 +1159,10 @@ if ($useBranches) {
         $issue.IsAutoFixable = $true
         # Use RemediationAction class
         $issue.RemediationAction = [UpdateBranchAction]::new("latest", $highestVersion.sha, $true)
-        
-        if (-not $autoFix)
-        {
-            Write-ActionsError "::error title=Incorrect version::Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-        }
     } elseif (-not $latestBranch -and $highestVersion) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest"
         
-        $issue = [ValidationIssue]::new("missing_latest_branch", "error", "Latest branch does not exist")
+        $issue = [ValidationIssue]::new("missing_latest_branch", "error", "Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)")
         $issue.Version = "latest"
         $issue.ExpectedSha = $highestVersion.sha
         $issue.ManualFixCommand = $fixCmd
@@ -1272,11 +1171,6 @@ if ($useBranches) {
         $issue.IsAutoFixable = $true
         # Use RemediationAction class
         $issue.RemediationAction = [CreateBranchAction]::new("latest", $highestVersion.sha)
-        
-        if (-not $autoFix)
-        {
-            Write-ActionsError "::error title=Missing version::Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-        }
     }
     
     # Warn if latest exists as a tag when we're using branches
@@ -1288,7 +1182,7 @@ if ($useBranches) {
     if ($latest -and $highestVersion -and ($latest.sha -ne $highestVersion.sha)) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/tags/latest --force"
         
-        $issue = [ValidationIssue]::new("incorrect_latest_tag", "error", "Latest tag points to wrong SHA")
+        $issue = [ValidationIssue]::new("incorrect_latest_tag", "error", "Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)")
         $issue.Version = "latest"
         $issue.CurrentSha = $latest.sha
         $issue.ExpectedSha = $highestVersion.sha
@@ -1298,11 +1192,6 @@ if ($useBranches) {
         $issue.IsAutoFixable = $true
         # Use RemediationAction class
         $issue.RemediationAction = [UpdateTagAction]::new("latest", $highestVersion.sha, $true)
-        
-        if (-not $autoFix)
-        {
-            Write-ActionsError "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
-        }
     }
     
     # Warn if latest exists as a branch when we're using tags
