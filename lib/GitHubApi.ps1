@@ -268,6 +268,8 @@ function Test-ImmutableReleaseError
                         return $true
                     }
                 }
+                # None of the structured errors matched, so this is not an immutable release error
+                return $false
             }
         }
         catch {
@@ -275,7 +277,7 @@ function Test-ImmutableReleaseError
         }
     }
     
-    # Fallback: check the exception message directly
+    # Fallback: check the exception message directly (only if ErrorDetails parsing failed or unavailable)
     return $ErrorRecord.Exception.Message -match "tag_name was used by an immutable release"
 }
 
@@ -464,8 +466,6 @@ function Publish-GitHubRelease
     }
     catch {
         $errorMessage = $_.Exception.Message
-        $isUnfixable = $false
-        
         $isUnfixable = Test-ImmutableReleaseError -ErrorRecord $_
         
         if ($isUnfixable) {
