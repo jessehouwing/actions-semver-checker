@@ -361,7 +361,6 @@ v2 is backward compatible with v1. The main differences:
 - **Configuration improvements:**
   - `floating-versions-use` replaces `use-branches` - Now accepts `tags` (default) or `branches`
   - Release suggestions include direct GitHub edit links
-  - Uses GitHub context via `GITHUB_CONTEXT` for better reliability
   - Link header-based pagination for better API performance
 
 - **Opt-in features:**
