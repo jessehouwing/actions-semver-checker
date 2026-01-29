@@ -38,7 +38,8 @@ Created 5 focused modules:
    - `Test-ReleaseImmutability`: Check if release is immutable
    - `Get-GitHubReleases`: Fetch all releases with pagination
    - `Remove-GitHubRelease`: Delete a release
-   - `New-GitHubDraftRelease`: Create draft release
+   - `New-GitHubRelease`: Create GitHub release (draft or published)
+   - `New-GitHubDraftRelease`: Alias for backward compatibility
    - `Publish-GitHubRelease`: Publish a release
    - `New-GitHubRef`: Create/update git references
    - `Remove-GitHubRef`: Delete git references
