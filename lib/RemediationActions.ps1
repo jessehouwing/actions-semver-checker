@@ -59,34 +59,66 @@ class CreateReleaseAction : RemediationAction {
     }
     
     [bool] Execute([RepositoryState]$state) {
-        Write-Host "Auto-fix: Create draft release for $($this.TagName)"
-        $releaseId = New-GitHubDraftRelease -State $state -TagName $this.TagName
-        
-        if ($releaseId) {
-            Write-Host "✓ Success: Created draft release for $($this.TagName)"
+        # If AutoPublish is enabled, create directly as published (non-draft)
+        # This avoids the issue where a tag locked by a deleted immutable release
+        # can't have a draft release published later
+        if ($this.AutoPublish) {
+            Write-Host "Auto-fix: Create and publish release for $($this.TagName)"
+            $result = New-GitHubDraftRelease -State $state -TagName $this.TagName -Draft $false
             
-            # If AutoPublish is enabled, publish the release immediately
-            if ($this.AutoPublish) {
-                Write-Host "Auto-fix: Publish draft release for $($this.TagName)"
-                $publishResult = Publish-GitHubRelease -State $state -TagName $this.TagName -ReleaseId $releaseId
-                
-                if ($publishResult.Success) {
-                    Write-Host "✓ Success: Published release for $($this.TagName)"
-                    return $true
+            if ($result.Success) {
+                Write-Host "✓ Success: Created and published release for $($this.TagName)"
+                return $true
+            } else {
+                # Check if this is an unfixable error (422 - tag used by immutable release)
+                if ($result.Unfixable) {
+                    Write-Host "✗ Unfixable: Cannot create release for $($this.TagName) - tag was previously used by an immutable release"
+                    # Find this issue in the state and mark it as unfixable
+                    $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "missing_release" } | Select-Object -First 1
+                    if ($issue) {
+                        $issue.Status = "unfixable"
+                        # Update message to be more helpful
+                        $issue.Message = "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list."
+                    }
                 } else {
-                    Write-Host "✗ Failed: Publish release for $($this.TagName)"
-                    return $false
+                    Write-Host "✗ Failed: Create and publish release for $($this.TagName)"
                 }
+                return $false
             }
-            
-            return $true
         } else {
-            Write-Host "✗ Failed: Create draft release for $($this.TagName)"
-            return $false
+            # Create as draft
+            Write-Host "Auto-fix: Create draft release for $($this.TagName)"
+            $result = New-GitHubDraftRelease -State $state -TagName $this.TagName -Draft $true
+            
+            if ($result.Success) {
+                Write-Host "✓ Success: Created draft release for $($this.TagName)"
+                return $true
+            } else {
+                # Check if this is an unfixable error (422 - tag used by immutable release)
+                if ($result.Unfixable) {
+                    Write-Host "✗ Unfixable: Cannot create release for $($this.TagName) - tag was previously used by an immutable release"
+                    # Find this issue in the state and mark it as unfixable
+                    $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "missing_release" } | Select-Object -First 1
+                    if ($issue) {
+                        $issue.Status = "unfixable"
+                        # Update message to be more helpful
+                        $issue.Message = "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list."
+                    }
+                } else {
+                    Write-Host "✗ Failed: Create draft release for $($this.TagName)"
+                }
+                return $false
+            }
         }
     }
     
     [string[]] GetManualCommands([RepositoryState]$state) {
+        # Check if the issue is unfixable - if so, return empty array
+        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "missing_release" } | Select-Object -First 1
+        if ($issue -and $issue.Status -eq "unfixable") {
+            return @()
+        }
+        
         if ($this.AutoPublish) {
             # Create and immediately publish
             return @(

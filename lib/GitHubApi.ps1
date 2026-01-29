@@ -290,17 +290,18 @@ function New-GitHubDraftRelease
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
-        [string]$TagName
+        [string]$TagName,
+        [bool]$Draft = $true
     )
     
     try {
         # Get repo info from State
         $repoInfo = Get-GitHubRepoInfo -State $State
         if (-not $repoInfo) {
-            return $null
+            return @{ Success = $false; ReleaseId = $null; Unfixable = $false }
         }
         
-        # Create a draft release
+        # Create a release (draft or published based on parameter)
         $headers = Get-ApiHeaders -Token $State.Token
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases"
         
@@ -308,7 +309,7 @@ function New-GitHubDraftRelease
             tag_name = $TagName
             name = $TagName
             body = "Release $TagName"
-            draft = $true
+            draft = $Draft
         } | ConvertTo-Json
         
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
@@ -318,13 +319,28 @@ function New-GitHubDraftRelease
             $releaseObj = Invoke-RestMethod -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         }
         
-        # Return the release ID so it can be used for publishing
-        return $releaseObj.id
+        # Return success with the release ID
+        return @{ Success = $true; ReleaseId = $releaseObj.id; Unfixable = $false }
     }
     catch {
-        # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to create draft release for $TagName : "
-        return $null
+        $errorMessage = $_.Exception.Message
+        $isUnfixable = $false
+        
+        # Check if this is a 422 error about tag_name being used by an immutable release
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
+        
+        # Check for the specific error condition
+        if (($statusCode -eq 422 -or $errorMessage -match "422") -and $errorMessage -match "tag_name was used by an immutable release") {
+            $isUnfixable = $true
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
+        } else {
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to create release for $TagName : "
+        }
+        
+        return @{ Success = $false; ReleaseId = $null; Unfixable = $isUnfixable }
     }
 }
 
