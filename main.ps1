@@ -853,28 +853,18 @@ foreach ($majorVersion in $majorVersions)
     {
         if ($majorVersion_obj -and $majorVersion_obj.ref -match "^refs/tags/")
         {
-            $fixCmd = "git branch v$($majorVersion.major) $majorSha && git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major) && git push origin :refs/tags/v$($majorVersion.major)"
-            
             $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled")
             $issue.Version = "v$($majorVersion.major)"
-            $issue.ManualFixCommand = $fixCmd
+            $issue.SetRemediationAction([ConvertTagToBranchAction]::new("v$($majorVersion.major)", $majorSha))
             $State.AddIssue($issue)
-            
-            # Note: Not auto-fixable - requires creating branch AND deleting tag in sequence
-            $issue.IsAutoFixable = $false
         }
         
         if ($minorVersion_obj -and $minorVersion_obj.ref -match "^refs/tags/")
         {
-            $fixCmd = "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha && git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor) && git push origin :refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
-            
             $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled")
             $issue.Version = "v$($majorVersion.major).$($highestMinor.minor)"
-            $issue.ManualFixCommand = $fixCmd
+            $issue.SetRemediationAction([ConvertTagToBranchAction]::new("v$($majorVersion.major).$($highestMinor.minor)", $minorSha))
             $State.AddIssue($issue)
-            
-            # Note: Not auto-fixable - requires creating branch AND deleting tag in sequence
-            $issue.IsAutoFixable = $false
         }
     }
 
