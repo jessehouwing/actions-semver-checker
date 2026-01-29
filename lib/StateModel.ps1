@@ -142,6 +142,47 @@ class ValidationIssue {
 }
 
 #############################################################################
+# State Diff Class
+#############################################################################
+
+class StateDiff {
+    [string]$Action       # "create", "update", "delete"
+    [string]$RefType      # "tag", "branch", "release"
+    [string]$Version
+    [string]$CurrentSha   # Current SHA (empty for create)
+    [string]$DesiredSha   # Desired SHA (empty for delete)
+    [string]$Reason
+    
+    StateDiff([string]$action, [string]$refType, [string]$version, [string]$currentSha, [string]$desiredSha, [string]$reason) {
+        $this.Action = $action
+        $this.RefType = $refType
+        $this.Version = $version
+        $this.CurrentSha = $currentSha
+        $this.DesiredSha = $desiredSha
+        $this.Reason = $reason
+    }
+    
+    [string]ToString() {
+        $shaInfo = ""
+        if ($this.Action -eq "create") {
+            $shortSha = if ($this.DesiredSha) { $this.DesiredSha.Substring(0, [Math]::Min(7, $this.DesiredSha.Length)) } else { "" }
+            $shaInfo = " → $shortSha"
+        }
+        elseif ($this.Action -eq "update") {
+            $currentShort = if ($this.CurrentSha) { $this.CurrentSha.Substring(0, [Math]::Min(7, $this.CurrentSha.Length)) } else { "" }
+            $desiredShort = if ($this.DesiredSha) { $this.DesiredSha.Substring(0, [Math]::Min(7, $this.DesiredSha.Length)) } else { "" }
+            $shaInfo = " $currentShort → $desiredShort"
+        }
+        elseif ($this.Action -eq "delete") {
+            $shortSha = if ($this.CurrentSha) { $this.CurrentSha.Substring(0, [Math]::Min(7, $this.CurrentSha.Length)) } else { "" }
+            $shaInfo = " $shortSha"
+        }
+        
+        return "$($this.RefType) $($this.Version)$shaInfo - $($this.Reason)"
+    }
+}
+
+#############################################################################
 # Repository State Class
 #############################################################################
 
@@ -415,6 +456,160 @@ function Write-ValidationSummary {
         Write-Host ""
     }
     
+    Write-Host ("=" * 77)
+    Write-Host ""
+}
+
+function Get-StateDiff {
+    <#
+    .SYNOPSIS
+    Calculate the difference between current and desired state based on validation issues.
+    
+    .PARAMETER State
+    The repository state object containing issues.
+    
+    .OUTPUTS
+    Array of StateDiff objects representing planned changes.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State
+    )
+    
+    $diffs = @()
+    
+    # Convert ValidationIssues to StateDiffs
+    foreach ($issue in $State.Issues) {
+        # Skip issues that don't have a fix command (not fixable)
+        if (-not $issue.ManualFixCommand -and -not $issue.Version) {
+            continue
+        }
+        
+        # Determine action type based on issue type
+        if ($issue.Type -match "missing") {
+            # Create action
+            $refType = "tag"
+            if ($issue.Type -match "branch") {
+                $refType = "branch"
+            }
+            elseif ($issue.Type -match "release") {
+                $refType = "release"
+            }
+            
+            $diff = [StateDiff]::new(
+                "create",
+                $refType,
+                $issue.Version,
+                "",
+                $issue.ExpectedSha,
+                $issue.Message
+            )
+            $diffs += $diff
+        }
+        elseif ($issue.Type -match "mismatch" -or $issue.Type -match "incorrect") {
+            # Update action
+            $refType = "tag"
+            if ($issue.Type -match "branch") {
+                $refType = "branch"
+            }
+            
+            $diff = [StateDiff]::new(
+                "update",
+                $refType,
+                $issue.Version,
+                $issue.CurrentSha,
+                $issue.ExpectedSha,
+                $issue.Message
+            )
+            $diffs += $diff
+        }
+        elseif ($issue.Type -match "delete" -or $issue.Type -match "remove") {
+            # Delete action
+            $refType = "release"
+            if ($issue.Type -match "tag") {
+                $refType = "tag"
+            }
+            elseif ($issue.Type -match "branch") {
+                $refType = "branch"
+            }
+            
+            $diff = [StateDiff]::new(
+                "delete",
+                $refType,
+                $issue.Version,
+                $issue.CurrentSha,
+                "",
+                $issue.Message
+            )
+            $diffs += $diff
+        }
+    }
+    
+    return $diffs
+}
+
+function Write-StateDiff {
+    <#
+    .SYNOPSIS
+    Display a visual diff of planned changes.
+    
+    .PARAMETER Diffs
+    Array of StateDiff objects to display.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [StateDiff[]]$Diffs
+    )
+    
+    if ($Diffs.Count -eq 0) {
+        return
+    }
+    
+    Write-Host ""
+    Write-Host ("=" * 77)
+    Write-Host " Planned Changes (Auto-fix Preview)"
+    Write-Host ("=" * 77)
+    Write-Host ""
+    
+    # Group by action
+    $creates = $Diffs | Where-Object { $_.Action -eq "create" }
+    $updates = $Diffs | Where-Object { $_.Action -eq "update" }
+    $deletes = $Diffs | Where-Object { $_.Action -eq "delete" }
+    
+    # Show creates (green)
+    if ($creates.Count -gt 0) {
+        Write-Host "CREATE ($($creates.Count)):" -ForegroundColor Green
+        foreach ($diff in $creates) {
+            Write-Host "  + $($diff.ToString())" -ForegroundColor Green
+        }
+        Write-Host ""
+    }
+    
+    # Show updates (yellow)
+    if ($updates.Count -gt 0) {
+        Write-Host "UPDATE ($($updates.Count)):" -ForegroundColor Yellow
+        foreach ($diff in $updates) {
+            Write-Host "  ~ $($diff.ToString())" -ForegroundColor Yellow
+        }
+        Write-Host ""
+    }
+    
+    # Show deletes (red)
+    if ($deletes.Count -gt 0) {
+        Write-Host "DELETE ($($deletes.Count)):" -ForegroundColor Red
+        foreach ($diff in $deletes) {
+            Write-Host "  - $($diff.ToString())" -ForegroundColor Red
+        }
+        Write-Host ""
+    }
+    
+    # Summary
+    Write-Host ("=" * 77)
+    Write-Host "Total changes: $($Diffs.Count) " -NoNewline
+    if ($creates.Count -gt 0) { Write-Host "(+$($creates.Count) create) " -NoNewline -ForegroundColor Green }
+    if ($updates.Count -gt 0) { Write-Host "(~$($updates.Count) update) " -NoNewline -ForegroundColor Yellow }
+    if ($deletes.Count -gt 0) { Write-Host "(-$($deletes.Count) delete) " -NoNewline -ForegroundColor Red }
+    Write-Host ""
     Write-Host ("=" * 77)
     Write-Host ""
 }
