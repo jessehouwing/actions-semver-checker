@@ -229,7 +229,8 @@ function Remove-GitHubRelease
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
-        [string]$TagName
+        [string]$TagName,
+        [int]$ReleaseId = 0
     )
     
     try {
@@ -239,19 +240,35 @@ function Remove-GitHubRelease
             return $false
         }
         
-        # First, get the release ID for this tag
         $headers = Get-ApiHeaders -Token $State.Token
-        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/tags/$TagName"
+        $releaseIdToDelete = $ReleaseId
         
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
-        } else {
-            $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+        # If ReleaseId not provided, look it up by tag name
+        # This handles both draft releases (which may not have tags yet) and regular releases
+        if ($releaseIdToDelete -eq 0) {
+            # Try to find the release ID from State.Releases first (more reliable for drafts)
+            $releaseFromState = $State.Releases | Where-Object { $_.TagName -eq $TagName } | Select-Object -First 1
+            if ($releaseFromState) {
+                $releaseIdToDelete = $releaseFromState.Id
+                Write-Host "::debug::Found release ID $releaseIdToDelete for $TagName from State"
+            } else {
+                # Fall back to API lookup by tag name (may fail for draft releases without tags)
+                Write-Host "::debug::Looking up release by tag name: $TagName"
+                $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/tags/$TagName"
+                
+                if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                    $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                } else {
+                    $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                }
+                $release = $response.Content | ConvertFrom-Json
+                $releaseIdToDelete = $release.id
+            }
         }
-        $release = $response.Content | ConvertFrom-Json
         
-        # Now delete the release
-        $deleteUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$($release.id)"
+        # Delete the release using the ID
+        $deleteUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$releaseIdToDelete"
+        Write-Host "::debug::Deleting release ID $releaseIdToDelete for $TagName"
         
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $deleteResponse = Invoke-WebRequestWrapper -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
@@ -263,7 +280,7 @@ function Remove-GitHubRelease
     }
     catch {
         # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to delete release for $TagName : "
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to delete release for $TagName (ID: $ReleaseId) : "
         return $false
     }
 }
