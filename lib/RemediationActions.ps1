@@ -37,22 +37,53 @@ class RemediationAction {
 }
 
 #############################################################################
+# Release Actions Base Class
+#############################################################################
+
+class ReleaseRemediationAction : RemediationAction {
+    [string]$TagName
+    
+    ReleaseRemediationAction([string]$description, [string]$tagName) : base($description, $tagName) {
+        $this.TagName = $tagName
+    }
+    
+    # Helper method to check if an API result indicates unfixable error (422 - tag used by immutable release)
+    hidden [bool] IsUnfixableError([hashtable]$result) {
+        return $result.ContainsKey('Unfixable') -and $result.Unfixable -eq $true
+    }
+    
+    # Helper method to mark an issue as unfixable
+    hidden [void] MarkAsUnfixable([RepositoryState]$state, [string]$issueType, [string]$message) {
+        Write-Host "✗ Unfixable: $message"
+        # Find this issue in the state and mark it as unfixable
+        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq $issueType } | Select-Object -First 1
+        if ($issue) {
+            $issue.Status = "unfixable"
+            $issue.Message = $message
+        }
+    }
+    
+    # Helper method to check if issue is unfixable (for GetManualCommands)
+    hidden [bool] IsIssueUnfixable([RepositoryState]$state, [string]$issueType) {
+        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq $issueType } | Select-Object -First 1
+        return $issue -and $issue.Status -eq "unfixable"
+    }
+}
+
+#############################################################################
 # Release Actions
 #############################################################################
 
-class CreateReleaseAction : RemediationAction {
-    [string]$TagName
+class CreateReleaseAction : ReleaseRemediationAction {
     [bool]$AutoPublish = $false  # If true, create directly as published (non-draft)
     
     CreateReleaseAction([string]$tagName, [bool]$isDraft) : base("Create release", $tagName) {
-        $this.TagName = $tagName
         # If isDraft is false, it means we want to publish, so set AutoPublish to true
         $this.AutoPublish = -not $isDraft
         $this.Priority = 30  # Create after tags
     }
     
     CreateReleaseAction([string]$tagName, [bool]$isDraft, [bool]$autoPublish) : base("Create release", $tagName) {
-        $this.TagName = $tagName
         $this.AutoPublish = $autoPublish
         $this.Priority = 30  # Create after tags
     }
@@ -72,8 +103,8 @@ class CreateReleaseAction : RemediationAction {
             return $true
         } else {
             # Check if this is an unfixable error and mark it accordingly
-            if ($result.Unfixable) {
-                $this.MarkAsUnfixable($state, "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
+            if ($this.IsUnfixableError($result)) {
+                $this.MarkAsUnfixable($state, "missing_release", "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
             } else {
                 Write-Host "✗ Failed: $actionDesc for $($this.TagName)"
             }
@@ -81,21 +112,9 @@ class CreateReleaseAction : RemediationAction {
         }
     }
     
-    # Helper method to mark an issue as unfixable
-    hidden [void] MarkAsUnfixable([RepositoryState]$state, [string]$message) {
-        Write-Host "✗ Unfixable: Cannot create release for $($this.TagName) - tag was previously used by an immutable release"
-        # Find this issue in the state and mark it as unfixable
-        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "missing_release" } | Select-Object -First 1
-        if ($issue) {
-            $issue.Status = "unfixable"
-            $issue.Message = $message
-        }
-    }
-    
     [string[]] GetManualCommands([RepositoryState]$state) {
         # Check if the issue is unfixable - if so, return empty array
-        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "missing_release" } | Select-Object -First 1
-        if ($issue -and $issue.Status -eq "unfixable") {
+        if ($this.IsIssueUnfixable($state, "missing_release")) {
             return @()
         }
         
@@ -113,18 +132,15 @@ class CreateReleaseAction : RemediationAction {
     }
 }
 
-class PublishReleaseAction : RemediationAction {
-    [string]$TagName
+class PublishReleaseAction : ReleaseRemediationAction {
     [int]$ReleaseId
     
     PublishReleaseAction([string]$tagName) : base("Publish release", $tagName) {
-        $this.TagName = $tagName
         $this.ReleaseId = 0  # Will be looked up if needed
         $this.Priority = 40  # Publish after creation
     }
     
     PublishReleaseAction([string]$tagName, [int]$releaseId) : base("Publish release", $tagName) {
-        $this.TagName = $tagName
         $this.ReleaseId = $releaseId
         $this.Priority = 40  # Publish after creation
     }
@@ -138,15 +154,8 @@ class PublishReleaseAction : RemediationAction {
             return $true
         } else {
             # Check if this is an unfixable error (422 - tag used by immutable release)
-            if ($result.Unfixable) {
-                Write-Host "✗ Unfixable: Cannot publish release for $($this.TagName) - tag was previously used by an immutable release"
-                # Find this issue in the state and mark it as unfixable
-                $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "draft_release" } | Select-Object -First 1
-                if ($issue) {
-                    $issue.Status = "unfixable"
-                    # Update message to be more helpful
-                    $issue.Message = "Release $($this.TagName) cannot be published because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list."
-                }
+            if ($this.IsUnfixableError($result)) {
+                $this.MarkAsUnfixable($state, "draft_release", "Release $($this.TagName) cannot be published because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
             } else {
                 Write-Host "✗ Failed: Publish release for $($this.TagName)"
             }
@@ -157,19 +166,16 @@ class PublishReleaseAction : RemediationAction {
     
     [string[]] GetManualCommands([RepositoryState]$state) {
         # Check if the issue is unfixable - if so, return empty array
-        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "draft_release" } | Select-Object -First 1
-        if ($issue -and $issue.Status -eq "unfixable") {
+        if ($this.IsIssueUnfixable($state, "draft_release")) {
             return @()
         }
         return @("gh release edit $($this.TagName) --draft=false")
     }
 }
 
-class RepublishReleaseAction : RemediationAction {
-    [string]$TagName
+class RepublishReleaseAction : ReleaseRemediationAction {
     
     RepublishReleaseAction([string]$tagName) : base("Republish release for immutability", $tagName) {
-        $this.TagName = $tagName
         $this.Priority = 45  # Republish after other release operations
     }
     
@@ -181,12 +187,21 @@ class RepublishReleaseAction : RemediationAction {
             Write-Host "✓ Success: Republished release for $($this.TagName)"
             return $true
         } else {
-            Write-Host "✗ Failed: Republish release for $($this.TagName) - $($result.Reason)"
+            # Check if this is an unfixable error (422 - tag used by immutable release)
+            if ($this.IsUnfixableError($result)) {
+                $this.MarkAsUnfixable($state, "non_immutable_release", "Release $($this.TagName) cannot be republished because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
+            } else {
+                Write-Host "✗ Failed: Republish release for $($this.TagName) - $($result.Reason)"
+            }
             return $false
         }
     }
     
     [string[]] GetManualCommands([RepositoryState]$state) {
+        # Check if the issue is unfixable - if so, return empty array
+        if ($this.IsIssueUnfixable($state, "non_immutable_release")) {
+            return @()
+        }
         return @(
             "gh release edit $($this.TagName) --draft=true",
             "gh release edit $($this.TagName) --draft=false"
@@ -194,12 +209,10 @@ class RepublishReleaseAction : RemediationAction {
     }
 }
 
-class DeleteReleaseAction : RemediationAction {
-    [string]$TagName
+class DeleteReleaseAction : ReleaseRemediationAction {
     [int]$ReleaseId
     
     DeleteReleaseAction([string]$tagName, [int]$releaseId) : base("Delete release", $tagName) {
-        $this.TagName = $tagName
         $this.ReleaseId = $releaseId
         $this.Priority = 10  # Delete first
     }
