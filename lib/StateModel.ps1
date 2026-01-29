@@ -144,6 +144,11 @@ class ValidationIssue {
         $this.Dependencies = @()
         $this.Status = "pending"
     }
+
+    [void]SetRemediationAction([object]$remediationAction) {
+        $this.RemediationAction = $remediationAction
+        $this.IsAutoFixable = $null -ne $remediationAction
+    }
     
     [string]ToString() {
         return "$($this.Severity.ToUpper()): $($this.Message)"
