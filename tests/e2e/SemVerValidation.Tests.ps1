@@ -330,7 +330,7 @@ Describe "SemVer Checker" {
     }
     
     Context "When repo only has a major version tag (e.g., v1)" {
-        It "Should suggest creating patch version (v1.0.0) when check-minor-version is true" {
+        It "Should suggest creating patch version (v1.0.0) and minor version (v1.0) when check-minor-version is true" {
             # Arrange: Create only v1 tag
             $commitSha = Get-CommitSha
             git tag v1
@@ -344,8 +344,8 @@ Describe "SemVer Checker" {
             # Should suggest creating v1.0.0
             $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1.0.0"
             
-            # TODO: According to issue requirements, should also suggest v1.0 when check-minor-version is true
-            # Currently the script only suggests v1.0.0
+            # Should also suggest creating v1.0 when check-minor-version is true
+            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1.0[^.]"
         }
         
         It "Should suggest creating only patch version (v1.0.0) when check-minor-version is false" {
