@@ -621,7 +621,7 @@ function Publish-GitHubRelease
     try {
         # Use the pre-obtained repo info
         if (-not $script:repoInfo) {
-            return $false
+            return @{ Success = $false; Unfixable = $false }
         }
         
         $headers = Get-ApiHeaders -Token $script:token
@@ -651,12 +651,21 @@ function Publish-GitHubRelease
             $response = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         }
         
-        return $true
+        return @{ Success = $true; Unfixable = $false }
     }
     catch {
-        # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to publish release for $TagName : "
-        return $false
+        $errorMessage = $_.Exception.Message
+        $isUnfixable = $false
+        
+        # Check if this is a 422 error about tag_name being used by an immutable release
+        if ($errorMessage -match "422" -and $errorMessage -match "tag_name was used by an immutable release") {
+            $isUnfixable = $true
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
+        } else {
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to publish release for $TagName : "
+        }
+        
+        return @{ Success = $false; Unfixable = $isUnfixable }
     }
 }
 
@@ -920,12 +929,36 @@ if ($checkReleases -ne "none")
                         # Now try to publish the draft release
                         $publishDescription = "Publish draft release for $($tagVersion.version)"
                         Write-Host "Auto-fix: $publishDescription"
-                        $publishSuccess = Publish-GitHubRelease -TagName $tagVersion.version -ReleaseId $releaseId
+                        $publishResult = Publish-GitHubRelease -TagName $tagVersion.version -ReleaseId $releaseId
                         
-                        if ($publishSuccess)
+                        if ($publishResult.Success)
                         {
                             Write-Host "✓ Success: $publishDescription"
                             $script:fixedIssues++
+                        }
+                        elseif ($publishResult.Unfixable)
+                        {
+                            Write-Host "✗ Unfixable: $publishDescription (tag used by immutable release)"
+                            $script:unfixableIssues++
+                            
+                            # The tag is already used by an immutable release
+                            # The only solution is to delete the release and create a new version
+                            if ($tagVersion.version -match "^v(\d+)\.(\d+)\.(\d+)$") {
+                                $major = $matches[1]
+                                $minor = $matches[2]
+                                $patch = [int]$matches[3] + 1
+                                $nextVersion = "v$major.$minor.$patch"
+                                
+                                $suggestedCommands += "# Delete the immutable release (if possible) and create a new version:"
+                                $suggestedCommands += "gh release delete $($tagVersion.version) --yes"
+                                $suggestedCommands += "git tag -d $($tagVersion.version)"
+                                $suggestedCommands += "git push origin :refs/tags/$($tagVersion.version)"
+                                $suggestedCommands += "# Create new patch version $nextVersion with updated changes:"
+                                $suggestedCommands += "git tag $nextVersion"
+                                $suggestedCommands += "git push origin $nextVersion"
+                                $suggestedCommands += "gh release create $nextVersion --draft --title `"$nextVersion`" --notes `"Release $nextVersion`""
+                                $suggestedCommands += "gh release edit $nextVersion --draft=false"
+                            }
                         }
                         else
                         {
@@ -990,12 +1023,36 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                 {
                     $publishDescription = "Publish draft release for $($release.tagName)"
                     Write-Host "Auto-fix: $publishDescription"
-                    $publishSuccess = Publish-GitHubRelease -TagName $release.tagName -ReleaseId $release.id
+                    $publishResult = Publish-GitHubRelease -TagName $release.tagName -ReleaseId $release.id
                     
-                    if ($publishSuccess)
+                    if ($publishResult.Success)
                     {
                         Write-Host "✓ Success: $publishDescription"
                         $script:fixedIssues++
+                    }
+                    elseif ($publishResult.Unfixable)
+                    {
+                        Write-Host "✗ Unfixable: $publishDescription (tag used by immutable release)"
+                        $script:unfixableIssues++
+                        
+                        # The tag is already used by an immutable release
+                        # The only solution is to delete the release and create a new version
+                        if ($release.tagName -match "^v(\d+)\.(\d+)\.(\d+)$") {
+                            $major = $matches[1]
+                            $minor = $matches[2]
+                            $patch = [int]$matches[3] + 1
+                            $nextVersion = "v$major.$minor.$patch"
+                            
+                            $suggestedCommands += "# Delete the immutable release (if possible) and create a new version:"
+                            $suggestedCommands += "gh release delete $($release.tagName) --yes"
+                            $suggestedCommands += "git tag -d $($release.tagName)"
+                            $suggestedCommands += "git push origin :refs/tags/$($release.tagName)"
+                            $suggestedCommands += "# Create new patch version $nextVersion with updated changes:"
+                            $suggestedCommands += "git tag $nextVersion"
+                            $suggestedCommands += "git push origin $nextVersion"
+                            $suggestedCommands += "gh release create $nextVersion --draft --title `"$nextVersion`" --notes `"Release $nextVersion`""
+                            $suggestedCommands += "gh release edit $nextVersion --draft=false"
+                        }
                     }
                     else
                     {
