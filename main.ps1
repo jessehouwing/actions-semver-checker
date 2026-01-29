@@ -790,13 +790,13 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                                 $issue.Status = "failed"
                                 write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but is not immutable. Failed to republish: $($republishResult.Reason)"
                                 $suggestedCommands += "# Manually republish release $($release.tagName) to make it immutable"
-                                $suggestedCommands += "gh api -X PATCH /repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$($release.id) -f draft=true"
-                                $suggestedCommands += "gh api -X PATCH /repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$($release.id) -f draft=false"
+                                $suggestedCommands += "gh release edit $($release.tagName) --draft=true"
+                                $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
                             }
                         } else {
                             # Just warn if auto-fix or immutability check is not enabled
                             if ($checkReleaseImmutability -ne "none") {
-                                write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but remains mutable and can be modified via force-push. Consider using 'gh attestation' to make it truly immutable, or enable 'auto-fix' to automatically republish."
+                                write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but remains mutable and can be modified via force-push. Enable 'auto-fix' to automatically republish, or see: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/preventing-changes-to-your-releases"
                             }
                         }
                     }
