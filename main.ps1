@@ -496,6 +496,7 @@ function Get-GitHubReleases
             # Collect releases
             foreach ($release in $releases) {
                 $allReleases += @{
+                    id = $release.id
                     tagName = $release.tag_name
                     isPrerelease = $release.prerelease
                     isDraft = $release.draft
@@ -578,7 +579,7 @@ function New-GitHubDraftRelease
     try {
         # Use the pre-obtained repo info
         if (-not $script:repoInfo) {
-            return $false
+            return $null
         }
         
         # Create a draft release
@@ -595,22 +596,26 @@ function New-GitHubDraftRelease
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         } else {
-            $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            $responseObj = Invoke-RestMethod -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            $response = $responseObj
         }
         
-        return $true
+        # Return the release ID so it can be used for publishing
+        return $response.id
     }
     catch {
         # Wrap exception message in stop-commands to prevent workflow command injection
         Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to create draft release for $TagName : "
-        return $false
+        return $null
     }
 }
 
 function Publish-GitHubRelease
 {
     param(
-        [string]$TagName
+        [string]$TagName,
+        [Parameter(Mandatory=$false)]
+        [int]$ReleaseId
     )
     
     try {
@@ -619,20 +624,23 @@ function Publish-GitHubRelease
             return $false
         }
         
-        # First, get the release ID for this tag
         $headers = Get-ApiHeaders -Token $script:token
-        $releasesUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/tags/$TagName"
         
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $releaseResponse = Invoke-WebRequestWrapper -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
-        } else {
-            $releaseResponse = Invoke-RestMethod -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+        # If ReleaseId is not provided, fetch it by tag name
+        if (-not $ReleaseId) {
+            $releasesUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/tags/$TagName"
+            
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                $releaseResponse = Invoke-WebRequestWrapper -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+            } else {
+                $releaseResponse = Invoke-RestMethod -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+            }
+            
+            $ReleaseId = $releaseResponse.id
         }
         
-        $releaseId = $releaseResponse.id
-        
         # Update the release to publish it (set draft to false)
-        $updateUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/$releaseId"
+        $updateUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/$ReleaseId"
         $body = @{
             draft = $false
         } | ConvertTo-Json
@@ -640,7 +648,7 @@ function Publish-GitHubRelease
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $response = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         } else {
-            $response = Invoke-WebRequest -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            $response = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         }
         
         return $true
@@ -902,9 +910,9 @@ if ($checkReleases -ne "none")
                 {
                     $fixDescription = "Create draft release for $($tagVersion.version)"
                     Write-Host "Auto-fix: $fixDescription"
-                    $createSuccess = New-GitHubDraftRelease -TagName $tagVersion.version
+                    $releaseId = New-GitHubDraftRelease -TagName $tagVersion.version
                     
-                    if ($createSuccess)
+                    if ($releaseId)
                     {
                         Write-Host "✓ Success: $fixDescription"
                         $script:fixedIssues++
@@ -912,7 +920,7 @@ if ($checkReleases -ne "none")
                         # Now try to publish the draft release
                         $publishDescription = "Publish draft release for $($tagVersion.version)"
                         Write-Host "Auto-fix: $publishDescription"
-                        $publishSuccess = Publish-GitHubRelease -TagName $tagVersion.version
+                        $publishSuccess = Publish-GitHubRelease -TagName $tagVersion.version -ReleaseId $releaseId
                         
                         if ($publishSuccess)
                         {
@@ -982,7 +990,7 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                 {
                     $publishDescription = "Publish draft release for $($release.tagName)"
                     Write-Host "Auto-fix: $publishDescription"
-                    $publishSuccess = Publish-GitHubRelease -TagName $release.tagName
+                    $publishSuccess = Publish-GitHubRelease -TagName $release.tagName -ReleaseId $release.id
                     
                     if ($publishSuccess)
                     {
