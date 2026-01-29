@@ -36,10 +36,6 @@ inputs:
     description: "Comma-separated list of versions to ignore during validation (e.g., 'v1.0.0,v2.0.0'). Useful for skipping legacy or problematic versions."
     required: false
     default: ""
-  republish-for-immutability:
-    description: "When immutable releases are enabled, re-publish non-immutable patch version releases to make them immutable (options: [true, false], default: false)."
-    required: false
-    default: "false"
 
 runs:
   using: "composite"

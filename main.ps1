@@ -120,7 +120,6 @@ try {
     } else { 
         @() 
     }
-    $republishForImmutability = (($inputs.'republish-for-immutability' ?? "false") -as [string]).Trim() -eq "true"
     
     # Set configuration in State
     $script:State.CheckMinorVersion = ($checkMinorVersion -ne "none")
@@ -130,7 +129,6 @@ try {
     $script:State.FloatingVersionsUse = $floatingVersionsUse
     $script:State.AutoFix = $autoFix
     $script:State.IgnoreVersions = $ignoreVersions
-    $script:State.RepublishForImmutability = $republishForImmutability
 }
 catch {
     Write-Host "::error::Failed to parse inputs JSON"
@@ -146,7 +144,6 @@ Write-Host "::debug::check-release-immutability: $checkReleaseImmutability"
 Write-Host "::debug::ignore-preview-releases: $ignorePreviewReleases"
 Write-Host "::debug::floating-versions-use: $floatingVersionsUse"
 Write-Host "::debug::ignore-versions: $($ignoreVersions -join ', ')"
-Write-Host "::debug::republish-for-immutability: $republishForImmutability"
 
 # Validate inputs
 if ($checkMinorVersion -notin @("error", "warning", "none")) {
@@ -774,38 +771,33 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                         # Non-draft release that is not immutable can still be force-pushed
                         
                         # Check if we should republish for immutability
-                        if ($republishForImmutability) {
+                        # Only if check-release-immutability is enabled (error or warning) and auto-fix is enabled
+                        if ($checkReleaseImmutability -ne "none" -and $autoFix) {
                             # Try to republish the release to make it immutable
                             $issue = [ValidationIssue]::new("non_immutable_release", "warning", "Release $($release.tagName) is not immutable")
                             $issue.Version = $release.tagName
                             $State.AddIssue($issue)
                             
-                            if ($autoFix) {
-                                $fixDescription = "Republish release $($release.tagName) to make it immutable"
-                                Write-Host "Auto-fix: $fixDescription"
-                                $republishResult = Republish-GitHubRelease -State $State -TagName $release.tagName
-                                
-                                if ($republishResult.Success) {
-                                    Write-Host "✓ Success: $fixDescription"
-                                    $issue.Status = "fixed"
-                                } else {
-                                    Write-Host "✗ Failed: $fixDescription ($($republishResult.Reason))"
-                                    $issue.Status = "failed"
-                                    write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but is not immutable. Failed to republish: $($republishResult.Reason)"
-                                    $suggestedCommands += "# Manually republish release $($release.tagName) to make it immutable"
-                                    $suggestedCommands += "gh api -X PATCH /repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$($release.id) -f draft=true"
-                                    $suggestedCommands += "gh api -X PATCH /repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$($release.id) -f draft=false"
-                                }
+                            $fixDescription = "Republish release $($release.tagName) to make it immutable"
+                            Write-Host "Auto-fix: $fixDescription"
+                            $republishResult = Republish-GitHubRelease -State $State -TagName $release.tagName
+                            
+                            if ($republishResult.Success) {
+                                Write-Host "✓ Success: $fixDescription"
+                                $issue.Status = "fixed"
                             } else {
-                                $issue.Status = "unfixable"
-                                write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but is not immutable. Enable auto-fix and republish-for-immutability to fix."
+                                Write-Host "✗ Failed: $fixDescription ($($republishResult.Reason))"
+                                $issue.Status = "failed"
+                                write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but is not immutable. Failed to republish: $($republishResult.Reason)"
                                 $suggestedCommands += "# Manually republish release $($release.tagName) to make it immutable"
                                 $suggestedCommands += "gh api -X PATCH /repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$($release.id) -f draft=true"
                                 $suggestedCommands += "gh api -X PATCH /repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$($release.id) -f draft=false"
                             }
                         } else {
-                            # Just warn if republish is not enabled
-                            write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but is not immutable, making it mutable via force-push. Consider using 'gh attestation' to make it truly immutable, or enable 'republish-for-immutability' input."
+                            # Just warn if auto-fix or immutability check is not enabled
+                            if ($checkReleaseImmutability -ne "none") {
+                                write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but remains mutable and can be modified via force-push. Consider using 'gh attestation' to make it truly immutable, or enable 'auto-fix' to automatically republish."
+                            }
                         }
                     }
                 }
