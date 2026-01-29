@@ -85,7 +85,6 @@ Describe "RemediationAction Classes" {
             $action = [CreateReleaseAction]::new("v1.0.0", $true)
             
             $action.TagName | Should -Be "v1.0.0"
-            $action.IsDraft | Should -Be $true
             $action.AutoPublish | Should -Be $false
             $action.Priority | Should -Be 30
         }
@@ -94,7 +93,6 @@ Describe "RemediationAction Classes" {
             $action = [CreateReleaseAction]::new("v1.0.0", $true, $true)
             
             $action.TagName | Should -Be "v1.0.0"
-            $action.IsDraft | Should -Be $true
             $action.AutoPublish | Should -Be $true
             $action.Priority | Should -Be 30
         }

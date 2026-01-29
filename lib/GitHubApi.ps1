@@ -285,8 +285,28 @@ function Remove-GitHubRelease
     }
 }
 
-function New-GitHubDraftRelease
+function New-GitHubRelease
 {
+    <#
+    .SYNOPSIS
+    Create a GitHub release (draft or published).
+    
+    .DESCRIPTION
+    Creates a GitHub release for the specified tag. Can create either a draft release
+    or a published release based on the Draft parameter.
+    
+    .PARAMETER State
+    The repository state object containing API configuration.
+    
+    .PARAMETER TagName
+    The tag name for the release.
+    
+    .PARAMETER Draft
+    If true, creates a draft release. If false, creates a published release. Defaults to true.
+    
+    .OUTPUTS
+    A hashtable with Success (bool), ReleaseId (int or null), and Unfixable (bool) properties.
+    #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
@@ -333,6 +353,7 @@ function New-GitHubDraftRelease
         }
         
         # Check for the specific error condition
+        # Note: This relies on GitHub's error message format. If the API changes, this may need updating.
         if (($statusCode -eq 422 -or $errorMessage -match "422") -and $errorMessage -match "tag_name was used by an immutable release") {
             $isUnfixable = $true
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
@@ -343,6 +364,9 @@ function New-GitHubDraftRelease
         return @{ Success = $false; ReleaseId = $null; Unfixable = $isUnfixable }
     }
 }
+
+# Backward compatibility alias
+Set-Alias -Name New-GitHubDraftRelease -Value New-GitHubRelease
 
 function Publish-GitHubRelease
 {
