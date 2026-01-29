@@ -389,13 +389,20 @@ function Invoke-AllAutoFixes
                 if ($result) {
                     $issue.Status = "fixed"
                 } else {
-                    $issue.Status = "failed"
+                    # Only set status to "failed" if the action didn't already mark it as something else
+                    # (e.g., "unfixable" or "manual_fix_required")
+                    if ($issue.Status -eq "pending") {
+                        $issue.Status = "failed"
+                    }
                 }
             }
             catch {
                 Write-Host "✗ Failed: $($action.Description)"
                 Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Exception during auto-fix: "
-                $issue.Status = "failed"
+                # Only set status to "failed" if the action didn't already mark it as something else
+                if ($issue.Status -eq "pending") {
+                    $issue.Status = "failed"
+                }
             }
         }
         else {
