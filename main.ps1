@@ -254,7 +254,8 @@ function Invoke-AutoFix
 {
     param(
         [string]$Description,
-        [string]$Command
+        [string]$Command,
+        [scriptblock]$ApiAction = $null
     )
     
     if (-not $autoFix)
@@ -263,40 +264,59 @@ function Invoke-AutoFix
     }
     
     Write-Host "Auto-fix: $Description"
-    Write-Host "Executing: $Command"
     
     try
     {
-        # Reset LASTEXITCODE to ensure we're not seeing a stale value
-        $global:LASTEXITCODE = 0
-        
-        # Execute the command and capture both stdout and stderr
-        # The 2>&1 redirects stderr to stdout, ensuring we capture all output
-        $commandOutput = Invoke-Expression $Command 2>&1
-        
-        if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -eq 0)
-        {
-            Write-Host "✓ Success: $Description"
-            # Log command output as debug using GitHub Actions workflow command
-            # Wrap output in stop-commands to prevent workflow command injection
-            if ($commandOutput) {
-                Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::debug::Command succeeded with output: "
-            }
-            return $true
-        }
-        else
-        {
-            Write-Host "✗ Failed: $Description (exit code: $LASTEXITCODE)"
-            # Log error output prominently using GitHub Actions error command
-            # Wrap output in stop-commands to prevent workflow command injection
-            if ($commandOutput) {
-                Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::error::Command failed: "
+        # If an API action is provided, use it instead of the command
+        if ($ApiAction) {
+            Write-Host "::debug::Executing via REST API"
+            $success = & $ApiAction
+            
+            if ($success) {
+                Write-Host "✓ Success: $Description"
+                return $true
             }
             else {
-                # If no output captured, still log that the command failed
-                Write-Host "::error::Command failed with no output (exit code: $LASTEXITCODE)"
+                Write-Host "✗ Failed: $Description"
+                Write-Host "::error::REST API call failed for: $Description"
+                return $false
             }
-            return $false
+        }
+        else {
+            # Fallback to executing the command (for non-git operations like gh CLI)
+            Write-Host "Executing: $Command"
+            
+            # Reset LASTEXITCODE to ensure we're not seeing a stale value
+            $global:LASTEXITCODE = 0
+            
+            # Execute the command and capture both stdout and stderr
+            # The 2>&1 redirects stderr to stdout, ensuring we capture all output
+            $commandOutput = Invoke-Expression $Command 2>&1
+            
+            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -eq 0)
+            {
+                Write-Host "✓ Success: $Description"
+                # Log command output as debug using GitHub Actions workflow command
+                # Wrap output in stop-commands to prevent workflow command injection
+                if ($commandOutput) {
+                    Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::debug::Command succeeded with output: "
+                }
+                return $true
+            }
+            else
+            {
+                Write-Host "✗ Failed: $Description (exit code: $LASTEXITCODE)"
+                # Log error output prominently using GitHub Actions error command
+                # Wrap output in stop-commands to prevent workflow command injection
+                if ($commandOutput) {
+                    Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::error::Command failed: "
+                }
+                else {
+                    # If no output captured, still log that the command failed
+                    Write-Host "::error::Command failed with no output (exit code: $LASTEXITCODE)"
+                }
+                return $false
+            }
         }
     }
     catch
@@ -715,6 +735,87 @@ function Publish-GitHubRelease
     }
 }
 
+function New-GitHubRef
+{
+    param(
+        [string]$RefName,  # e.g., "refs/tags/v1.0.0" or "refs/heads/main"
+        [string]$Sha
+    )
+    
+    try {
+        # Use the pre-obtained repo info
+        if (-not $script:repoInfo) {
+            return $false
+        }
+        
+        $headers = Get-ApiHeaders -Token $script:token
+        
+        # Try to update the ref first (in case it exists)
+        $updateUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/$RefName"
+        $body = @{
+            sha = $Sha
+            force = $true
+        } | ConvertTo-Json
+        
+        try {
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                $response = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            } else {
+                $response = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            }
+            return $true
+        }
+        catch {
+            # If update failed (ref doesn't exist), try to create it
+            $createUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/refs"
+            $createBody = @{
+                ref = $RefName
+                sha = $Sha
+            } | ConvertTo-Json
+            
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                $createResponse = Invoke-WebRequestWrapper -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            } else {
+                $createResponse = Invoke-RestMethod -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            }
+            return $true
+        }
+    }
+    catch {
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to create/update ref $RefName : "
+        return $false
+    }
+}
+
+function Remove-GitHubRef
+{
+    param(
+        [string]$RefName  # e.g., "refs/tags/v1.0.0" or "refs/heads/main"
+    )
+    
+    try {
+        # Use the pre-obtained repo info
+        if (-not $script:repoInfo) {
+            return $false
+        }
+        
+        $headers = Get-ApiHeaders -Token $script:token
+        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/$RefName"
+        
+        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
+        } else {
+            $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
+        }
+        
+        return $true
+    }
+    catch {
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to delete ref $RefName : "
+        return $false
+    }
+}
+
 # Get repository info for URLs
 $script:repoInfo = Get-GitHubRepoInfo
 
@@ -853,15 +954,17 @@ foreach ($tagVersion in $tagVersions)
                 # Keep branch, remove tag
                 $fixCmd = "git push origin :refs/tags/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous tag for $($tagVersion.version) (keeping branch)"
+                $apiAction = { Remove-GitHubRef -RefName "refs/tags/$($tagVersion.version)" }
             }
             else
             {
                 # Keep tag, remove branch (default)
                 $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous branch for $($tagVersion.version) (keeping tag)"
+                $apiAction = { Remove-GitHubRef -RefName "refs/heads/$($tagVersion.version)" }
             }
             
-            $fixed = Invoke-AutoFix -Description $fixDescription -Command $fixCmd
+            $fixed = Invoke-AutoFix -Description $fixDescription -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed)
             {
@@ -882,15 +985,17 @@ foreach ($tagVersion in $tagVersions)
                 # Keep branch, remove tag
                 $fixCmd = "git push origin :refs/tags/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous tag for $($tagVersion.version) (keeping branch at $($branchVersion.sha))"
+                $apiAction = { Remove-GitHubRef -RefName "refs/tags/$($tagVersion.version)" }
             }
             else
             {
                 # Keep tag, remove branch (default)
                 $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous branch for $($tagVersion.version) (keeping tag at $($tagVersion.sha))"
+                $apiAction = { Remove-GitHubRef -RefName "refs/heads/$($tagVersion.version)" }
             }
             
-            $fixed = Invoke-AutoFix -Description $fixDescription -Command $fixCmd
+            $fixed = Invoke-AutoFix -Description $fixDescription -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed)
             {
@@ -1222,7 +1327,8 @@ foreach ($majorVersion in $majorVersions)
         if ($majorSha)
         {
             $fixCmd = "git push origin $majorSha`:refs/tags/v$($majorVersion.major).0.0"
-            $fixed = Invoke-AutoFix -Description "Create missing patch version v$($majorVersion.major).0.0" -Command $fixCmd
+            $apiAction = { New-GitHubRef -RefName "refs/tags/v$($majorVersion.major).0.0" -Sha $majorSha }
+            $fixed = Invoke-AutoFix -Description "Create missing patch version v$($majorVersion.major).0.0" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
                 $script:fixedIssues++
@@ -1239,7 +1345,9 @@ foreach ($majorVersion in $majorVersions)
             if ($checkMinorVersion -ne "none")
             {
                 $fixCmd = "git push origin $majorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major).0"
-                $fixed = Invoke-AutoFix -Description "Create missing minor version v$($majorVersion.major).0" -Command $fixCmd
+                $refType = $useBranches ? 'heads' : 'tags'
+                $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($majorVersion.major).0" -Sha $majorSha }
+                $fixed = Invoke-AutoFix -Description "Create missing minor version v$($majorVersion.major).0" -Command $fixCmd -ApiAction $apiAction
                 
                 if ($fixed) {
                     $script:fixedIssues++
@@ -1279,7 +1387,12 @@ foreach ($majorVersion in $majorVersions)
         if ($majorVersion_obj -and $majorVersion_obj.ref -match "^refs/tags/")
         {
             $fixCmd = "git branch v$($majorVersion.major) $majorSha && git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major) && git push origin :refs/tags/v$($majorVersion.major)"
-            $fixed = Invoke-AutoFix -Description "Convert major version v$($majorVersion.major) from tag to branch" -Command $fixCmd
+            $apiAction = { 
+                $createBranch = New-GitHubRef -RefName "refs/heads/v$($majorVersion.major)" -Sha $majorSha
+                $deleteTag = Remove-GitHubRef -RefName "refs/tags/v$($majorVersion.major)"
+                return ($createBranch -and $deleteTag)
+            }
+            $fixed = Invoke-AutoFix -Description "Convert major version v$($majorVersion.major) from tag to branch" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
                 $script:fixedIssues++
@@ -1295,7 +1408,12 @@ foreach ($majorVersion in $majorVersions)
         if ($minorVersion_obj -and $minorVersion_obj.ref -match "^refs/tags/")
         {
             $fixCmd = "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha && git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor) && git push origin :refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
-            $fixed = Invoke-AutoFix -Description "Convert minor version v$($majorVersion.major).$($highestMinor.minor) from tag to branch" -Command $fixCmd
+            $apiAction = {
+                $createBranch = New-GitHubRef -RefName "refs/heads/v$($majorVersion.major).$($highestMinor.minor)" -Sha $minorSha
+                $deleteTag = Remove-GitHubRef -RefName "refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
+                return ($createBranch -and $deleteTag)
+            }
+            $fixed = Invoke-AutoFix -Description "Convert minor version v$($majorVersion.major).$($highestMinor.minor) from tag to branch" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
                 $script:fixedIssues++
@@ -1314,7 +1432,9 @@ foreach ($majorVersion in $majorVersions)
         if (-not $majorSha -and $minorSha)
         {
             $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major)"
-            $fixed = Invoke-AutoFix -Description "Create missing major version v$($majorVersion.major) pointing to minor version" -Command $fixCmd
+            $refType = $useBranches ? 'heads' : 'tags'
+            $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($majorVersion.major)" -Sha $minorSha }
+            $fixed = Invoke-AutoFix -Description "Create missing major version v$($majorVersion.major) pointing to minor version" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
                 $script:fixedIssues++
@@ -1328,7 +1448,9 @@ foreach ($majorVersion in $majorVersions)
         if ($majorSha -and $minorSha -and ($majorSha -ne $minorSha))
         {
             $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major) --force"
-            $fixed = Invoke-AutoFix -Description "Update major version v$($majorVersion.major) to match minor version" -Command $fixCmd
+            $refType = $useBranches ? 'heads' : 'tags'
+            $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($majorVersion.major)" -Sha $minorSha }
+            $fixed = Invoke-AutoFix -Description "Update major version v$($majorVersion.major) to match minor version" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
                 $script:fixedIssues++
@@ -1373,7 +1495,9 @@ foreach ($majorVersion in $majorVersions)
     if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
     {
         $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major) --force"
-        $fixed = Invoke-AutoFix -Description "Update major version v$($highestMinor.major) to match patch version" -Command $fixCmd
+        $refType = $useBranches ? 'heads' : 'tags'
+        $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($highestMinor.major)" -Sha $patchSha }
+        $fixed = Invoke-AutoFix -Description "Update major version v$($highestMinor.major) to match patch version" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
             $script:fixedIssues++
@@ -1387,7 +1511,8 @@ foreach ($majorVersion in $majorVersions)
     if (-not $patchSha -and $sourceShaForPatch)
     {
         $fixCmd = "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
-        $fixed = Invoke-AutoFix -Description "Create missing patch version v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Command $fixCmd
+        $apiAction = { New-GitHubRef -RefName "refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Sha $sourceShaForPatch }
+        $fixed = Invoke-AutoFix -Description "Create missing patch version v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
             $script:fixedIssues++
@@ -1401,7 +1526,9 @@ foreach ($majorVersion in $majorVersions)
     if (-not $majorSha)
     {
         $fixCmd = "git push origin $sourceShaForPatch`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestPatch.major)"
-        $fixed = Invoke-AutoFix -Description "Create missing major version v$($highestPatch.major)" -Command $fixCmd
+        $refType = $useBranches ? 'heads' : 'tags'
+        $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($highestPatch.major)" -Sha $sourceShaForPatch }
+        $fixed = Invoke-AutoFix -Description "Create missing major version v$($highestPatch.major)" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
             $script:fixedIssues++
@@ -1426,7 +1553,9 @@ foreach ($majorVersion in $majorVersions)
             
             if ($sourceShaForMinor) {
                 $fixCmd = "git push origin $sourceShaForMinor`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor)"
-                $fixed = Invoke-AutoFix -Description "Create missing minor version v$($highestMinor.major).$($highestMinor.minor)" -Command $fixCmd
+                $refType = $useBranches ? 'heads' : 'tags'
+                $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($highestMinor.major).$($highestMinor.minor)" -Sha $sourceShaForMinor }
+                $fixed = Invoke-AutoFix -Description "Create missing minor version v$($highestMinor.major).$($highestMinor.minor)" -Command $fixCmd -ApiAction $apiAction
                 
                 if ($fixed) {
                     $script:fixedIssues++
@@ -1441,7 +1570,9 @@ foreach ($majorVersion in $majorVersions)
         if ($minorSha -and $patchSha -and ($minorSha -ne $patchSha))
         {
             $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor) --force"
-            $fixed = Invoke-AutoFix -Description "Update minor version v$($highestMinor.major).$($highestMinor.minor) to match patch version" -Command $fixCmd
+            $refType = $useBranches ? 'heads' : 'tags'
+            $apiAction = { New-GitHubRef -RefName "refs/$refType/v$($highestMinor.major).$($highestMinor.minor)" -Sha $patchSha }
+            $fixed = Invoke-AutoFix -Description "Update minor version v$($highestMinor.major).$($highestMinor.minor) to match patch version" -Command $fixCmd -ApiAction $apiAction
             
             if ($fixed) {
                 $script:fixedIssues++
@@ -1469,7 +1600,8 @@ if ($useBranches) {
     # When using branches, check if latest branch exists and points to correct version
     if ($latestBranch -and ($latestBranch.sha -ne $highestVersion.sha)) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest --force"
-        $fixed = Invoke-AutoFix -Description "Update latest branch to match highest version" -Command $fixCmd
+        $apiAction = { New-GitHubRef -RefName "refs/heads/latest" -Sha $highestVersion.sha }
+        $fixed = Invoke-AutoFix -Description "Update latest branch to match highest version" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
             $script:fixedIssues++
@@ -1480,7 +1612,8 @@ if ($useBranches) {
         }
     } elseif (-not $latestBranch -and $highestVersion) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest"
-        $fixed = Invoke-AutoFix -Description "Create missing latest branch" -Command $fixCmd
+        $apiAction = { New-GitHubRef -RefName "refs/heads/latest" -Sha $highestVersion.sha }
+        $fixed = Invoke-AutoFix -Description "Create missing latest branch" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
             $script:fixedIssues++
@@ -1500,7 +1633,8 @@ if ($useBranches) {
     # When using tags, check if latest tag exists and points to correct version
     if ($latest -and $highestVersion -and ($latest.sha -ne $highestVersion.sha)) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/tags/latest --force"
-        $fixed = Invoke-AutoFix -Description "Update latest tag to match highest version" -Command $fixCmd
+        $apiAction = { New-GitHubRef -RefName "refs/tags/latest" -Sha $highestVersion.sha }
+        $fixed = Invoke-AutoFix -Description "Update latest tag to match highest version" -Command $fixCmd -ApiAction $apiAction
         
         if ($fixed) {
             $script:fixedIssues++
