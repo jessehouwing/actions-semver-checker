@@ -12,29 +12,47 @@
 #############################################################################
 
 #############################################################################
+# MODULE IMPORTS
+#############################################################################
+
+. "$PSScriptRoot/lib/StateModel.ps1"
+. "$PSScriptRoot/lib/Logging.ps1"
+. "$PSScriptRoot/lib/VersionParser.ps1"
+. "$PSScriptRoot/lib/GitHubApi.ps1"
+. "$PSScriptRoot/lib/Remediation.ps1"
+
+#############################################################################
 # GLOBAL STATE
 #############################################################################
 
 $global:returnCode = 0
 
-# GitHub context from environment
+# Initialize repository state
+$script:State = [RepositoryState]::new()
+
+# GitHub context from environment (will be moved to State)
 $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
 $script:serverUrl = $env:GITHUB_SERVER_URL ?? "https://github.com"
 $script:token = $env:GITHUB_TOKEN ?? ""
 $script:repoOwner = $null
 $script:repoName = $null
 
-# Auto-fix tracking
+# Auto-fix tracking (will be moved to State)
 $script:fixedIssues = 0
 $script:failedFixes = 0
 $script:unfixableIssues = 0
 
-# Issue tracking for reporting
+# Issue tracking for reporting (will be moved to State)
 $script:issuesFound = @()
 
 #############################################################################
 # REPOSITORY DETECTION
 #############################################################################
+
+# Set default URLs in State
+$script:State.ApiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
+$script:State.ServerUrl = $env:GITHUB_SERVER_URL ?? "https://github.com"
+$script:State.Token = $env:GITHUB_TOKEN ?? ""
 
 # Parse repository owner and name from GITHUB_REPOSITORY
 if ($env:GITHUB_REPOSITORY) {
@@ -42,6 +60,8 @@ if ($env:GITHUB_REPOSITORY) {
     if ($parts.Count -eq 2 -and $parts[0] -and $parts[1]) {
         $script:repoOwner = $parts[0]
         $script:repoName = $parts[1]
+        $script:State.RepoOwner = $parts[0]
+        $script:State.RepoName = $parts[1]
     }
 }
 
@@ -57,13 +77,17 @@ if (-not $script:repoOwner -or -not $script:repoName) {
             $hostname = $matches[1]
             $script:repoOwner = $matches[2]
             $script:repoName = $matches[3]
+            $script:State.RepoOwner = $matches[2]
+            $script:State.RepoName = $matches[3]
             
             # Update server URL based on the parsed hostname
             if ($hostname -ne "github.com") {
                 $script:serverUrl = "https://$hostname"
+                $script:State.ServerUrl = "https://$hostname"
                 # For GHE, API URL is typically https://hostname/api/v3
                 if ($script:apiUrl -eq "https://api.github.com") {
                     $script:apiUrl = "https://$hostname/api/v3"
+                    $script:State.ApiUrl = "https://$hostname/api/v3"
                 }
             }
         }
@@ -104,12 +128,22 @@ try {
     
     # Parse inputs with defaults
     $script:token = $inputs.token ?? $script:token
+    $script:State.Token = $inputs.token ?? $script:State.Token
+    
     $checkMinorVersion = Normalize-CheckInput -value (($inputs.'check-minor-version' ?? "true") -as [string]) -default "error"
     $checkReleases = Normalize-CheckInput -value (($inputs.'check-releases' ?? "error") -as [string]) -default "error"
     $checkReleaseImmutability = Normalize-CheckInput -value (($inputs.'check-release-immutability' ?? "error") -as [string]) -default "error"
     $ignorePreviewReleases = (($inputs.'ignore-preview-releases' ?? "true") -as [string]).Trim() -eq "true"
     $floatingVersionsUse = (($inputs.'floating-versions-use' ?? "tags") -as [string]).Trim().ToLower()
     $autoFix = (($inputs.'auto-fix' ?? "false") -as [string]).Trim() -eq "true"
+    
+    # Set configuration in State
+    $script:State.CheckMinorVersion = ($checkMinorVersion -ne "none")
+    $script:State.CheckReleases = $checkReleases
+    $script:State.CheckImmutability = $checkReleaseImmutability
+    $script:State.IgnorePreviewReleases = $ignorePreviewReleases
+    $script:State.FloatingVersionsUse = $floatingVersionsUse
+    $script:State.AutoFix = $autoFix
 }
 catch {
     Write-Host "::error::Failed to parse inputs JSON"
@@ -232,613 +266,16 @@ $suggestedCommands = @()
 #############################################################################
 # UTILITY FUNCTIONS
 #############################################################################
-
-function Write-SafeOutput
-{
-    param(
-        [string]$Message,
-        [string]$Prefix = ""
-    )
-    
-    # Use stop-commands to prevent workflow command injection
-    # https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#stopping-and-starting-workflow-commands
-    # The prefix (containing workflow commands) is written BEFORE stop-commands
-    # so GitHub Actions can interpret it, but the untrusted message is wrapped
-    # in stop-commands to neutralize any malicious workflow commands it contains
-    
-    if ($Prefix) {
-        Write-Host -NoNewline $Prefix
-    }
-    
-    $stopMarker = New-Guid
-    Write-Host "::stop-commands::$stopMarker"
-    Write-Host $Message
-    Write-Host "::$stopMarker::"
-}
-
-function Invoke-AutoFix
-{
-    param(
-        [string]$Description,
-        [string]$Command,
-        [scriptblock]$ApiAction = $null
-    )
-    
-    if (-not $autoFix)
-    {
-        return $false  # Not in auto-fix mode
-    }
-    
-    Write-Host "Auto-fix: $Description"
-    
-    try
-    {
-        # If an API action is provided, use it instead of the command
-        if ($ApiAction) {
-            Write-Host "::debug::Executing via REST API"
-            $success = & $ApiAction
-            
-            if ($success) {
-                Write-Host "✓ Success: $Description"
-                return $true
-            }
-            else {
-                Write-Host "✗ Failed: $Description"
-                Write-Host "::error::REST API call failed for: $Description"
-                return $false
-            }
-        }
-        else {
-            # Fallback to executing the command (for non-git operations like gh CLI)
-            Write-Host "Executing: $Command"
-            
-            # Reset LASTEXITCODE to ensure we're not seeing a stale value
-            $global:LASTEXITCODE = 0
-            
-            # Execute the command and capture both stdout and stderr
-            # The 2>&1 redirects stderr to stdout, ensuring we capture all output
-            $commandOutput = Invoke-Expression $Command 2>&1
-            
-            if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -eq 0)
-            {
-                Write-Host "✓ Success: $Description"
-                # Log command output as debug using GitHub Actions workflow command
-                # Wrap output in stop-commands to prevent workflow command injection
-                if ($commandOutput) {
-                    Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::debug::Command succeeded with output: "
-                }
-                return $true
-            }
-            else
-            {
-                Write-Host "✗ Failed: $Description (exit code: $LASTEXITCODE)"
-                # Log error output prominently using GitHub Actions error command
-                # Wrap output in stop-commands to prevent workflow command injection
-                if ($commandOutput) {
-                    Write-SafeOutput -Message ([string]$commandOutput) -Prefix "::error::Command failed: "
-                }
-                else {
-                    # If no output captured, still log that the command failed
-                    Write-Host "::error::Command failed with no output (exit code: $LASTEXITCODE)"
-                }
-                return $false
-            }
-        }
-    }
-    catch
-    {
-        Write-Host "✗ Failed: $Description"
-        # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message ([string]$_) -Prefix "::error::Exception: "
-        return $false
-    }
-}
-
-#############################################################################
-# GITHUB API FUNCTIONS
+# Utility functions have been moved to lib/ modules:
+# - Write-SafeOutput, write-actions-* -> lib/Logging.ps1
+# - ConvertTo-Version -> lib/VersionParser.ps1
+# - Get-ApiHeaders, Get-GitHubRepoInfo, Get-GitHubReleases, etc. -> lib/GitHubApi.ps1
+# - Invoke-AutoFix, Get-ImmutableReleaseRemediationCommands -> lib/Remediation.ps1
 #############################################################################
 
-function write-actions-error
-{
-    param(
-        [string] $message
-    )
-
-    Write-Output $message
-    $global:returnCode = 1
-}
-
-function write-actions-warning
-{
-    param(
-        [string] $message
-    )
-
-    Write-Output $message
-}
-
-function write-actions-message
-{
-    param(
-        [string] $message,
-        [string] $severity = "error"  # Can be "error", "warning", or "none"
-    )
-
-    if ($severity -eq "error") {
-        write-actions-error $message
-    } elseif ($severity -eq "warning") {
-        write-actions-warning $message
-    }
-    # If "none", don't write anything
-}
-
-function Get-ApiHeaders
-{
-    param(
-        [string]$Token
-    )
-    
-    $headers = @{
-        'Accept' = 'application/vnd.github+json'
-        'X-GitHub-Api-Version' = '2022-11-28'
-    }
-    
-    if ($Token) {
-        $headers['Authorization'] = "Bearer $Token"
-    }
-    
-    return $headers
-}
-
-function ConvertTo-Version
-{
-    param(
-        [string] $value
-    )
-
-    $dots = $value.Split(".").Count - 1
-
-    switch ($dots)
-    {
-        0
-        {
-            return [Version]"$value.0.0"
-        }
-        1
-        {
-            return [Version]"$value.0"
-        }
-        2
-        {
-            return [Version]$value
-        }
-    }
-}
-
-function Get-GitHubRepoInfo
-{
-    param()
-    
-    # Return the already-parsed repository info from script-level variables
-    if ($script:repoOwner -and $script:repoName) {
-        return @{
-            Owner = $script:repoOwner
-            Repo = $script:repoName
-            Url = "$script:serverUrl/$script:repoOwner/$script:repoName"
-        }
-    }
-    
-    return $null
-}
-
-function Test-ReleaseImmutability
-{
-    param(
-        [string]$Owner,
-        [string]$Repo,
-        [string]$Tag,
-        [string]$Token,
-        [string]$ApiUrl
-    )
-    
-    try {
-        # Use GitHub GraphQL API to check if release is immutable
-        $headers = Get-ApiHeaders -Token $Token
-        
-        # Construct the GraphQL query
-        $query = @"
-query(`$owner: String!, `$name: String!, `$tag: String!) {
-  repository(owner: `$owner, name: `$name) {
-    release(tagName: `$tag) {
-      tagName
-      isDraft
-      immutable
-    }
-  }
-}
-"@
-        
-        $variables = @{
-            owner = $Owner
-            name = $Repo
-            tag = $Tag
-        }
-        
-        $body = @{
-            query = $query
-            variables = $variables
-        } | ConvertTo-Json -Depth 10
-        
-        # Determine GraphQL endpoint from API URL
-        $graphqlUrl = $ApiUrl -replace '/api/v3$', '/api/graphql'
-        if ($graphqlUrl -eq $ApiUrl) {
-            # Default to public GitHub GraphQL endpoint
-            $graphqlUrl = "https://api.github.com/graphql"
-        }
-        
-        $response = Invoke-RestMethod -Uri $graphqlUrl -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop
-        
-        # Check if we got a valid response
-        if ($response.data.repository.release) {
-            $release = $response.data.repository.release
-            # Release is immutable if the GitHub API reports it as immutable
-            return $release.immutable -eq $true
-        }
-        
-        # No release found for this tag
-        return $false
-    }
-    catch {
-        Write-Verbose "Failed to check release immutability: $_"
-        # If API call fails, assume not immutable
-        return $false
-    }
-}
-
-function Get-GitHubReleases
-{
-    param()
-    
-    try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
-            return @()
-        }
-        
-        # Use GitHub REST API to get releases
-        $headers = Get-ApiHeaders -Token $script:token
-        $allReleases = @()
-        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases?per_page=100"
-        
-        do {
-            # Use a wrapper to allow for test mocking
-            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
-            } else {
-                $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
-            }
-            $releases = $response.Content | ConvertFrom-Json
-            
-            if ($releases.Count -eq 0) {
-                break
-            }
-            
-            # Collect releases
-            foreach ($release in $releases) {
-                $allReleases += @{
-                    id = $release.id
-                    tagName = $release.tag_name
-                    isPrerelease = $release.prerelease
-                    isDraft = $release.draft
-                }
-            }
-            
-            # Check for Link header to get next page
-            $linkHeader = $response.Headers['Link']
-            $url = $null
-            
-            if ($linkHeader) {
-                # Parse Link header: <url>; rel="next", <url>; rel="last"
-                # RFC 8288 allows optional whitespace before semicolon
-                $links = $linkHeader -split ','
-                foreach ($link in $links) {
-                    if ($link -match '<([^>]+)>\s*;\s*rel="next"') {
-                        $url = $matches[1]
-                        break
-                    }
-                }
-            }
-            
-        } while ($url)
-        
-        return $allReleases
-    }
-    catch {
-        # Silently fail if API is not accessible
-        return @()
-    }
-}
-
-function Remove-GitHubRelease
-{
-    param(
-        [string]$TagName
-    )
-    
-    try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
-            return $false
-        }
-        
-        # First, get the release ID for this tag
-        $headers = Get-ApiHeaders -Token $script:token
-        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/tags/$TagName"
-        
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
-        } else {
-            $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
-        }
-        $release = $response.Content | ConvertFrom-Json
-        
-        # Now delete the release
-        $deleteUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/$($release.id)"
-        
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $deleteResponse = Invoke-WebRequestWrapper -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
-        } else {
-            $deleteResponse = Invoke-WebRequest -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
-        }
-        
-        return $true
-    }
-    catch {
-        # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to delete release for $TagName : "
-        return $false
-    }
-}
-
-function New-GitHubDraftRelease
-{
-    param(
-        [string]$TagName
-    )
-    
-    try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
-            return $null
-        }
-        
-        # Create a draft release
-        $headers = Get-ApiHeaders -Token $script:token
-        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases"
-        
-        $body = @{
-            tag_name = $TagName
-            name = $TagName
-            body = "Release $TagName"
-            draft = $true
-        } | ConvertTo-Json
-        
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-        } else {
-            $responseObj = Invoke-RestMethod -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-            $response = $responseObj
-        }
-        
-        # Return the release ID so it can be used for publishing
-        return $response.id
-    }
-    catch {
-        # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to create draft release for $TagName : "
-        return $null
-    }
-}
-
-function Get-ImmutableReleaseRemediationCommands
-{
-    param(
-        [string]$TagName
-    )
-    
-    $commands = @()
-    
-    # The tag is already used by an immutable release
-    # The only solution is to delete the release and create a new version
-    # This function expects semantic version tags in the format vX.Y.Z
-    if ($TagName -match "^v(\d+)\.(\d+)\.(\d+)$") {
-        $major = $matches[1]
-        $minor = $matches[2]
-        $patch = [int]$matches[3] + 1
-        $nextVersion = "v$major.$minor.$patch"
-        
-        $commands += "# Delete the immutable release (if possible) and create a new version:"
-        $commands += "gh release delete $TagName --yes"
-        $commands += "git tag -d $TagName"
-        $commands += "git push origin :refs/tags/$TagName"
-        $commands += "# Create new patch version $nextVersion with updated changes:"
-        $commands += "git tag $nextVersion"
-        $commands += "git push origin $nextVersion"
-        $commands += "gh release create $nextVersion --draft --title `"$nextVersion`" --notes `"Release $nextVersion`""
-        $commands += "gh release edit $nextVersion --draft=false"
-    }
-    else {
-        # Tag doesn't match expected vX.Y.Z format
-        $commands += "# Manual remediation required for tag: $TagName"
-        $commands += "# The tag is used by an immutable release. You must delete the release and tag, then create a new version."
-        $commands += "gh release delete $TagName --yes"
-        $commands += "git tag -d $TagName"
-        $commands += "git push origin :refs/tags/$TagName"
-    }
-    
-    return $commands
-}
-
-function Publish-GitHubRelease
-{
-    param(
-        [string]$TagName,
-        [Parameter(Mandatory=$false)]
-        [int]$ReleaseId
-    )
-    
-    try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
-            return @{ Success = $false; Unfixable = $false }
-        }
-        
-        $headers = Get-ApiHeaders -Token $script:token
-        
-        # If ReleaseId is not provided, fetch it by tag name
-        if (-not $ReleaseId) {
-            $releasesUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/tags/$TagName"
-            
-            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $releaseResponse = Invoke-WebRequestWrapper -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
-            } else {
-                $releaseResponse = Invoke-RestMethod -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
-            }
-            
-            $ReleaseId = $releaseResponse.id
-        }
-        
-        # Update the release to publish it (set draft to false)
-        $updateUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/$ReleaseId"
-        $body = @{
-            draft = $false
-        } | ConvertTo-Json
-        
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-        } else {
-            $response = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-        }
-        
-        return @{ Success = $true; Unfixable = $false }
-    }
-    catch {
-        $errorMessage = $_.Exception.Message
-        $isUnfixable = $false
-        
-        # Check if this is a 422 error about tag_name being used by an immutable release
-        # First check the HTTP status code if available
-        $statusCode = $null
-        if ($_.Exception.Response) {
-            $statusCode = $_.Exception.Response.StatusCode.value__
-        }
-        
-        # Check for the specific error condition
-        if (($statusCode -eq 422 -or $errorMessage -match "422") -and $errorMessage -match "tag_name was used by an immutable release") {
-            $isUnfixable = $true
-            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
-        } else {
-            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to publish release for $TagName : "
-        }
-        
-        return @{ Success = $false; Unfixable = $isUnfixable }
-    }
-}
-
-function New-GitHubRef
-{
-    param(
-        [string]$RefName,  # e.g., "refs/tags/v1.0.0" or "refs/heads/main"
-        [string]$Sha,
-        [bool]$Force = $true  # Force update if ref exists
-    )
-    
-    try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
-            return $false
-        }
-        
-        $headers = Get-ApiHeaders -Token $script:token
-        
-        # Try to update the ref first (in case it exists)
-        $updateUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/$RefName"
-        $body = @{
-            sha = $Sha
-            force = $Force
-        } | ConvertTo-Json
-        
-        try {
-            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $response = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-            } else {
-                $response = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-            }
-            return $true
-        }
-        catch {
-            # Check if this is a 404 error (ref doesn't exist)
-            $is404 = $false
-            if ($_.Exception.Response) {
-                $statusCode = $_.Exception.Response.StatusCode.value__
-                $is404 = ($statusCode -eq 404)
-            }
-            
-            # Only try to create if the ref doesn't exist (404 error)
-            if ($is404) {
-                $createUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/refs"
-                $createBody = @{
-                    ref = $RefName
-                    sha = $Sha
-                } | ConvertTo-Json
-                
-                if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                    $createResponse = Invoke-WebRequestWrapper -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-                } else {
-                    $createResponse = Invoke-RestMethod -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-                }
-                return $true
-            }
-            else {
-                # Re-throw the error if it's not a 404
-                throw
-            }
-        }
-    }
-    catch {
-        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to create/update ref $RefName : "
-        return $false
-    }
-}
-
-function Remove-GitHubRef
-{
-    param(
-        [string]$RefName  # e.g., "refs/tags/v1.0.0" or "refs/heads/main"
-    )
-    
-    try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
-            return $false
-        }
-        
-        $headers = Get-ApiHeaders -Token $script:token
-        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/$RefName"
-        
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
-        } else {
-            $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
-        }
-        
-        return $true
-    }
-    catch {
-        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to delete ref $RefName : "
-        return $false
-    }
-}
+#############################################################################
+# STATE SUMMARY DISPLAY
+#############################################################################
 
 function Write-StateSummary {
     param(
