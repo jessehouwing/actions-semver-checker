@@ -253,27 +253,24 @@ function Get-ManualInstructions
         }
     }
     else {
-        # List all issues with their commands
+        # List all issues with their commands - clean format without emojis
+        $stopToken = [guid]::NewGuid().ToString()
+        Write-Output "::stop-commands::$stopToken"
+        
         foreach ($issue in $issuesNeedingManualFix) {
-            $statusEmoji = if ($issue.Status -eq "failed") { "❌" } else { "⚠️" }
-            Write-Output "$statusEmoji **$($issue.Version):** $($issue.Message)"
-            
             if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
                 $commands = $issue.RemediationAction.GetManualCommands($State)
                 if ($commands) {
-                    Write-Output "``````bash"
                     foreach ($cmd in $commands) {
                         Write-Output "$cmd"
                     }
-                    Write-Output "``````"
                 }
             } elseif ($issue.ManualFixCommand) {
-                Write-Output "``````bash"
                 Write-Output "$($issue.ManualFixCommand)"
-                Write-Output "``````"
             }
-            Write-Output ""
         }
+        
+        Write-Output "::$stopToken::"
     }
 }
 
@@ -412,6 +409,47 @@ function Invoke-AllAutoFixes
     foreach ($issue in $State.Issues) {
         if ($issue.Status -eq "pending") {
             $issue.Status = "unfixable"
+        }
+    }
+}
+
+function Write-UnresolvedIssues
+{
+    <#
+    .SYNOPSIS
+    Logs all unresolved issues (failed or unfixable) as errors or warnings
+    
+    .DESCRIPTION
+    This function should be called at the end of validation, after all auto-fixes
+    have been attempted. It logs all issues that remain unresolved based on their
+    severity level.
+    
+    .PARAMETER State
+    The RepositoryState object containing all validation issues
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State
+    )
+    
+    # Get all unresolved issues (failed or unfixable)
+    $unresolvedIssues = $State.Issues | Where-Object { 
+        $_.Status -in @("failed", "unfixable", "pending")
+    }
+    
+    if ($unresolvedIssues.Count -eq 0) {
+        return
+    }
+    
+    # Log each unresolved issue based on its severity
+    foreach ($issue in $unresolvedIssues) {
+        $messageType = $issue.Severity
+        $titlePrefix = if ($issue.Status -eq "unfixable") { "Unfixable" } elseif ($issue.Status -eq "failed") { "Failed to fix" } else { "Unresolved" }
+        
+        if ($messageType -eq "error") {
+            Write-Output "::error title=$titlePrefix issue::$($issue.Message)"
+        } elseif ($messageType -eq "warning") {
+            Write-Output "::warning title=$titlePrefix issue::$($issue.Message)"
         }
     }
 }
