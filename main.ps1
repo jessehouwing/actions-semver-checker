@@ -28,9 +28,6 @@
 # Initialize repository state - this is the ONLY script-level variable
 $script:State = [RepositoryState]::new()
 
-# Initialize global return code for error tracking (used by write-actions-error)
-$global:returnCode = 0
-
 #############################################################################
 # REPOSITORY DETECTION
 #############################################################################

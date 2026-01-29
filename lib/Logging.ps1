@@ -31,11 +31,22 @@ function Write-SafeOutput
 function write-actions-error
 {
     param(
-        [string] $message
+        [string] $message,
+        [RepositoryState] $State = $null
     )
 
     Write-Output $message
-    $global:returnCode = 1
+    
+    # If State is provided, add an error issue (for tracking)
+    # This maintains backward compatibility when State is not passed
+    if ($State) {
+        $issue = [ValidationIssue]::new("error", "error", $message)
+        $State.AddIssue($issue)
+    }
+    else {
+        # Fallback for test harness compatibility
+        $global:returnCode = 1
+    }
 }
 
 function write-actions-warning
@@ -51,11 +62,12 @@ function write-actions-message
 {
     param(
         [string] $message,
-        [string] $severity = "error"  # Can be "error", "warning", or "none"
+        [string] $severity = "error",  # Can be "error", "warning", or "none"
+        [RepositoryState] $State = $null
     )
 
     if ($severity -eq "error") {
-        write-actions-error $message
+        write-actions-error $message -State $State
     } elseif ($severity -eq "warning") {
         write-actions-warning $message
     }
