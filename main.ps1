@@ -1267,15 +1267,19 @@ if ($autoFix)
     Write-Output "### Auto-fix Summary"
     Write-Output "✓ Fixed issues: $($State.GetFixedIssuesCount())"
     Write-Output "✗ Failed fixes: $($State.GetFailedFixesCount())"
-    Write-Output "⚠ Unfixable issues: $($State.GetUnfixableIssuesCount())"
+    Write-Output "⚠ Manual fix required: $($State.GetManualFixRequiredCount())"
+    Write-Output "⛔ Unfixable issues: $($State.GetUnfixableIssuesCount())"
     
-    # Only fail if there are failed fixes or unfixable issues
-    if ($State.GetFailedFixesCount() -gt 0 -or $State.GetUnfixableIssuesCount() -gt 0)
+    # Only fail if there are failed fixes, manual fixes required, or unfixable issues
+    if ($State.GetFailedFixesCount() -gt 0 -or $State.GetManualFixRequiredCount() -gt 0 -or $State.GetUnfixableIssuesCount() -gt 0)
     {
         $exitCode = 1
         Write-Output ""
+        if ($State.GetManualFixRequiredCount() -gt 0) {
+            Write-Output "::error::Some issues require manual intervention (e.g., workflow permission issues). Please fix manually."
+        }
         if ($State.GetUnfixableIssuesCount() -gt 0) {
-            Write-Output "::error::Some issues cannot be auto-fixed (draft releases must be published manually, or immutable releases on floating versions). Please fix manually."
+            Write-Output "::error::Some issues cannot be fixed (e.g., immutable release conflicts). Consider adding affected versions to the ignore-versions list."
         }
     }
     elseif ($State.GetFixedIssuesCount() -gt 0)
