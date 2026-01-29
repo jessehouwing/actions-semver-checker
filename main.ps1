@@ -272,11 +272,8 @@ function Write-StateSummary {
         [string]$Title = "Repository State Summary"
     )
     
-    Write-Host ""
-    Write-Host "=============================================================================" -ForegroundColor Cyan
-    Write-Host " $Title" -ForegroundColor Cyan
-    Write-Host "=============================================================================" -ForegroundColor Cyan
-    Write-Host ""
+    
+    Write-Host "##[group]$Title"
     
     Write-Host "Tags: $($Tags.Count)" -ForegroundColor White
     if ($Tags.Count -gt 0 -and $Tags.Count -le 20) {
@@ -334,9 +331,7 @@ function Write-StateSummary {
         }
     }
     
-    Write-Host ""
-    Write-Host "=============================================================================" -ForegroundColor Cyan
-    Write-Host ""
+    Write-Host "##[endgroup]"
 }
 
 #############################################################################
