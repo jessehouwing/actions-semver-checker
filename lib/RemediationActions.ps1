@@ -62,10 +62,27 @@ class ReleaseRemediationAction : RemediationAction {
         }
     }
     
+    # Helper method to mark an issue as requiring manual intervention
+    hidden [void] MarkAsManualFixRequired([RepositoryState]$state, [string]$issueType, [string]$message) {
+        Write-Host "⚠ Manual fix required: $message"
+        # Find this issue in the state and mark it as manual_fix_required
+        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq $issueType } | Select-Object -First 1
+        if ($issue) {
+            $issue.Status = "manual_fix_required"
+            $issue.Message = $message
+        }
+    }
+    
     # Helper method to check if issue is unfixable (for GetManualCommands)
     hidden [bool] IsIssueUnfixable([RepositoryState]$state, [string]$issueType) {
         $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq $issueType } | Select-Object -First 1
         return $issue -and $issue.Status -eq "unfixable"
+    }
+    
+    # Helper method to check if issue requires manual fix (for GetManualCommands)
+    hidden [bool] IsIssueManualFixRequired([RepositoryState]$state, [string]$issueType) {
+        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq $issueType } | Select-Object -First 1
+        return $issue -and $issue.Status -eq "manual_fix_required"
     }
 }
 
@@ -183,8 +200,19 @@ class RepublishReleaseAction : ReleaseRemediationAction {
         $result = Republish-GitHubRelease -State $state -TagName $this.TagName
         
         if ($result.Success) {
-            Write-Host "✓ Success: Republished release for $($this.TagName)"
-            return $true
+            # Verify the release is actually immutable after republishing
+            $isImmutable = Test-ReleaseImmutability -Owner $state.RepoOwner -Repo $state.RepoName -Tag $this.TagName -Token $state.Token -ApiUrl $state.ApiUrl
+            
+            if ($isImmutable) {
+                Write-Host "✓ Success: Republished release for $($this.TagName) and verified immutability"
+                return $true
+            } else {
+                # Release was republished but is still mutable - repository settings not configured
+                $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
+                $this.MarkAsManualFixRequired($state, "non_immutable_release", "Release $($this.TagName) was republished but is still mutable. Enable 'Release immutability' in repository settings: $settingsUrl")
+                Write-Host "::warning::Release $($this.TagName) is still mutable after republishing. Enable 'Release immutability' at: $settingsUrl"
+                return $false
+            }
         } else {
             # Check if this is an unfixable error (422 - tag used by immutable release)
             if ($this.IsUnfixableError($result)) {
@@ -200,6 +228,11 @@ class RepublishReleaseAction : ReleaseRemediationAction {
         # Check if the issue is unfixable - if so, return empty array
         if ($this.IsIssueUnfixable($state, "non_immutable_release")) {
             return @()
+        }
+        # Check if manual fix is required (repository settings need configuration)
+        if ($this.IsIssueManualFixRequired($state, "non_immutable_release")) {
+            $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
+            return @("# Enable 'Release immutability' in repository settings: $settingsUrl")
         }
         return @(
             "gh release edit $($this.TagName) --draft=true",
