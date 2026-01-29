@@ -16,7 +16,8 @@ function Get-ManualInstructions
     
     .DESCRIPTION
     Extracts and displays manual fix commands from RemediationAction objects for issues
-    that are unfixable, failed, or require manual fixes. Groups commands by action type for better readability.
+    that are unfixable, failed, require manual fixes, or are still pending (not auto-fixed).
+    Groups commands by action type for better readability.
     
     .PARAMETER State
     The RepositoryState object containing all validation issues
@@ -30,8 +31,9 @@ function Get-ManualInstructions
         [bool]$GroupByType = $false
     )
     
+    # Include pending issues (not yet fixed) as well as failed/unfixable ones
     $issuesNeedingManualFix = $State.Issues | Where-Object { 
-        $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
+        $_.Status -eq "pending" -or $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
     }
     
     if ($issuesNeedingManualFix.Count -eq 0) {
@@ -118,8 +120,9 @@ function Write-ManualInstructionsToStepSummary
         return
     }
     
+    # Include pending issues (not yet fixed) as well as failed/unfixable ones
     $issuesNeedingManualFix = $State.Issues | Where-Object { 
-        $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
+        $_.Status -eq "pending" -or $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
     }
     
     if ($issuesNeedingManualFix.Count -eq 0) {
@@ -176,10 +179,10 @@ function Invoke-AllAutoFixes
     )
     
     if (-not $AutoFix) {
-        # Not in auto-fix mode, mark all issues as unfixable
+        # Not in auto-fix mode, mark all issues as manual_fix_required so manual instructions show
         foreach ($issue in $State.Issues) {
             if ($issue.Status -eq "pending") {
-                $issue.Status = "unfixable"
+                $issue.Status = "manual_fix_required"
             }
         }
         return

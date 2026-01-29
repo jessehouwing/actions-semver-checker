@@ -1412,6 +1412,79 @@ exit 0
             $createIssues[0].RemediationAction.TagName | Should -Be "v1.0.0"
         }
         
+        It "Should show gh release edit command in manual instructions for draft releases" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1 $commit
+            
+            # Mock API to return git-based tags but a draft release
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                # Tags refs endpoint: /repos/{owner}/{repo}/git/refs/tags
+                if ($Uri -match '/git/refs/tags') {
+                    $tags = & git tag -l 2>$null
+                    if (-not $tags) { $tags = @() }
+                    if ($tags -isnot [array]) { $tags = @($tags) }
+                    
+                    $refs = @()
+                    foreach ($tag in $tags) {
+                        if ([string]::IsNullOrWhiteSpace($tag)) { continue }
+                        $sha = (& git rev-list -n 1 $tag 2>$null)
+                        if ($sha) {
+                            $refs += @{
+                                ref = "refs/tags/$tag"
+                                object = @{
+                                    sha = $sha.Trim()
+                                    type = "commit"
+                                }
+                            }
+                        }
+                    }
+                    
+                    return @{
+                        Content = ($refs | ConvertTo-Json -Depth 5 -Compress)
+                        Headers = @{}
+                    }
+                }
+                
+                # Branches endpoint
+                if ($Uri -match '/branches(\?|$)') {
+                    return @{
+                        Content = "[]"
+                        Headers = @{}
+                    }
+                }
+                
+                # Releases endpoint - return a draft release for v1.0.0
+                if ($Uri -match '/releases(\?|$)') {
+                    return @{
+                        Content = '[{"tag_name":"v1.0.0","draft":true,"prerelease":false,"id":123}]'
+                        Headers = @{}
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with immutability checking but WITHOUT auto-fix
+            $result = Invoke-MainScript -CheckReleases "none" -CheckReleaseImmutability "error" -AutoFix "false" -SkipMockSetup
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should show manual command to publish the draft release
+            $result.Output | Should -Match "draft status"
+            $result.Output | Should -Match "gh release edit v1\.0\.0 --draft=false"
+        }
+        
         It "Should handle 422 error when tag_name used by immutable release" {
             Initialize-TestRepo -Path $script:testRepoPath -WithRemote
             
