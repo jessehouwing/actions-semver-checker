@@ -142,3 +142,71 @@ function Get-ImmutableReleaseRemediationCommands
     
     return $commands
 }
+
+function Invoke-AllAutoFixes
+{
+    <#
+    .SYNOPSIS
+    Executes all auto-fix actions for pending issues in the State
+    
+    .DESCRIPTION
+    This function processes all ValidationIssues in the State that have AutoFixAction scriptblocks defined.
+    It executes the actions and updates the issue statuses accordingly.
+    This should be called AFTER displaying the planned changes to the user.
+    
+    .PARAMETER State
+    The RepositoryState object containing all validation issues
+    
+    .PARAMETER AutoFix
+    Boolean indicating if auto-fix mode is enabled
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        [bool]$AutoFix = $false
+    )
+    
+    if (-not $AutoFix) {
+        # Not in auto-fix mode, mark all issues as unfixable
+        foreach ($issue in $State.Issues) {
+            if ($issue.Status -eq "pending") {
+                $issue.Status = "unfixable"
+            }
+        }
+        return
+    }
+    
+    # Process all issues that have auto-fix actions
+    foreach ($issue in $State.Issues) {
+        if ($issue.Status -ne "pending") {
+            continue  # Skip issues that have already been processed
+        }
+        
+        if (-not $issue.AutoFixAction) {
+            # No auto-fix action available, mark as unfixable
+            $issue.Status = "unfixable"
+            continue
+        }
+        
+        # Execute the auto-fix action
+        $description = "Fix $($issue.Type) for $($issue.Version)"
+        Write-Host "Auto-fix: $description"
+        
+        try {
+            $result = & $issue.AutoFixAction
+            
+            if ($result) {
+                Write-Host "✓ Success: $description"
+                $issue.Status = "fixed"
+            } else {
+                Write-Host "✗ Failed: $description"
+                $issue.Status = "failed"
+            }
+        }
+        catch {
+            Write-Host "✗ Failed: $description"
+            Write-SafeOutput -Message ([string]$_) -Prefix "::error::Exception during auto-fix: "
+            $issue.Status = "failed"
+        }
+    }
+}

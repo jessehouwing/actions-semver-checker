@@ -501,16 +501,12 @@ foreach ($tagVersion in $tagVersions)
             }
             
             $issue.ManualFixCommand = $fixCmd
-            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description $fixDescription -Command $fixCmd -ApiAction $apiAction
+            $issue.IsAutoFixable = $true
+            # Store the API action directly
+            $issue.AutoFixAction = $apiAction
             
-            if ($fixed)
+            if (-not $autoFix)
             {
-                $issue.Status = "fixed"
-            }
-            else
-            {
-                if ($autoFix) { $issue.Status = "failed" }
-                else { $issue.Status = "unfixable" }
                 write-actions-warning "::warning $message"
                 $suggestedCommands += $fixCmd
             }
@@ -540,16 +536,12 @@ foreach ($tagVersion in $tagVersions)
             }
             
             $issue.ManualFixCommand = $fixCmd
-            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description $fixDescription -Command $fixCmd -ApiAction $apiAction
+            $issue.IsAutoFixable = $true
+            # Store the API action directly - no GetNewClosure needed for API actions
+            $issue.AutoFixAction = $apiAction
             
-            if ($fixed)
+            if (-not $autoFix)
             {
-                $issue.Status = "fixed"
-            }
-            else
-            {
-                if ($autoFix) { $issue.Status = "failed" }
-                else { $issue.Status = "unfixable" }
                 write-actions-error "::error $message"
                 $suggestedCommands += $fixCmd
             }
@@ -622,71 +614,58 @@ if ($checkReleases -ne "none")
                 $issue.Version = $tagVersion.version
                 $State.AddIssue($issue)
                 
-                # Try to auto-fix by creating a draft release
-                if ($autoFix)
-                {
-                    $fixDescription = "Create draft release for $($tagVersion.version)"
+                # Setup auto-fix action for creating and publishing release
+                $issue.IsAutoFixable = $true
+                # Capture variables needed for the closure
+                $capturedTagName = $tagVersion.version
+                $capturedState = $State
+                $capturedRepoInfo = $repoInfo
+                $issue.AutoFixAction = {
+                    $fixDescription = "Create draft release for $capturedTagName"
                     Write-Host "Auto-fix: $fixDescription"
-                    $releaseId = New-GitHubDraftRelease -State $State -TagName $tagVersion.version
+                    $releaseId = New-GitHubDraftRelease -State $capturedState -TagName $capturedTagName
                     
                     if ($releaseId)
                     {
                         Write-Host "✓ Success: $fixDescription"
-                        $createIssue = [ValidationIssue]::new("create_draft_release", $messageType, "Created draft release for $($tagVersion.version)")
-                        $createIssue.Version = $tagVersion.version
+                        $createIssue = [ValidationIssue]::new("create_draft_release", "info", "Created draft release for $capturedTagName")
+                        $createIssue.Version = $capturedTagName
                         $createIssue.Status = "fixed"
-                        $State.AddIssue($createIssue)
+                        $capturedState.AddIssue($createIssue)
                         
                         # Now try to publish the draft release
-                        $publishDescription = "Publish draft release for $($tagVersion.version)"
+                        $publishDescription = "Publish draft release for $capturedTagName"
                         Write-Host "Auto-fix: $publishDescription"
-                        $publishResult = Publish-GitHubRelease -State $State -TagName $tagVersion.version -ReleaseId $releaseId
+                        $publishResult = Publish-GitHubRelease -State $capturedState -TagName $capturedTagName -ReleaseId $releaseId
                         
                         if ($publishResult.Success)
                         {
                             Write-Host "✓ Success: $publishDescription"
-                            $issue.Status = "fixed"
+                            return $true
                         }
                         elseif ($publishResult.Unfixable)
                         {
                             Write-Host "✗ Unfixable: $publishDescription (tag used by immutable release)"
-                            $issue.Status = "unfixable"
-                            
-                            # Use helper function to get remediation commands
-                            $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $tagVersion.version -State $State
-                            $suggestedCommands += $remediationCommands
+                            return $false
                         }
                         else
                         {
                             Write-Host "✗ Failed: $publishDescription"
-                            $issue.Status = "failed"
-                            
                             # Log message about manual publishing requirement
-                            $editUrl = "$($repoInfo.Url)/releases/edit/$($tagVersion.version)"
-                            Write-Host "::warning title=Manual action required::The draft release $($tagVersion.version) must be published manually. Edit and publish at: $editUrl"
-                            
-                            if ($repoInfo) {
-                                $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
-                            } else {
-                                $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
-                            }
+                            $editUrl = "$($capturedRepoInfo.Url)/releases/edit/$capturedTagName"
+                            Write-Host "::warning title=Manual action required::The draft release $capturedTagName must be published manually. Edit and publish at: $editUrl"
+                            return $false
                         }
                     }
                     else
                     {
                         Write-Host "✗ Failed: $fixDescription"
-                        $issue.Status = "failed"
-                        $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
-                        if ($repoInfo) {
-                            $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
-                        } else {
-                            $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
-                        }
+                        return $false
                     }
                 }
-                else
+                
+                if (-not $autoFix)
                 {
-                    $issue.Status = "unfixable"
                     $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
                     if ($repoInfo) {
                         $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
@@ -948,16 +927,12 @@ foreach ($majorVersion in $majorVersions)
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
-            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing patch version v$($majorVersion.major).0.0" -Command $fixCmd -ApiAction $apiAction
+            $issue.IsAutoFixable = $true
+            # Store the API action directly
+            $issue.AutoFixAction = $apiAction
             
-            if ($fixed) {
-                $issue.Status = "fixed"
-                # Update our tracking to include the new version
-                $newPatchVersion = ConvertTo-Version "$($majorVersion.major).0.0"
-                $patchVersions += $newPatchVersion
-            } else {
-                if ($autoFix) { $issue.Status = "failed" }
-                else { $issue.Status = "unfixable" }
+            if (-not $autoFix)
+            {
                 write-actions-error "::error title=Missing version::Version: v$($majorVersion.major).0.0 does not exist and must match: v$($majorVersion.major) ref $majorSha"
                 $suggestedCommands += $fixCmd
             }
@@ -975,17 +950,12 @@ foreach ($majorVersion in $majorVersions)
                 $issue.ManualFixCommand = $fixCmd
                 $State.AddIssue($issue)
                 
-                $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing minor version v$($majorVersion.major).0" -Command $fixCmd -ApiAction $apiAction
+                $issue.IsAutoFixable = $true
+                # Store the API action directly
+            $issue.AutoFixAction = $apiAction
                 
-                if ($fixed) {
-                    $issue.Status = "fixed"
-                    # Update our tracking to include the new version
-                    $newMinorVersion = ConvertTo-Version "$($majorVersion.major).0"
-                    $minorVersions += $newMinorVersion
-                    $highestMinor = $newMinorVersion
-                } else {
-                    if ($autoFix) { $issue.Status = "failed" }
-                    else { $issue.Status = "unfixable" }
+                if (-not $autoFix)
+                {
                     write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha" -severity $checkMinorVersion
                     $suggestedCommands += $fixCmd
                 }
@@ -1027,13 +997,12 @@ foreach ($majorVersion in $majorVersions)
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
-            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Convert major version v$($majorVersion.major) from tag to branch" -Command $fixCmd -ApiAction $apiAction
+            $issue.IsAutoFixable = $true
+            # Store the API action directly
+            $issue.AutoFixAction = $apiAction
             
-            if ($fixed) {
-                $issue.Status = "fixed"
-            } else {
-                if ($autoFix) { $issue.Status = "failed" }
-                else { $issue.Status = "unfixable" }
+            if (-not $autoFix)
+            {
                 write-actions-error "::error title=Version should be branch::Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled"
                 $suggestedCommands += "git branch v$($majorVersion.major) $majorSha"
                 $suggestedCommands += "git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major)"
@@ -1055,13 +1024,12 @@ foreach ($majorVersion in $majorVersions)
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
-            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Convert minor version v$($majorVersion.major).$($highestMinor.minor) from tag to branch" -Command $fixCmd -ApiAction $apiAction
+            $issue.IsAutoFixable = $true
+            # Store the API action directly
+            $issue.AutoFixAction = $apiAction
             
-            if ($fixed) {
-                $issue.Status = "fixed"
-            } else {
-                if ($autoFix) { $issue.Status = "failed" }
-                else { $issue.Status = "unfixable" }
+            if (-not $autoFix)
+            {
                 write-actions-error "::error title=Version should be branch::Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled"
                 $suggestedCommands += "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha"
                 $suggestedCommands += "git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor)"
@@ -1084,13 +1052,12 @@ foreach ($majorVersion in $majorVersions)
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
-            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing major version v$($majorVersion.major) pointing to minor version" -Command $fixCmd -ApiAction $apiAction
+            $issue.IsAutoFixable = $true
+            # Store the API action directly
+            $issue.AutoFixAction = $apiAction
             
-            if ($fixed) {
-                $issue.Status = "fixed"
-            } else {
-                if ($autoFix) { $issue.Status = "failed" }
-                else { $issue.Status = "unfixable" }
+            if (-not $autoFix)
+            {
                 write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
                 $suggestedCommands += $fixCmd
             }
@@ -1109,13 +1076,12 @@ foreach ($majorVersion in $majorVersions)
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
-            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update major version v$($majorVersion.major) to match minor version" -Command $fixCmd -ApiAction $apiAction
+            $issue.IsAutoFixable = $true
+            # Store the API action directly
+            $issue.AutoFixAction = $apiAction
             
-            if ($fixed) {
-                $issue.Status = "fixed"
-            } else {
-                if ($autoFix) { $issue.Status = "failed" }
-                else { $issue.Status = "unfixable" }
+            if (-not $autoFix)
+            {
                 write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
                 $suggestedCommands += $fixCmd
             }
@@ -1165,13 +1131,12 @@ foreach ($majorVersion in $majorVersions)
         $issue.ManualFixCommand = $fixCmd
         $State.AddIssue($issue)
         
-        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update major version v$($highestMinor.major) to match patch version" -Command $fixCmd -ApiAction $apiAction
+        $issue.IsAutoFixable = $true
+        # Store the API action directly
+            $issue.AutoFixAction = $apiAction
         
-        if ($fixed) {
-            $issue.Status = "fixed"
-        } else {
-            if ($autoFix) { $issue.Status = "failed" }
-            else { $issue.Status = "unfixable" }
+        if (-not $autoFix)
+        {
             write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
             $suggestedCommands += $fixCmd
         }
@@ -1188,13 +1153,12 @@ foreach ($majorVersion in $majorVersions)
         $issue.ManualFixCommand = $fixCmd
         $State.AddIssue($issue)
         
-        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing patch version v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Command $fixCmd -ApiAction $apiAction
+        $issue.IsAutoFixable = $true
+        # Store the API action directly
+            $issue.AutoFixAction = $apiAction
         
-        if ($fixed) {
-            $issue.Status = "fixed"
-        } else {
-            if ($autoFix) { $issue.Status = "failed" }
-            else { $issue.Status = "unfixable" }
+        if (-not $autoFix)
+        {
             write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
             $suggestedCommands += $fixCmd
         }
@@ -1212,13 +1176,12 @@ foreach ($majorVersion in $majorVersions)
         $issue.ManualFixCommand = $fixCmd
         $State.AddIssue($issue)
         
-        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing major version v$($highestPatch.major)" -Command $fixCmd -ApiAction $apiAction
+        $issue.IsAutoFixable = $true
+        # Store the API action directly
+            $issue.AutoFixAction = $apiAction
         
-        if ($fixed) {
-            $issue.Status = "fixed"
-        } else {
-            if ($autoFix) { $issue.Status = "failed" }
-            else { $issue.Status = "unfixable" }
+        if (-not $autoFix)
+        {
             write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
             $suggestedCommands += $fixCmd
         }
@@ -1247,13 +1210,12 @@ foreach ($majorVersion in $majorVersions)
                 $issue.ManualFixCommand = $fixCmd
                 $State.AddIssue($issue)
                 
-                $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing minor version v$($highestMinor.major).$($highestMinor.minor)" -Command $fixCmd -ApiAction $apiAction
+                $issue.IsAutoFixable = $true
+                # Store the API action directly
+            $issue.AutoFixAction = $apiAction
                 
-                if ($fixed) {
-                    $issue.Status = "fixed"
-                } else {
-                    if ($autoFix) { $issue.Status = "failed" }
-                    else { $issue.Status = "unfixable" }
+                if (-not $autoFix)
+                {
                     write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor" -severity $checkMinorVersion
                     $suggestedCommands += $fixCmd
                 }
@@ -1273,13 +1235,12 @@ foreach ($majorVersion in $majorVersions)
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
-            $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update minor version v$($highestMinor.major).$($highestMinor.minor) to match patch version" -Command $fixCmd -ApiAction $apiAction
+            $issue.IsAutoFixable = $true
+            # Store the API action directly
+            $issue.AutoFixAction = $apiAction
             
-            if ($fixed) {
-                $issue.Status = "fixed"
-            } else {
-                if ($autoFix) { $issue.Status = "failed" }
-                else { $issue.Status = "unfixable" }
+            if (-not $autoFix)
+            {
                 write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha" -severity $checkMinorVersion
                 $suggestedCommands += $fixCmd
             }
@@ -1311,13 +1272,12 @@ if ($useBranches) {
         $issue.ManualFixCommand = $fixCmd
         $State.AddIssue($issue)
         
-        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update latest branch to match highest version" -Command $fixCmd -ApiAction $apiAction
+        $issue.IsAutoFixable = $true
+        # Store the API action directly
+            $issue.AutoFixAction = $apiAction
         
-        if ($fixed) {
-            $issue.Status = "fixed"
-        } else {
-            if ($autoFix) { $issue.Status = "failed" }
-            else { $issue.Status = "unfixable" }
+        if (-not $autoFix)
+        {
             write-actions-error "::error title=Incorrect version::Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
             $suggestedCommands += $fixCmd
         }
@@ -1331,13 +1291,12 @@ if ($useBranches) {
         $issue.ManualFixCommand = $fixCmd
         $State.AddIssue($issue)
         
-        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Create missing latest branch" -Command $fixCmd -ApiAction $apiAction
+        $issue.IsAutoFixable = $true
+        # Store the API action directly
+            $issue.AutoFixAction = $apiAction
         
-        if ($fixed) {
-            $issue.Status = "fixed"
-        } else {
-            if ($autoFix) { $issue.Status = "failed" }
-            else { $issue.Status = "unfixable" }
+        if (-not $autoFix)
+        {
             write-actions-error "::error title=Missing version::Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
             $suggestedCommands += $fixCmd
         }
@@ -1361,13 +1320,12 @@ if ($useBranches) {
         $issue.ManualFixCommand = $fixCmd
         $State.AddIssue($issue)
         
-        $fixed = Invoke-AutoFix -AutoFix $autoFix -Description "Update latest tag to match highest version" -Command $fixCmd -ApiAction $apiAction
+        $issue.IsAutoFixable = $true
+        # Store the API action directly
+            $issue.AutoFixAction = $apiAction
         
-        if ($fixed) {
-            $issue.Status = "fixed"
-        } else {
-            if ($autoFix) { $issue.Status = "failed" }
-            else { $issue.Status = "unfixable" }
+        if (-not $autoFix)
+        {
             write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
             $suggestedCommands += $fixCmd
         }
@@ -1381,16 +1339,19 @@ if ($useBranches) {
 }
 
 #############################################################################
-# DIFF VISUALIZATION (Before Final Summary)
+# DIFF VISUALIZATION AND AUTO-FIX EXECUTION
 #############################################################################
 
-# If auto-fix is enabled and there are issues, show what will be changed
+# Display planned changes BEFORE executing any fixes
 if ($autoFix -and $State.Issues.Count -gt 0) {
     $diffs = Get-StateDiff -State $State
     if ($diffs.Count -gt 0) {
         Write-StateDiff -Diffs $diffs
     }
 }
+
+# Now execute all auto-fixes
+Invoke-AllAutoFixes -State $State -AutoFix $autoFix
 
 #############################################################################
 # FINAL SUMMARY AND EXIT
@@ -1456,3 +1417,4 @@ else
 # Set global for test harness compatibility and exit
 $global:returnCode = $exitCode
 exit $exitCode
+
