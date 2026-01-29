@@ -224,6 +224,61 @@ function Get-GitHubReleases
     }
 }
 
+function Test-ImmutableReleaseError
+{
+    <#
+    .SYNOPSIS
+    Check if an error is a 422 error indicating a tag was used by an immutable release.
+    
+    .DESCRIPTION
+    When a release is deleted but was immutable, GitHub prevents creating/updating
+    releases with the same tag. This function checks if an error matches this condition.
+    
+    .PARAMETER ErrorRecord
+    The error record from a catch block ($_).
+    
+    .OUTPUTS
+    Returns $true if this is an immutable release conflict error, $false otherwise.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        $ErrorRecord
+    )
+    
+    # Check status code
+    $statusCode = $null
+    if ($ErrorRecord.Exception.Response) {
+        $statusCode = $ErrorRecord.Exception.Response.StatusCode.value__
+    }
+    
+    # Must be a 422 error
+    if ($statusCode -ne 422 -and $ErrorRecord.Exception.Message -notmatch "422") {
+        return $false
+    }
+    
+    # Try to parse the error details JSON
+    if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
+        try {
+            $errorData = $ErrorRecord.ErrorDetails.Message | ConvertFrom-Json
+            
+            # Check if errors array contains the immutable release message
+            if ($errorData.errors) {
+                foreach ($err in $errorData.errors) {
+                    if ($err.field -eq "tag_name" -and $err.message -match "was used by an immutable release") {
+                        return $true
+                    }
+                }
+            }
+        }
+        catch {
+            # If JSON parsing fails, fall back to string matching
+        }
+    }
+    
+    # Fallback: check the exception message directly
+    return $ErrorRecord.Exception.Message -match "tag_name was used by an immutable release"
+}
+
 function Remove-GitHubRelease
 {
     param(
@@ -344,18 +399,9 @@ function New-GitHubRelease
     }
     catch {
         $errorMessage = $_.Exception.Message
-        $isUnfixable = $false
+        $isUnfixable = Test-ImmutableReleaseError -ErrorRecord $_
         
-        # Check if this is a 422 error about tag_name being used by an immutable release
-        $statusCode = $null
-        if ($_.Exception.Response) {
-            $statusCode = $_.Exception.Response.StatusCode.value__
-        }
-        
-        # Check for the specific error condition
-        # Note: This relies on GitHub's error message format. If the API changes, this may need updating.
-        if (($statusCode -eq 422 -or $errorMessage -match "422") -and $errorMessage -match "tag_name was used by an immutable release") {
-            $isUnfixable = $true
+        if ($isUnfixable) {
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
         } else {
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to create release for $TagName : "
@@ -420,16 +466,9 @@ function Publish-GitHubRelease
         $errorMessage = $_.Exception.Message
         $isUnfixable = $false
         
-        # Check if this is a 422 error about tag_name being used by an immutable release
-        # First check the HTTP status code if available
-        $statusCode = $null
-        if ($_.Exception.Response) {
-            $statusCode = $_.Exception.Response.StatusCode.value__
-        }
+        $isUnfixable = Test-ImmutableReleaseError -ErrorRecord $_
         
-        # Check for the specific error condition
-        if (($statusCode -eq 422 -or $errorMessage -match "422") -and $errorMessage -match "tag_name was used by an immutable release") {
-            $isUnfixable = $true
+        if ($isUnfixable) {
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
         } else {
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to publish release for $TagName : "
