@@ -50,6 +50,9 @@ function Invoke-WithRetry
             $delay = $delay * 2
         }
     }
+    
+    # Safeguard: This should not be reached due to the throw on line 43, but add explicit error
+    throw "Maximum retry attempts ($MaxRetries) reached for $OperationDescription without success or error"
 }
 
 function Get-ApiHeaders
