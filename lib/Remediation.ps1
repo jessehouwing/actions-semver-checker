@@ -32,8 +32,15 @@ function Get-ManualInstructions
     )
     
     # Include pending issues (not yet fixed) as well as failed/unfixable ones
+    # Sort by priority (lower number = higher priority, e.g., Delete=10, Create=20, Release=30+)
     $issuesNeedingManualFix = $State.Issues | Where-Object { 
         $_.Status -eq "pending" -or $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
+    } | Sort-Object {
+        if ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
+            $_.RemediationAction.Priority
+        } else {
+            100  # Default priority for issues without RemediationAction
+        }
     }
     
     if ($issuesNeedingManualFix.Count -eq 0) {
@@ -121,8 +128,15 @@ function Write-ManualInstructionsToStepSummary
     }
     
     # Include pending issues (not yet fixed) as well as failed/unfixable ones
+    # Sort by priority (lower number = higher priority, e.g., Delete=10, Create=20, Release=30+)
     $issuesNeedingManualFix = $State.Issues | Where-Object { 
         $_.Status -eq "pending" -or $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
+    } | Sort-Object {
+        if ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
+            $_.RemediationAction.Priority
+        } else {
+            100  # Default priority for issues without RemediationAction
+        }
     }
     
     if ($issuesNeedingManualFix.Count -eq 0) {

@@ -465,6 +465,17 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none" -or $ign
     }
 }
 
+# Helper function to check if a draft release exists for a given tag
+# When a draft release exists, publishing it will create the tag automatically
+function Test-DraftReleaseExists {
+    param([string]$TagName)
+    
+    if ($releaseMap.ContainsKey($TagName)) {
+        return $releaseMap[$TagName].isDraft -eq $true
+    }
+    return $false
+}
+
 foreach ($tag in $tags)
 {
     # Skip ignored versions
@@ -871,44 +882,50 @@ foreach ($majorVersion in $majorVersions)
         Write-Host "::debug::No minor versions found for major version v$($majorVersion.major), will create v$($majorVersion.major).0.0 and v$($majorVersion.major).0"
         
         # Create v{major}.0.0 using the major version's SHA
-        if ($majorSha)
+        # Skip if a draft release exists - publishing the release will create the tag
+        $patchVersionTag = "v$($majorVersion.major).0.0"
+        if ($majorSha -and -not (Test-DraftReleaseExists -TagName $patchVersionTag))
         {
-            $fixCmd = "git push origin $majorSha`:refs/tags/v$($majorVersion.major).0.0"
+            $fixCmd = "git push origin $majorSha`:refs/tags/$patchVersionTag"
             
-            $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version: v$($majorVersion.major).0.0 does not exist and must match: v$($majorVersion.major) ref $majorSha")
-            $issue.Version = "v$($majorVersion.major).0.0"
+            $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version: $patchVersionTag does not exist and must match: v$($majorVersion.major) ref $majorSha")
+            $issue.Version = $patchVersionTag
             $issue.ExpectedSha = $majorSha
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
             $issue.IsAutoFixable = $true
             # Use RemediationAction class
-            $issue.RemediationAction = [CreateTagAction]::new("v$($majorVersion.major).0.0", $majorSha)
+            $issue.RemediationAction = [CreateTagAction]::new($patchVersionTag, $majorSha)
+        }
+        elseif ($majorSha -and (Test-DraftReleaseExists -TagName $patchVersionTag))
+        {
+            Write-Host "::debug::Skipping missing tag issue for $patchVersionTag - a draft release exists and will create the tag when published"
+        }
+        
+        # Create v{major}.0 if check-minor-version is enabled (this is a floating version, not affected by draft releases)
+        if ($majorSha -and $checkMinorVersion -ne "none")
+        {
+            $fixCmd = "git push origin $majorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major).0"
             
-            # Create v{major}.0 if check-minor-version is enabled
-            if ($checkMinorVersion -ne "none")
-            {
-                $fixCmd = "git push origin $majorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major).0"
-                
-                $issue = [ValidationIssue]::new("missing_minor_version", $checkMinorVersion, "Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha")
-                $issue.Version = "v$($majorVersion.major).0"
-                $issue.ExpectedSha = $majorSha
-                $issue.ManualFixCommand = $fixCmd
-                $State.AddIssue($issue)
-                
-                $issue.IsAutoFixable = $true
-                # Use RemediationAction class
-                if ($useBranches) {
-                    $issue.RemediationAction = [CreateBranchAction]::new("v$($majorVersion.major).0", $majorSha)
-                } else {
-                    $issue.RemediationAction = [CreateTagAction]::new("v$($majorVersion.major).0", $majorSha)
-                }
+            $issue = [ValidationIssue]::new("missing_minor_version", $checkMinorVersion, "Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha")
+            $issue.Version = "v$($majorVersion.major).0"
+            $issue.ExpectedSha = $majorSha
+            $issue.ManualFixCommand = $fixCmd
+            $State.AddIssue($issue)
+            
+            $issue.IsAutoFixable = $true
+            # Use RemediationAction class
+            if ($useBranches) {
+                $issue.RemediationAction = [CreateBranchAction]::new("v$($majorVersion.major).0", $majorSha)
+            } else {
+                $issue.RemediationAction = [CreateTagAction]::new("v$($majorVersion.major).0", $majorSha)
             }
-            else
-            {
-                # Even if check-minor-version is none, we still need $highestMinor set for the rest of the logic
-                $highestMinor = ConvertTo-Version "$($majorVersion.major).0"
-            }
+        }
+        elseif (-not $majorSha -or $checkMinorVersion -eq "none")
+        {
+            # Even if check-minor-version is none, we still need $highestMinor set for the rest of the logic
+            $highestMinor = ConvertTo-Version "$($majorVersion.major).0"
         }
         
         # If we still don't have highestMinor, skip this major version
@@ -1048,17 +1065,27 @@ foreach ($majorVersion in $majorVersions)
 
     if (-not $patchSha -and $sourceShaForPatch)
     {
-        $fixCmd = "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
+        $patchVersionTag = "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
         
-        $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch")
-        $issue.Version = "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
-        $issue.ExpectedSha = $sourceShaForPatch
-        $issue.ManualFixCommand = $fixCmd
-        $State.AddIssue($issue)
-        
-        $issue.IsAutoFixable = $true
-        # Use RemediationAction class
-        $issue.RemediationAction = [CreateTagAction]::new("v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)", $sourceShaForPatch)
+        # Skip if a draft release exists - publishing the release will create the tag
+        if (-not (Test-DraftReleaseExists -TagName $patchVersionTag))
+        {
+            $fixCmd = "git push origin $sourceShaForPatch`:refs/tags/$patchVersionTag"
+            
+            $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version: $patchVersionTag does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch")
+            $issue.Version = $patchVersionTag
+            $issue.ExpectedSha = $sourceShaForPatch
+            $issue.ManualFixCommand = $fixCmd
+            $State.AddIssue($issue)
+            
+            $issue.IsAutoFixable = $true
+            # Use RemediationAction class
+            $issue.RemediationAction = [CreateTagAction]::new($patchVersionTag, $sourceShaForPatch)
+        }
+        else
+        {
+            Write-Host "::debug::Skipping missing tag issue for $patchVersionTag - a draft release exists and will create the tag when published"
+        }
     }
 
     if (-not $majorSha)
