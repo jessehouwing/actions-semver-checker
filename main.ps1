@@ -1300,7 +1300,8 @@ else
     Write-ManualInstructionsToStepSummary -State $State
 }
 
-# Set global for test harness compatibility and exit
+# Set globals for test harness compatibility and exit
 $global:returnCode = $exitCode
+$global:State = $script:State  # Make State accessible to tests
 exit $exitCode
 
