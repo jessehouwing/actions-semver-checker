@@ -126,6 +126,16 @@ class PublishReleaseAction : RemediationAction {
             return $true
         } else {
             Write-Host "✗ Failed: Publish release for $($this.TagName)"
+            
+            # Check if this is an unfixable error (422 - tag used by immutable release)
+            if ($result.Unfixable) {
+                # Find this issue in the state and mark it as unfixable
+                $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "draft_release" } | Select-Object -First 1
+                if ($issue) {
+                    $issue.Status = "unfixable"
+                }
+            }
+            
             return $false
         }
     }
@@ -208,13 +218,23 @@ class CreateTagAction : RemediationAction {
     
     [bool] Execute([RepositoryState]$state) {
         Write-Host "Auto-fix: Create tag $($this.TagName)"
-        $success = New-GitHubRef -State $state -RefName "refs/tags/$($this.TagName)" -Sha $this.Sha -Force $false
+        $result = New-GitHubRef -State $state -RefName "refs/tags/$($this.TagName)" -Sha $this.Sha -Force $false
         
-        if ($success) {
+        if ($result.Success) {
             Write-Host "✓ Success: Created tag $($this.TagName)"
             return $true
         } else {
             Write-Host "✗ Failed: Create tag $($this.TagName)"
+            
+            # Check if this requires manual fix due to workflows permission
+            if ($result.RequiresManualFix) {
+                # Find this issue in the state and mark it as requiring manual fix (unfixable by automation)
+                $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.RemediationAction -eq $this } | Select-Object -First 1
+                if ($issue) {
+                    $issue.Status = "unfixable"
+                }
+            }
+            
             return $false
         }
     }
@@ -239,13 +259,22 @@ class UpdateTagAction : RemediationAction {
     [bool] Execute([RepositoryState]$state) {
         $forceStr = if ($this.Force) { " (force)" } else { "" }
         Write-Host "Auto-fix: Update tag $($this.TagName)$forceStr"
-        $success = New-GitHubRef -State $state -RefName "refs/tags/$($this.TagName)" -Sha $this.Sha -Force $this.Force
+        $result = New-GitHubRef -State $state -RefName "refs/tags/$($this.TagName)" -Sha $this.Sha -Force $this.Force
         
-        if ($success) {
+        if ($result.Success) {
             Write-Host "✓ Success: Updated tag $($this.TagName)"
             return $true
         } else {
             Write-Host "✗ Failed: Update tag $($this.TagName)"
+            
+            # Check if this requires manual fix due to workflows permission
+            if ($result.RequiresManualFix) {
+                $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.RemediationAction -eq $this } | Select-Object -First 1
+                if ($issue) {
+                    $issue.Status = "unfixable"
+                }
+            }
+            
             return $false
         }
     }
@@ -301,13 +330,22 @@ class CreateBranchAction : RemediationAction {
     
     [bool] Execute([RepositoryState]$state) {
         Write-Host "Auto-fix: Create branch $($this.BranchName)"
-        $success = New-GitHubRef -State $state -RefName "refs/heads/$($this.BranchName)" -Sha $this.Sha -Force $false
+        $result = New-GitHubRef -State $state -RefName "refs/heads/$($this.BranchName)" -Sha $this.Sha -Force $false
         
-        if ($success) {
+        if ($result.Success) {
             Write-Host "✓ Success: Created branch $($this.BranchName)"
             return $true
         } else {
             Write-Host "✗ Failed: Create branch $($this.BranchName)"
+            
+            # Check if this requires manual fix due to workflows permission
+            if ($result.RequiresManualFix) {
+                $issue = $state.Issues | Where-Object { $_.Version -eq $this.BranchName -and $_.RemediationAction -eq $this } | Select-Object -First 1
+                if ($issue) {
+                    $issue.Status = "unfixable"
+                }
+            }
+            
             return $false
         }
     }
@@ -332,13 +370,22 @@ class UpdateBranchAction : RemediationAction {
     [bool] Execute([RepositoryState]$state) {
         $forceStr = if ($this.Force) { " (force)" } else { "" }
         Write-Host "Auto-fix: Update branch $($this.BranchName)$forceStr"
-        $success = New-GitHubRef -State $state -RefName "refs/heads/$($this.BranchName)" -Sha $this.Sha -Force $this.Force
+        $result = New-GitHubRef -State $state -RefName "refs/heads/$($this.BranchName)" -Sha $this.Sha -Force $this.Force
         
-        if ($success) {
+        if ($result.Success) {
             Write-Host "✓ Success: Updated branch $($this.BranchName)"
             return $true
         } else {
             Write-Host "✗ Failed: Update branch $($this.BranchName)"
+            
+            # Check if this requires manual fix due to workflows permission
+            if ($result.RequiresManualFix) {
+                $issue = $state.Issues | Where-Object { $_.Version -eq $this.BranchName -and $_.RemediationAction -eq $this } | Select-Object -First 1
+                if ($issue) {
+                    $issue.Status = "unfixable"
+                }
+            }
+            
             return $false
         }
     }

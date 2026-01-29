@@ -524,6 +524,42 @@ function Get-StateDiff {
             )
             $diffs += $diff
         }
+        elseif ($issue.Type -eq "draft_release") {
+            # Publish draft release (update action)
+            $diff = [StateDiff]::new(
+                "update",
+                "release",
+                $issue.Version,
+                "",
+                "",
+                "Publish draft release"
+            )
+            $diffs += $diff
+        }
+        elseif ($issue.Type -eq "mutable_floating_release" -or $issue.Type -eq "floating_version_release") {
+            # Delete release on floating version
+            $diff = [StateDiff]::new(
+                "delete",
+                "release",
+                $issue.Version,
+                "",
+                "",
+                "Remove release from floating version"
+            )
+            $diffs += $diff
+        }
+        elseif ($issue.Type -eq "non_immutable_release") {
+            # Republish release for immutability (update action)
+            $diff = [StateDiff]::new(
+                "update",
+                "release",
+                $issue.Version,
+                "",
+                "",
+                "Republish release for immutability"
+            )
+            $diffs += $diff
+        }
         elseif ($issue.Type -match "delete" -or $issue.Type -match "remove") {
             # Delete action
             $refType = "release"
