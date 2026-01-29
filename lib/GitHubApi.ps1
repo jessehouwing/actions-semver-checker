@@ -557,13 +557,41 @@ function New-GitHubRef
         
         # Check for permission errors (403 Forbidden)
         if ($statusCode -eq 403) {
-            Write-SafeOutput -Message $errorMessage -Prefix "::error::Permission denied when creating/updating ref $RefName : "
-            Write-Host "::error title=Insufficient Permissions::Unable to create/update $RefName. The GitHub token lacks required permissions."
-            Write-Host "::error::Required workflow permissions:"
-            Write-Host "::error::  permissions:"
-            Write-Host "::error::    contents: write"
-            Write-Host "::error::    actions: write  # Required when modifying workflow files"
-            Write-Host "::error::See: https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication#permissions-for-the-github_token"
+            Write-Host "::debug::REST API returned 403 for $RefName, falling back to git push"
+            
+            # Fall back to using git push since REST API doesn't have permission
+            # Extract tag/branch name from RefName (e.g., "refs/tags/v1.0.0" -> "v1.0.0")
+            $refParts = $RefName -split '/'
+            $refShortName = $refParts[-1]
+            
+            try {
+                # Use git push to create/update the ref
+                if ($Force) {
+                    $gitCmd = "git push origin $Sha`:$RefName --force"
+                } else {
+                    $gitCmd = "git push origin $Sha`:$RefName"
+                }
+                
+                Write-Host "::debug::Executing fallback: $gitCmd"
+                
+                # Execute git push
+                $output = & git push origin "$Sha`:$RefName" $(if ($Force) { '--force' }) 2>&1
+                $exitCode = $LASTEXITCODE
+                
+                if ($exitCode -eq 0) {
+                    Write-Host "::debug::Successfully created/updated $RefName via git push"
+                    return $true
+                } else {
+                    Write-Host "::error::Git push failed for $RefName"
+                    Write-SafeOutput -Message ([string]$output) -Prefix "::error::Git push error: "
+                    return $false
+                }
+            }
+            catch {
+                Write-Host "::error::Failed to push $RefName via git"
+                Write-SafeOutput -Message ([string]$_) -Prefix "::error::Git error: "
+                return $false
+            }
         } else {
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to create/update ref $RefName : "
         }
