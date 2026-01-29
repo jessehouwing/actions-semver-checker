@@ -618,24 +618,21 @@ if ($checkReleases -ne "none")
                 $issue = [ValidationIssue]::new("missing_release", $messageType, "Version $($tagVersion.version) does not have a GitHub Release")
                 $issue.Version = $tagVersion.version
                 $issue.IsAutoFixable = $true
-                $issue.RemediationAction = [CreateReleaseAction]::new($tagVersion.version, $true)
-                $State.AddIssue($issue)
                 
-                # If release immutability checking is enabled, also create a follow-up action to publish the draft
-                if ($checkReleaseImmutability -ne "none") {
-                    $publishIssue = [ValidationIssue]::new("unpublished_draft", "info", "Draft release $($tagVersion.version) needs to be published")
-                    $publishIssue.Version = $tagVersion.version
-                    $publishIssue.IsAutoFixable = $true
-                    $publishIssue.RemediationAction = [PublishReleaseAction]::new($tagVersion.version)  # ReleaseId will be looked up
-                    $State.AddIssue($publishIssue)
-                }
+                # If release immutability checking is enabled, create and publish in one action
+                # Otherwise just create as draft
+                $shouldAutoPublish = ($checkReleaseImmutability -ne "none")
+                $issue.RemediationAction = [CreateReleaseAction]::new($tagVersion.version, $true, $shouldAutoPublish)
+                $State.AddIssue($issue)
                 
                 if (-not $autoFix)
                 {
-                    $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
-                    if ($repoInfo) {
-                        $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                    if ($shouldAutoPublish) {
+                        # When auto-publishing, suggest creating as non-draft
+                        $suggestedCommands += "gh release create $($tagVersion.version) --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
                     } else {
+                        # When not auto-publishing, suggest creating as draft
+                        $suggestedCommands += "gh release create $($tagVersion.version) --draft --title `"$($tagVersion.version)`" --notes `"Release $($tagVersion.version)`""
                         $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
                     }
                 }
