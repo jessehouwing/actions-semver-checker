@@ -42,18 +42,17 @@ class RemediationAction {
 
 class CreateReleaseAction : RemediationAction {
     [string]$TagName
-    [bool]$IsDraft
-    [bool]$AutoPublish = $false  # If true, publish immediately after creation
+    [bool]$AutoPublish = $false  # If true, create directly as published (non-draft)
     
     CreateReleaseAction([string]$tagName, [bool]$isDraft) : base("Create release", $tagName) {
         $this.TagName = $tagName
-        $this.IsDraft = $isDraft
+        # If isDraft is false, it means we want to publish, so set AutoPublish to true
+        $this.AutoPublish = -not $isDraft
         $this.Priority = 30  # Create after tags
     }
     
     CreateReleaseAction([string]$tagName, [bool]$isDraft, [bool]$autoPublish) : base("Create release", $tagName) {
         $this.TagName = $tagName
-        $this.IsDraft = $isDraft
         $this.AutoPublish = $autoPublish
         $this.Priority = 30  # Create after tags
     }
@@ -62,53 +61,34 @@ class CreateReleaseAction : RemediationAction {
         # If AutoPublish is enabled, create directly as published (non-draft)
         # This avoids the issue where a tag locked by a deleted immutable release
         # can't have a draft release published later
-        if ($this.AutoPublish) {
-            Write-Host "Auto-fix: Create and publish release for $($this.TagName)"
-            $result = New-GitHubDraftRelease -State $state -TagName $this.TagName -Draft $false
-            
-            if ($result.Success) {
-                Write-Host "✓ Success: Created and published release for $($this.TagName)"
-                return $true
-            } else {
-                # Check if this is an unfixable error (422 - tag used by immutable release)
-                if ($result.Unfixable) {
-                    Write-Host "✗ Unfixable: Cannot create release for $($this.TagName) - tag was previously used by an immutable release"
-                    # Find this issue in the state and mark it as unfixable
-                    $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "missing_release" } | Select-Object -First 1
-                    if ($issue) {
-                        $issue.Status = "unfixable"
-                        # Update message to be more helpful
-                        $issue.Message = "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list."
-                    }
-                } else {
-                    Write-Host "✗ Failed: Create and publish release for $($this.TagName)"
-                }
-                return $false
-            }
+        $isDraft = -not $this.AutoPublish
+        $actionDesc = if ($this.AutoPublish) { "Create and publish release" } else { "Create draft release" }
+        
+        Write-Host "Auto-fix: $actionDesc for $($this.TagName)"
+        $result = New-GitHubRelease -State $state -TagName $this.TagName -Draft $isDraft
+        
+        if ($result.Success) {
+            Write-Host "✓ Success: $actionDesc for $($this.TagName)"
+            return $true
         } else {
-            # Create as draft
-            Write-Host "Auto-fix: Create draft release for $($this.TagName)"
-            $result = New-GitHubDraftRelease -State $state -TagName $this.TagName -Draft $true
-            
-            if ($result.Success) {
-                Write-Host "✓ Success: Created draft release for $($this.TagName)"
-                return $true
+            # Check if this is an unfixable error and mark it accordingly
+            if ($result.Unfixable) {
+                $this.MarkAsUnfixable($state, "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
             } else {
-                # Check if this is an unfixable error (422 - tag used by immutable release)
-                if ($result.Unfixable) {
-                    Write-Host "✗ Unfixable: Cannot create release for $($this.TagName) - tag was previously used by an immutable release"
-                    # Find this issue in the state and mark it as unfixable
-                    $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "missing_release" } | Select-Object -First 1
-                    if ($issue) {
-                        $issue.Status = "unfixable"
-                        # Update message to be more helpful
-                        $issue.Message = "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list."
-                    }
-                } else {
-                    Write-Host "✗ Failed: Create draft release for $($this.TagName)"
-                }
-                return $false
+                Write-Host "✗ Failed: $actionDesc for $($this.TagName)"
             }
+            return $false
+        }
+    }
+    
+    # Helper method to mark an issue as unfixable
+    hidden [void] MarkAsUnfixable([RepositoryState]$state, [string]$message) {
+        Write-Host "✗ Unfixable: Cannot create release for $($this.TagName) - tag was previously used by an immutable release"
+        # Find this issue in the state and mark it as unfixable
+        $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "missing_release" } | Select-Object -First 1
+        if ($issue) {
+            $issue.Status = "unfixable"
+            $issue.Message = $message
         }
     }
     

@@ -124,7 +124,8 @@ All GitHub REST API interactions:
 - `Test-ReleaseImmutability`: Check if release has attestations
 - `New-GitHubRef`: Create new tag/branch reference
 - `Remove-GitHubRef`: Delete tag/branch reference
-- `New-GitHubDraftRelease`: Create draft release
+- `New-GitHubRelease`: Create GitHub release (draft or published)
+- `New-GitHubDraftRelease`: Alias for `New-GitHubRelease` (backward compatibility)
 - `Remove-GitHubRelease`: Delete release
 - `Publish-GitHubRelease`: Publish draft release
 
