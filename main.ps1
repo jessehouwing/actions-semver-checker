@@ -610,6 +610,36 @@ function New-GitHubDraftRelease
     }
 }
 
+function Get-ImmutableReleaseRemediationCommands
+{
+    param(
+        [string]$TagName
+    )
+    
+    $commands = @()
+    
+    # The tag is already used by an immutable release
+    # The only solution is to delete the release and create a new version
+    if ($TagName -match "^v(\d+)\.(\d+)\.(\d+)$") {
+        $major = $matches[1]
+        $minor = $matches[2]
+        $patch = [int]$matches[3] + 1
+        $nextVersion = "v$major.$minor.$patch"
+        
+        $commands += "# Delete the immutable release (if possible) and create a new version:"
+        $commands += "gh release delete $TagName --yes"
+        $commands += "git tag -d $TagName"
+        $commands += "git push origin :refs/tags/$TagName"
+        $commands += "# Create new patch version $nextVersion with updated changes:"
+        $commands += "git tag $nextVersion"
+        $commands += "git push origin $nextVersion"
+        $commands += "gh release create $nextVersion --draft --title `"$nextVersion`" --notes `"Release $nextVersion`""
+        $commands += "gh release edit $nextVersion --draft=false"
+    }
+    
+    return $commands
+}
+
 function Publish-GitHubRelease
 {
     param(
@@ -658,7 +688,17 @@ function Publish-GitHubRelease
         $isUnfixable = $false
         
         # Check if this is a 422 error about tag_name being used by an immutable release
-        if ($errorMessage -match "422" -and $errorMessage -match "tag_name was used by an immutable release") {
+        # First check the HTTP status code if available, then check the error message
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
+        
+        if ($statusCode -eq 422 -and $errorMessage -match "tag_name was used by an immutable release") {
+            $isUnfixable = $true
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
+        } elseif ($errorMessage -match "422.*tag_name was used by an immutable release") {
+            # Fallback pattern matching if status code is not available
             $isUnfixable = $true
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
         } else {
@@ -941,24 +981,9 @@ if ($checkReleases -ne "none")
                             Write-Host "✗ Unfixable: $publishDescription (tag used by immutable release)"
                             $script:unfixableIssues++
                             
-                            # The tag is already used by an immutable release
-                            # The only solution is to delete the release and create a new version
-                            if ($tagVersion.version -match "^v(\d+)\.(\d+)\.(\d+)$") {
-                                $major = $matches[1]
-                                $minor = $matches[2]
-                                $patch = [int]$matches[3] + 1
-                                $nextVersion = "v$major.$minor.$patch"
-                                
-                                $suggestedCommands += "# Delete the immutable release (if possible) and create a new version:"
-                                $suggestedCommands += "gh release delete $($tagVersion.version) --yes"
-                                $suggestedCommands += "git tag -d $($tagVersion.version)"
-                                $suggestedCommands += "git push origin :refs/tags/$($tagVersion.version)"
-                                $suggestedCommands += "# Create new patch version $nextVersion with updated changes:"
-                                $suggestedCommands += "git tag $nextVersion"
-                                $suggestedCommands += "git push origin $nextVersion"
-                                $suggestedCommands += "gh release create $nextVersion --draft --title `"$nextVersion`" --notes `"Release $nextVersion`""
-                                $suggestedCommands += "gh release edit $nextVersion --draft=false"
-                            }
+                            # Use helper function to get remediation commands
+                            $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $tagVersion.version
+                            $suggestedCommands += $remediationCommands
                         }
                         else
                         {
@@ -1035,24 +1060,9 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                         Write-Host "✗ Unfixable: $publishDescription (tag used by immutable release)"
                         $script:unfixableIssues++
                         
-                        # The tag is already used by an immutable release
-                        # The only solution is to delete the release and create a new version
-                        if ($release.tagName -match "^v(\d+)\.(\d+)\.(\d+)$") {
-                            $major = $matches[1]
-                            $minor = $matches[2]
-                            $patch = [int]$matches[3] + 1
-                            $nextVersion = "v$major.$minor.$patch"
-                            
-                            $suggestedCommands += "# Delete the immutable release (if possible) and create a new version:"
-                            $suggestedCommands += "gh release delete $($release.tagName) --yes"
-                            $suggestedCommands += "git tag -d $($release.tagName)"
-                            $suggestedCommands += "git push origin :refs/tags/$($release.tagName)"
-                            $suggestedCommands += "# Create new patch version $nextVersion with updated changes:"
-                            $suggestedCommands += "git tag $nextVersion"
-                            $suggestedCommands += "git push origin $nextVersion"
-                            $suggestedCommands += "gh release create $nextVersion --draft --title `"$nextVersion`" --notes `"Release $nextVersion`""
-                            $suggestedCommands += "gh release edit $nextVersion --draft=false"
-                        }
+                        # Use helper function to get remediation commands
+                        $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $release.tagName
+                        $suggestedCommands += $remediationCommands
                     }
                     else
                     {
