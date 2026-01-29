@@ -11,7 +11,7 @@ inputs:
   check-minor-version: 
     description: "Configures warnings for minor versions (options: [error, warning, none, true, false], default: true maps to error)."
     required: false
-    default: "true"
+    default: "error"
   check-releases:
     description: "Check that for every build version a GitHub Release exists (options: [error, warning, none, true, false], default: error. true maps to error, false maps to none)."
     required: false

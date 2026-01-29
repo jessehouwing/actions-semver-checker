@@ -227,6 +227,293 @@ function Get-GitHubReleases
     }
 }
 
+function Get-GitHubTags
+{
+    <#
+    .SYNOPSIS
+    Fetches all tags from a GitHub repository via the REST API.
+    
+    .DESCRIPTION
+    Uses the GitHub REST API to fetch all tags from the repository.
+    This eliminates the need for a full clone with fetch-depth: 0 and fetch-tags: true.
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER Pattern
+    Optional regex pattern to filter tags. If not specified, all tags are returned.
+    
+    .OUTPUTS
+    Returns an array of hashtables with 'name' and 'sha' properties for each tag.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        
+        [string]$Pattern = $null
+    )
+    
+    try {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            Write-Host "::debug::No repo info available for fetching tags"
+            return @()
+        }
+        
+        $headers = Get-ApiHeaders -Token $State.Token
+        $allTags = @()
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/refs/tags?per_page=100"
+        
+        do {
+            $response = Invoke-WithRetry -OperationDescription "Get tags page" -ScriptBlock {
+                if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                    Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+                } else {
+                    Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+                }
+            }
+            
+            $refs = $response.Content | ConvertFrom-Json
+            
+            # Handle case where response is a single object instead of array
+            if ($refs -isnot [array]) {
+                $refs = @($refs)
+            }
+            
+            if ($refs.Count -eq 0) {
+                break
+            }
+            
+            foreach ($ref in $refs) {
+                # refs/tags/v1.0.0 -> v1.0.0
+                $tagName = $ref.ref -replace '^refs/tags/', ''
+                
+                # Apply pattern filter if specified
+                if ($Pattern -and $tagName -notmatch $Pattern) {
+                    continue
+                }
+                
+                # Get the SHA - for annotated tags, we need to dereference
+                $sha = $ref.object.sha
+                
+                # If this is an annotated tag (type = "tag"), we need to get the commit SHA
+                if ($ref.object.type -eq "tag") {
+                    try {
+                        $tagResponse = Invoke-WithRetry -OperationDescription "Dereference tag $tagName" -ScriptBlock {
+                            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                                Invoke-WebRequestWrapper -Uri $ref.object.url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                            } else {
+                                Invoke-WebRequest -Uri $ref.object.url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                            }
+                        }
+                        $tagObj = $tagResponse.Content | ConvertFrom-Json
+                        $sha = $tagObj.object.sha
+                    }
+                    catch {
+                        Write-Host "::debug::Failed to dereference annotated tag $tagName, using tag object SHA"
+                    }
+                }
+                
+                $allTags += @{
+                    name = $tagName
+                    sha = $sha
+                }
+            }
+            
+            # Check for Link header to get next page
+            $linkHeader = $response.Headers['Link']
+            $url = $null
+            
+            if ($linkHeader) {
+                $links = $linkHeader -split ','
+                foreach ($link in $links) {
+                    if ($link -match '<([^>]+)>\s*;\s*rel="next"') {
+                        $url = $matches[1]
+                        break
+                    }
+                }
+            }
+            
+        } while ($url)
+        
+        return $allTags
+    }
+    catch {
+        Write-Host "::debug::Failed to fetch tags via API: $_"
+        return @()
+    }
+}
+
+function Get-GitHubBranches
+{
+    <#
+    .SYNOPSIS
+    Fetches all branches from a GitHub repository via the REST API.
+    
+    .DESCRIPTION
+    Uses the GitHub REST API to fetch all branches from the repository.
+    This eliminates the need for a full clone.
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER Pattern
+    Optional regex pattern to filter branches. If not specified, all branches are returned.
+    
+    .OUTPUTS
+    Returns an array of hashtables with 'name' and 'sha' properties for each branch.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        
+        [string]$Pattern = $null
+    )
+    
+    try {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            Write-Host "::debug::No repo info available for fetching branches"
+            return @()
+        }
+        
+        $headers = Get-ApiHeaders -Token $State.Token
+        $allBranches = @()
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/branches?per_page=100"
+        
+        do {
+            $response = Invoke-WithRetry -OperationDescription "Get branches page" -ScriptBlock {
+                if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                    Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+                } else {
+                    Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+                }
+            }
+            
+            $branches = $response.Content | ConvertFrom-Json
+            
+            if ($branches.Count -eq 0) {
+                break
+            }
+            
+            foreach ($branch in $branches) {
+                # Apply pattern filter if specified
+                if ($Pattern -and $branch.name -notmatch $Pattern) {
+                    continue
+                }
+                
+                $allBranches += @{
+                    name = $branch.name
+                    sha = $branch.commit.sha
+                }
+            }
+            
+            # Check for Link header to get next page
+            $linkHeader = $response.Headers['Link']
+            $url = $null
+            
+            if ($linkHeader) {
+                $links = $linkHeader -split ','
+                foreach ($link in $links) {
+                    if ($link -match '<([^>]+)>\s*;\s*rel="next"') {
+                        $url = $matches[1]
+                        break
+                    }
+                }
+            }
+            
+        } while ($url)
+        
+        return $allBranches
+    }
+    catch {
+        Write-Host "::debug::Failed to fetch branches via API: $_"
+        return @()
+    }
+}
+
+function Get-GitHubRef
+{
+    <#
+    .SYNOPSIS
+    Gets the SHA for a specific git reference (tag or branch) via the REST API.
+    
+    .DESCRIPTION
+    Fetches the commit SHA for a specific reference. This is useful when you need
+    the SHA for a single ref rather than fetching all refs.
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER RefName
+    The reference name (e.g., "v1.0.0" for a tag, "main" for a branch).
+    
+    .PARAMETER RefType
+    The type of reference: "tags" or "heads" (for branches).
+    
+    .OUTPUTS
+    Returns the commit SHA as a string, or $null if not found.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        
+        [Parameter(Mandatory)]
+        [string]$RefName,
+        
+        [Parameter(Mandatory)]
+        [ValidateSet("tags", "heads")]
+        [string]$RefType
+    )
+    
+    try {
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return $null
+        }
+        
+        $headers = Get-ApiHeaders -Token $State.Token
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/refs/$RefType/$RefName"
+        
+        $response = Invoke-WithRetry -OperationDescription "Get ref $RefType/$RefName" -ScriptBlock {
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+            } else {
+                Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+            }
+        }
+        
+        $ref = $response.Content | ConvertFrom-Json
+        $sha = $ref.object.sha
+        
+        # If this is an annotated tag, dereference it
+        if ($ref.object.type -eq "tag") {
+            try {
+                $tagResponse = Invoke-WithRetry -OperationDescription "Dereference ref $RefName" -ScriptBlock {
+                    if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                        Invoke-WebRequestWrapper -Uri $ref.object.url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                    } else {
+                        Invoke-WebRequest -Uri $ref.object.url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                    }
+                }
+                $tagObj = $tagResponse.Content | ConvertFrom-Json
+                $sha = $tagObj.object.sha
+            }
+            catch {
+                Write-Host "::debug::Failed to dereference annotated tag $RefName"
+            }
+        }
+        
+        return $sha
+    }
+    catch {
+        Write-Host "::debug::Ref $RefType/$RefName not found: $_"
+        return $null
+    }
+}
+
 function Test-ImmutableReleaseError
 {
     <#

@@ -26,6 +26,7 @@ This strategy balances **stability** (pinned versions never change) with **conve
 - ✅ Can configure floating versions (major/minor/latest) to use branches or tags
 - ✅ Provides suggested commands to fix any issues with direct links to GitHub release pages
 - ✅ Optional auto-fix mode to automatically update version tags/branches
+- ✅ **NEW in v2:** No longer requires `fetch-depth: 0` or `fetch-tags: true` - uses GitHub API instead
 - ✅ **NEW:** Ignore specific versions from validation (useful for legacy versions)
 - ✅ **NEW:** Auto-fix automatically republishes non-immutable releases to make them immutable (when `check-release-immutability` is enabled)
 - ✅ **NEW:** Retry logic with exponential backoff for better reliability
@@ -59,47 +60,58 @@ And a set of suggested Git commands to fix this:
 
 # Prerequisites
 
-This action requires full git history and tags to function properly. Configure the [Checkout action](https://github.com/marketplace/actions/checkout) correctly:
+## v2 (Current)
+
+**No special checkout configuration required!** Version 2 uses the GitHub API to fetch tags and branches, eliminating the need for full git history:
+
+```yaml
+- uses: actions/checkout@v4
+
+- uses: jessehouwing/actions-semver-checker@v2
+```
+
+This is a significant improvement over v1, making the action faster and simpler to use.
+
+## v1 (Legacy)
+
+<details>
+<summary>If using v1, you still need full git history...</summary>
+
+Version 1 requires full git history and tags:
 
 ```yaml
 - uses: actions/checkout@v4
   with:
-    fetch-depth: 0      # Required: Fetches full git history
-    fetch-tags: true    # Required: Fetches all tags
+    fetch-depth: 0      # Required for v1: Fetches full git history
+    fetch-tags: true    # Required for v1: Fetches all tags
 ```
 
-**Why these settings are required:**
-
-- **`fetch-depth: 0`** ([docs](https://github.com/actions/checkout#usage)) - The action needs full git history to analyze all version tags and commits. The default shallow clone (`fetch-depth: 1`) only includes the latest commit. Without this, you'll see: `::error::Shallow clone detected`.
-
-- **`fetch-tags: true`** ([docs](https://github.com/actions/checkout#usage)) - The action validates version tags. The default (`fetch-tags: false`) does not fetch tags from the remote repository. Without this, the action may report: `::warning::No tags found`.
-
-Learn more about [configuring the checkout action](https://github.com/marketplace/actions/checkout).
+</details>
 
 ## Auto-fix Mode Prerequisites
 
-If you're using the `auto-fix` feature to automatically update version tags/branches, additional configuration applies:
+If you're using the `auto-fix` feature to automatically update version tags/branches:
 
 ```yaml
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0
-    fetch-tags: true
-    persist-credentials: true  # Required for auto-fix (this is the default)
-    token: ${{ secrets.GITHUB_TOKEN }}
+jobs:
+  check-semver:
+    permissions:
+      contents: write  # Required for auto-fix to push tags/branches
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true  # Default, but explicit for clarity
 
-- uses: jessehouwing/actions-semver-checker@v2
-  with:
-    auto-fix: true
-    token: ${{ secrets.GITHUB_TOKEN }}  # Required for auto-fix
+      - uses: jessehouwing/actions-semver-checker@v2
+        with:
+          auto-fix: true
+          token: ${{ secrets.GITHUB_TOKEN }}  # Required for auto-fix API calls
 ```
 
-**About `persist-credentials`** ([docs](https://github.com/actions/checkout#persist-credentials)):
-- Default is `true` - checkout action saves credentials for subsequent git operations
-- If set to `false`, the semver-checker action will automatically configure git credentials using the provided token
-- Either way works, but `true` (default) is simpler
-
-Learn more about [checkout action authentication](https://github.com/marketplace/actions/checkout).
+**Requirements:**
+- **`contents: write` permission** - Required to push tag/branch updates
+- **`token`** - GitHub token for API calls (create releases, update refs)
+- **`persist-credentials: true`** (default) - Saves credentials for git push operations
 
 # Usage
 
@@ -107,9 +119,6 @@ Learn more about [checkout action authentication](https://github.com/marketplace
 
 ```yaml  
 - uses: actions/checkout@v4
-  with:
-    fetch-depth: 0      # Required: Full git history
-    fetch-tags: true    # Required: All tags
 
 - uses: jessehouwing/actions-semver-checker@v2
   with:
@@ -117,6 +126,8 @@ Learn more about [checkout action authentication](https://github.com/marketplace
     # Default: true
     check-minor-version: 'true'
 ```
+
+> **Note:** v2 uses the GitHub API to fetch tags and branches, so `fetch-depth: 0` and `fetch-tags: true` are no longer required.
 
 ## Configuration Options
 

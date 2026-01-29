@@ -1,4 +1,7 @@
 BeforeAll {
+    # Suppress progress reporting for folder cleanup operations
+    $ProgressPreference = 'SilentlyContinue'
+
     # Load the module under test
     . "$PSScriptRoot/../../lib/StateModel.ps1"
     . "$PSScriptRoot/../../lib/Logging.ps1"

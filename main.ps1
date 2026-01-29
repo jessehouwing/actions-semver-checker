@@ -273,20 +273,9 @@ Write-Host "::debug::Floating versions use: $floatingVersionsUse"
 # Validate git repository configuration
 Write-Host "::debug::Validating repository configuration..."
 
-# Check if repository is a shallow clone
-if (Test-Path ".git/shallow") {
-    $errorMessage = "::error title=Shallow clone detected::Repository is a shallow clone (fetch-depth: 1). This action requires full git history. Please configure your checkout action with 'fetch-depth: 0'.%0A%0AExample:%0A  - uses: actions/checkout@v4%0A    with:%0A      fetch-depth: 0%0A      fetch-tags: true"
-    Write-Output $errorMessage
-    $global:returnCode = 1
-    exit 1
-}
-
-# Check if tags were fetched
-$allTags = & git tag -l 2>$null
-if (-not $allTags -or $allTags.Count -eq 0) {
-    $warningMessage = "::warning title=No tags found::No git tags found in repository. This could mean:%0A  1. The repository has no tags yet (expected for new repositories)%0A  2. Tags were not fetched (fetch-tags: false)%0A%0AIf you expect tags to exist, please configure your checkout action with 'fetch-tags: true'.%0A%0AExample:%0A  - uses: actions/checkout@v4%0A    with:%0A      fetch-depth: 0%0A      fetch-tags: true"
-    Write-Output $warningMessage
-}
+# Note: This action now uses the GitHub API to fetch tags and branches,
+# eliminating the need for fetch-depth: 0 or fetch-tags: true.
+# Local git state is no longer required for tag/branch discovery.
 
 # Configure git credentials for auto-fix mode if needed
 if ($autoFix) {
@@ -356,11 +345,21 @@ esac
     }
 }
 
-$tags = & git tag -l v* | Where-Object{ return ($_ -match "^v\d+(\.\d+){0,2}$") }
+# Fetch tags and branches via GitHub API (no longer requires local git history)
+Write-Host "::debug::Fetching tags from GitHub API..."
+$apiTags = Get-GitHubTags -State $script:State -Pattern "^v\d+(\.\d+){0,2}$"
+$tags = $apiTags | ForEach-Object { $_.name }
 Write-Host "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
 
-$branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Trim() -match "^origin/(v\d+(\.\d+){0,2}(-.*)?)$") } | ForEach-Object{ $_.Trim().Replace("origin/", "")}
+Write-Host "::debug::Fetching branches from GitHub API..."
+$apiBranches = Get-GitHubBranches -State $script:State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
+$branches = $apiBranches | ForEach-Object { $_.name }
 
+# Also fetch latest tag and branch via API (for 'latest' alias validation)
+$apiLatestTag = Get-GitHubTags -State $script:State -Pattern "^latest$"
+$apiLatestBranch = Get-GitHubBranches -State $script:State -Pattern "^latest$"
+
+# Legacy arrays for backward compatibility during transition
 $tagVersions = @()
 $branchVersions = @()
 
@@ -488,10 +487,14 @@ foreach ($tag in $tags)
     $isMinorVersion = $versionParts.Count -eq 2
     $isMajorVersion = $versionParts.Count -eq 1
     
+    # Get SHA from API response (already fetched)
+    $tagInfo = $apiTags | Where-Object { $_.name -eq $tag } | Select-Object -First 1
+    $tagSha = if ($tagInfo) { $tagInfo.sha } else { $null }
+    
     $tagVersions += @{
         version = $tag
         ref = "refs/tags/$tag"
-        sha = & git rev-list -n 1 $tag
+        sha = $tagSha
         semver = ConvertTo-Version $tag.Substring(1)
         isPrerelease = $isPrerelease
         isPatchVersion = $isPatchVersion
@@ -502,26 +505,28 @@ foreach ($tag in $tags)
     Write-Host "::debug::Parsed tag $tag - isPatch:$isPatchVersion isMinor:$isMinorVersion isMajor:$isMajorVersion parts:$($versionParts.Count)"
 }
 
-$latest = & git tag -l latest
+# Check for 'latest' tag via API (already fetched above)
+$latest = $null
 $latestBranch = $null
-if ($latest)
+if ($apiLatestTag -and $apiLatestTag.Count -gt 0)
 {
+    $latestTagInfo = $apiLatestTag | Select-Object -First 1
     $latest = @{
         version = "latest"
         ref = "refs/tags/latest"
-        sha = & git rev-list -n 1 latest
+        sha = $latestTagInfo.sha
         semver = $null
     }
 }
 
 # Also check for latest branch (regardless of floating-versions-use setting)
 # This allows us to warn when latest exists as wrong type
-$latestBranchExists = & git branch --list --quiet --remotes origin/latest
-if ($latestBranchExists) {
+if ($apiLatestBranch -and $apiLatestBranch.Count -gt 0) {
+    $latestBranchInfo = $apiLatestBranch | Select-Object -First 1
     $latestBranch = @{
         version = "latest"
-        ref = "refs/remotes/origin/latest"
-        sha = & git rev-parse refs/remotes/origin/latest
+        ref = "refs/heads/latest"
+        sha = $latestBranchInfo.sha
         semver = $null
     }
 }
@@ -542,16 +547,31 @@ foreach ($branch in $branches)
     $isMinorVersion = $versionParts.Count -eq 2
     $isMajorVersion = $versionParts.Count -eq 1
     
+    # Get SHA from API response (already fetched)
+    $branchInfo = $apiBranches | Where-Object { $_.name -eq $branch } | Select-Object -First 1
+    $branchSha = if ($branchInfo) { $branchInfo.sha } else { $null }
+    
     $branchVersions += @{
         version = $branch
-        ref = "refs/remotes/origin/$branch"
-        sha = & git rev-parse refs/remotes/origin/$branch
+        ref = "refs/heads/$branch"
+        sha = $branchSha
         semver = ConvertTo-Version $branch.Substring(1)
         isPrerelease = $false  # Branches are not considered prereleases
         isPatchVersion = $isPatchVersion
         isMinorVersion = $isMinorVersion
         isMajorVersion = $isMajorVersion
     }
+}
+
+# Populate StateModel with VersionRef objects for typed access
+foreach ($tv in $tagVersions) {
+    $vr = [VersionRef]::new($tv.version, $tv.ref, $tv.sha, "tag")
+    $vr.IsPrerelease = $tv.isPrerelease
+    $script:State.Tags += $vr
+}
+foreach ($bv in $branchVersions) {
+    $vr = [VersionRef]::new($bv.version, $bv.ref, $bv.sha, "branch")
+    $script:State.Branches += $vr
 }
 
 foreach ($tagVersion in $tagVersions)

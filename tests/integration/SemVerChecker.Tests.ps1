@@ -54,6 +54,112 @@ BeforeAll {
         return (git rev-parse $Ref).Trim()
     }
     
+    # Helper function to create a mock that uses local git to return API-formatted responses
+    function New-GitBasedApiMock {
+        <#
+        .SYNOPSIS
+        Creates an API mock that uses local git commands to return tag/branch data.
+        
+        .DESCRIPTION
+        This mock intercepts Invoke-WebRequestWrapper calls and returns data from the
+        local git repository formatted as GitHub API responses.
+        #>
+        return {
+            param($Uri, $Headers, $Method, $TimeoutSec)
+            
+            # Tags refs endpoint: /repos/{owner}/{repo}/git/refs/tags
+            if ($Uri -match '/git/refs/tags') {
+                $tags = & git tag -l 2>$null
+                if (-not $tags) { $tags = @() }
+                if ($tags -isnot [array]) { $tags = @($tags) }
+                
+                $refs = @()
+                foreach ($tag in $tags) {
+                    if ([string]::IsNullOrWhiteSpace($tag)) { continue }
+                    $sha = (& git rev-list -n 1 $tag 2>$null)
+                    if ($sha) {
+                        $refs += @{
+                            ref = "refs/tags/$tag"
+                            object = @{
+                                sha = $sha.Trim()
+                                type = "commit"  # Simplified - treat all as lightweight tags
+                            }
+                        }
+                    }
+                }
+                
+                return @{
+                    Content = ($refs | ConvertTo-Json -Depth 5 -Compress)
+                    Headers = @{}
+                }
+            }
+            
+            # Branches endpoint: /repos/{owner}/{repo}/branches
+            # Include both local and remote branches (like the actual API would)
+            if ($Uri -match '/branches(\?|$)') {
+                $branchData = @()
+                
+                # Get local branches
+                $localBranches = & git branch -l 2>$null | ForEach-Object { $_.Trim() -replace '^\*\s*', '' }
+                if ($localBranches) {
+                    if ($localBranches -isnot [array]) { $localBranches = @($localBranches) }
+                    foreach ($branch in $localBranches) {
+                        if ([string]::IsNullOrWhiteSpace($branch)) { continue }
+                        $sha = (& git rev-parse $branch 2>$null)
+                        if ($sha) {
+                            $branchData += @{
+                                name = $branch
+                                commit = @{
+                                    sha = $sha.Trim()
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                # Get remote branches (simulating what the API would return)
+                $remoteBranches = & git branch -r 2>$null | ForEach-Object { $_.Trim() -replace '^origin/', '' }
+                if ($remoteBranches) {
+                    if ($remoteBranches -isnot [array]) { $remoteBranches = @($remoteBranches) }
+                    foreach ($branch in $remoteBranches) {
+                        if ([string]::IsNullOrWhiteSpace($branch)) { continue }
+                        if ($branch -match '^HEAD ->') { continue }  # Skip HEAD reference
+                        # Skip if already added from local
+                        if ($branchData | Where-Object { $_.name -eq $branch }) { continue }
+                        $sha = (& git rev-parse "origin/$branch" 2>$null)
+                        if ($sha) {
+                            $branchData += @{
+                                name = $branch
+                                commit = @{
+                                    sha = $sha.Trim()
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return @{
+                    Content = ($branchData | ConvertTo-Json -Depth 5 -Compress)
+                    Headers = @{}
+                }
+            }
+            
+            # Releases endpoint: /repos/{owner}/{repo}/releases
+            if ($Uri -match '/releases(\?|$)') {
+                return @{
+                    Content = "[]"
+                    Headers = @{}
+                }
+            }
+            
+            # Default: empty response
+            return @{
+                Content = "[]"
+                Headers = @{}
+            }
+        }
+    }
+    
     function Invoke-MainScript {
         param(
             [string]$CheckMinorVersion = "true",
@@ -81,13 +187,8 @@ BeforeAll {
         
         # Define mock function in global scope before running script (unless caller skipped)
         if (-not $SkipMockSetup) {
-            $global:InvokeWebRequestWrapper = {
-                param($Uri, $Headers, $Method, $TimeoutSec)
-                return @{
-                    Content = "[]"
-                    Headers = @{}
-                }
-            }
+            # Use the git-based API mock by default
+            $global:InvokeWebRequestWrapper = New-GitBasedApiMock
             
             # Make the function available
             Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper

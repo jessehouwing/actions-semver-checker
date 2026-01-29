@@ -31,20 +31,27 @@ cd actions-semver-checker
 
 Run all tests:
 ```powershell
-Invoke-Pester -Path ./main.Tests.ps1
+Invoke-Pester -Path ./tests
 ```
 
 Run tests with detailed output:
 ```powershell
-Invoke-Pester -Path ./main.Tests.ps1 -Output Detailed
+Invoke-Pester -Path ./tests -Output Detailed
 ```
 
-Run specific test:
+Run specific test category:
 ```powershell
-Invoke-Pester -Path ./main.Tests.ps1 -Tag "YourTag"
+# Unit tests only
+Invoke-Pester -Path ./tests/unit
+
+# Integration tests only
+Invoke-Pester -Path ./tests/integration
+
+# End-to-end tests only
+Invoke-Pester -Path ./tests/e2e
 ```
 
-**Important**: All 81 tests must pass before submitting a PR.
+**Important**: All tests must pass before submitting a PR.
 
 ## Architecture Overview
 
@@ -52,14 +59,24 @@ The codebase follows a modular architecture with a domain model at its core:
 
 ```
 actions-semver-checker/
-├── main.ps1              # Orchestrator script (1,407 lines)
-├── lib/                  # Reusable modules (1,114 lines)
-│   ├── StateModel.ps1    # Domain model classes (420 lines)
-│   ├── GitHubApi.ps1     # GitHub REST API functions (432 lines)
-│   ├── Remediation.ps1   # Auto-fix strategies (144 lines)
-│   ├── Logging.ps1       # Safe output utilities (75 lines)
-│   └── VersionParser.ps1 # Version parsing logic (43 lines)
-├── main.Tests.ps1        # Comprehensive test suite (81 tests)
+├── main.ps1              # Orchestrator script
+├── lib/                  # Reusable modules
+│   ├── StateModel.ps1    # Domain model classes
+│   ├── GitHubApi.ps1     # GitHub REST API functions
+│   ├── Remediation.ps1   # Auto-fix strategies
+│   ├── Logging.ps1       # Safe output utilities
+│   └── VersionParser.ps1 # Version parsing logic
+├── tests/                # Test suite
+│   ├── TestHelpers.psm1  # Shared test utilities
+│   ├── unit/             # Unit tests for modules
+│   │   ├── GitHubApi.Tests.ps1
+│   │   ├── Logging.Tests.ps1
+│   │   ├── RemediationActions.Tests.ps1
+│   │   └── VersionParser.Tests.ps1
+│   ├── integration/      # Integration tests (example-based)
+│   │   └── SemVerChecker.Tests.ps1
+│   └── e2e/              # End-to-end validation tests
+│       └── SemVerValidation.Tests.ps1
 └── action.yaml           # GitHub Action definition
 ```
 
@@ -178,7 +195,21 @@ Version string parsing and validation:
 
 ### Test Structure
 
-Tests use Pester framework with BeforeAll/AfterAll hooks for test repository setup.
+Tests are organized into three categories:
+
+```
+tests/
+├── TestHelpers.psm1      # Shared test utilities (mock creation, repo setup)
+├── unit/                 # Unit tests - test individual functions in isolation
+├── integration/          # Integration tests - test module interactions
+└── e2e/                  # End-to-end tests - test complete workflows
+```
+
+**Unit Tests** (`tests/unit/`): Test individual functions from lib/ modules with mocked dependencies.
+
+**Integration Tests** (`tests/integration/`): Test module interactions with example-based scenarios.
+
+**End-to-End Tests** (`tests/e2e/`): Test complete validation workflows by running main.ps1 with various configurations against temporary git repositories.
 
 ### Writing Tests
 
@@ -191,14 +222,16 @@ Tests use Pester framework with BeforeAll/AfterAll hooks for test repository set
 
 2. **Isolate tests**: Each test should be independent
 3. **Clean up**: Tests use temporary directories that are cleaned automatically
-4. **Mock external calls**: Mock GitHub API calls to avoid rate limits
+4. **Mock external calls**: Use `New-GitBasedApiMock` from TestHelpers for API mocking
 
 ### Test Categories
 
-- **Version validation tests**: Check floating version logic
-- **Release validation tests**: Verify release requirements
-- **Auto-fix tests**: Ensure fixes work correctly
-- **Edge case tests**: Handle unusual scenarios
+- **Version validation tests**: Check floating version logic (e2e)
+- **Release validation tests**: Verify release requirements (e2e)
+- **Auto-fix tests**: Ensure fixes work correctly (e2e)
+- **Edge case tests**: Handle unusual scenarios (e2e)
+- **API tests**: GitHub API interaction (unit/integration)
+- **Parsing tests**: Version string parsing (unit)
 
 ### Adding New Tests
 

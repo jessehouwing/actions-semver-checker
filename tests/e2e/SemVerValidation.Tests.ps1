@@ -54,6 +54,112 @@ BeforeAll {
         return (git rev-parse $Ref).Trim()
     }
     
+    # Helper function to create a mock that uses local git to return API-formatted responses
+    function New-GitBasedApiMock {
+        <#
+        .SYNOPSIS
+        Creates an API mock that uses local git commands to return tag/branch data.
+        
+        .DESCRIPTION
+        This mock intercepts Invoke-WebRequestWrapper calls and returns data from the
+        local git repository formatted as GitHub API responses.
+        #>
+        return {
+            param($Uri, $Headers, $Method, $TimeoutSec)
+            
+            # Tags refs endpoint: /repos/{owner}/{repo}/git/refs/tags
+            if ($Uri -match '/git/refs/tags') {
+                $tags = & git tag -l 2>$null
+                if (-not $tags) { $tags = @() }
+                if ($tags -isnot [array]) { $tags = @($tags) }
+                
+                $refs = @()
+                foreach ($tag in $tags) {
+                    if ([string]::IsNullOrWhiteSpace($tag)) { continue }
+                    $sha = (& git rev-list -n 1 $tag 2>$null)
+                    if ($sha) {
+                        $refs += @{
+                            ref = "refs/tags/$tag"
+                            object = @{
+                                sha = $sha.Trim()
+                                type = "commit"  # Simplified - treat all as lightweight tags
+                            }
+                        }
+                    }
+                }
+                
+                return @{
+                    Content = ($refs | ConvertTo-Json -Depth 5 -Compress)
+                    Headers = @{}
+                }
+            }
+            
+            # Branches endpoint: /repos/{owner}/{repo}/branches
+            # Include both local and remote branches (like the actual API would)
+            if ($Uri -match '/branches(\?|$)') {
+                $branchData = @()
+                
+                # Get local branches
+                $localBranches = & git branch -l 2>$null | ForEach-Object { $_.Trim() -replace '^\*\s*', '' }
+                if ($localBranches) {
+                    if ($localBranches -isnot [array]) { $localBranches = @($localBranches) }
+                    foreach ($branch in $localBranches) {
+                        if ([string]::IsNullOrWhiteSpace($branch)) { continue }
+                        $sha = (& git rev-parse $branch 2>$null)
+                        if ($sha) {
+                            $branchData += @{
+                                name = $branch
+                                commit = @{
+                                    sha = $sha.Trim()
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                # Get remote branches (simulating what the API would return)
+                $remoteBranches = & git branch -r 2>$null | ForEach-Object { $_.Trim() -replace '^origin/', '' }
+                if ($remoteBranches) {
+                    if ($remoteBranches -isnot [array]) { $remoteBranches = @($remoteBranches) }
+                    foreach ($branch in $remoteBranches) {
+                        if ([string]::IsNullOrWhiteSpace($branch)) { continue }
+                        if ($branch -match '^HEAD ->') { continue }  # Skip HEAD reference
+                        # Skip if already added from local
+                        if ($branchData | Where-Object { $_.name -eq $branch }) { continue }
+                        $sha = (& git rev-parse "origin/$branch" 2>$null)
+                        if ($sha) {
+                            $branchData += @{
+                                name = $branch
+                                commit = @{
+                                    sha = $sha.Trim()
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return @{
+                    Content = ($branchData | ConvertTo-Json -Depth 5 -Compress)
+                    Headers = @{}
+                }
+            }
+            
+            # Releases endpoint: /repos/{owner}/{repo}/releases
+            if ($Uri -match '/releases(\?|$)') {
+                return @{
+                    Content = "[]"
+                    Headers = @{}
+                }
+            }
+            
+            # Default: empty response
+            return @{
+                Content = "[]"
+                Headers = @{}
+            }
+        }
+    }
+    
     function Invoke-MainScript {
         param(
             [string]$CheckMinorVersion = "true",
@@ -62,7 +168,8 @@ BeforeAll {
             [string]$IgnorePreviewReleases = "false",
             [string]$FloatingVersionsUse = "tags",
             [string]$AutoFix = "false",
-            [string]$IgnoreVersions = ""
+            [string]$IgnoreVersions = "",
+            [switch]$SkipMockSetup  # Skip setting up default mock if caller provides one
         )
         
         # Create inputs JSON object
@@ -78,20 +185,17 @@ BeforeAll {
         $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
         $global:returnCode = 0
         
-        # Define mock function in global scope before running script
-        $global:InvokeWebRequestWrapper = {
-            param($Uri, $Headers, $Method, $TimeoutSec)
-            return @{
-                Content = "[]"
-                Headers = @{}
-            }
+        # Define mock function in global scope before running script (unless caller skipped)
+        if (-not $SkipMockSetup) {
+            # Use the git-based API mock by default
+            $global:InvokeWebRequestWrapper = New-GitBasedApiMock
+            
+            # Make the function available
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
         }
         
-        # Make the function available
-        Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
-        
         # Capture output
-        $output = & "$PSScriptRoot/main.ps1" 2>&1 | Out-String
+        $output = & "$PSScriptRoot/../../main.ps1" 2>&1 | Out-String
         
         # Clean up mock
         if (Test-Path function:global:Invoke-WebRequestWrapper) {
@@ -685,7 +789,18 @@ Describe "SemVer Checker" {
                 'auto-fix' = "false"
             }
             $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
-            $result = & "$PSScriptRoot/main.ps1" 2>&1 | Out-String
+            
+            # Set up the mock
+            $global:InvokeWebRequestWrapper = New-GitBasedApiMock
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
+            $result = & "$PSScriptRoot/../../main.ps1" 2>&1 | Out-String
+            
+            # Clean up mock
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
             $result | Should -Match "Invalid configuration"
         }
     }
@@ -925,33 +1040,18 @@ Describe "SemVer Checker" {
     }
     
     Describe "Repository Configuration Validation" {
-        It "Should detect shallow clone and provide helpful error" {
-            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
-            
-            # Create a shallow clone marker
-            New-Item -ItemType File -Path ".git/shallow" -Force | Out-Null
-            
-            # Run the checker
-            $result = Invoke-MainScript
-            
-            # Should error about shallow clone
-            $result.Output | Should -Match "Shallow clone detected"
-            $result.Output | Should -Match "fetch-depth: 0"
-            $result.ReturnCode | Should -Be 1
-        }
+        # Note: Shallow clone and fetch-tags checks were removed in v2 since we now use the GitHub API
+        # to fetch tags/branches instead of requiring full git history.
         
-        It "Should warn when no tags are found" {
+        It "Should work without tags (new repository scenario)" {
             Initialize-TestRepo -Path $script:testRepoPath -WithRemote
             
-            # Don't create any tags
+            # Don't create any tags - simulates a new repository
             
             # Run the checker
             $result = Invoke-MainScript
             
-            # Should warn about no tags
-            $result.Output | Should -Match "No tags found"
-            $result.Output | Should -Match "fetch-tags: true"
-            # Should not fail (warning only)
+            # Should complete successfully with no issues (no tags = nothing to validate)
             $result.ReturnCode | Should -Be 0
         }
         
@@ -2172,8 +2272,17 @@ exit 0
             $inputsObject[$InputName] = $InputValue
             $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
             
+            # Set up the mock
+            $global:InvokeWebRequestWrapper = New-GitBasedApiMock
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
             # Should not crash with any of these inputs
-            $result = & "$PSScriptRoot/main.ps1" 2>&1 | Out-String
+            $result = & "$PSScriptRoot/../../main.ps1" 2>&1 | Out-String
+            
+            # Clean up mock
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
             
             # Basic validation - script should complete without parsing error
             $result | Should -Not -Match "Invalid configuration.*$InputName"
@@ -2219,7 +2328,7 @@ exit 0
     Context "Invoke-WithRetry Behavior" {
         BeforeAll {
             # Load the GitHubApi module to access Invoke-WithRetry
-            . "$PSScriptRoot/lib/GitHubApi.ps1"
+            . "$PSScriptRoot/../../lib/GitHubApi.ps1"
         }
         
         It "Should succeed on first attempt if no error" {
