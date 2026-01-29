@@ -612,8 +612,6 @@ if ($checkReleases -ne "none")
             if (-not $hasRelease)
             {
                 $messageType = if ($checkReleases -eq "error") { "error" } else { "warning" }
-                $messageFunc = if ($checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
-                & $messageFunc "::$messageType title=Missing release::Version $($tagVersion.version) does not have a GitHub Release"
                 
                 $issue = [ValidationIssue]::new("missing_release", $messageType, "Version $($tagVersion.version) does not have a GitHub Release")
                 $issue.Version = $tagVersion.version
@@ -653,8 +651,6 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
             if ($release.isDraft)
             {
                 $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
-                $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
-                & $messageFunc "::$messageType title=Draft release::Release $($release.tagName) is still in draft status, making it mutable. Publish the release to make it immutable."
                 
                 $issue = [ValidationIssue]::new("draft_release", $messageType, "Release $($release.tagName) is still in draft status, making it mutable")
                 $issue.Version = $release.tagName
@@ -831,7 +827,6 @@ foreach ($majorVersion in $majorVersions)
             
             if (-not $autoFix)
             {
-                write-actions-error "::error title=Missing version::Version: v$($majorVersion.major).0.0 does not exist and must match: v$($majorVersion.major) ref $majorSha"
                 $suggestedCommands += $fixCmd
             }
             
@@ -1248,6 +1243,14 @@ if ($autoFix -and $State.Issues.Count -gt 0) {
 
 # Now execute all auto-fixes
 Invoke-AllAutoFixes -State $State -AutoFix $autoFix
+
+#############################################################################
+# LOG UNRESOLVED ISSUES
+#############################################################################
+
+# Log all unresolved issues (failed or unfixable) as errors/warnings
+# This happens AFTER autofix completes, regardless of whether autofix is enabled
+Write-UnresolvedIssues -State $State
 
 #############################################################################
 # FINAL SUMMARY AND EXIT

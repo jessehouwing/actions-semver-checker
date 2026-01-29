@@ -497,7 +497,7 @@ function New-GitHubRef
         # Get repo info from State
         $repoInfo = Get-GitHubRepoInfo -State $State
         if (-not $repoInfo) {
-            return $false
+            return @{ Success = $false; RequiresManualFix = $false; ErrorOutput = "No repo info available" }
         }
         
         $headers = Get-ApiHeaders -Token $State.Token
@@ -515,7 +515,7 @@ function New-GitHubRef
             } else {
                 $response = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
             }
-            return $true
+            return @{ Success = $true; RequiresManualFix = $false }
         }
         catch {
             # Check if this is a 404 error (ref doesn't exist)
@@ -538,7 +538,7 @@ function New-GitHubRef
                 } else {
                     $createResponse = Invoke-RestMethod -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
                 }
-                return $true
+                return @{ Success = $true; RequiresManualFix = $false }
             }
             else {
                 # Re-throw the error if it's not a 404
@@ -580,23 +580,32 @@ function New-GitHubRef
                 
                 if ($exitCode -eq 0) {
                     Write-Host "::debug::Successfully created/updated $RefName via git push"
-                    return $true
+                    return @{ Success = $true; RequiresManualFix = $false }
                 } else {
+                    # Check if error is due to workflows permission
+                    $outputStr = [string]$output
+                    $requiresWorkflowsPermission = $outputStr -match "refusing to allow a GitHub App to create or update workflow" -and $outputStr -match "without `[`"'`]?workflows`[`"'`]? permission"
+                    
                     Write-Host "::error::Git push failed for $RefName"
-                    Write-SafeOutput -Message ([string]$output) -Prefix "::error::Git push error: "
-                    return $false
+                    Write-SafeOutput -Message $outputStr -Prefix "::error::Git push error: "
+                    
+                    return @{ 
+                        Success = $false
+                        RequiresManualFix = $requiresWorkflowsPermission
+                        ErrorOutput = $outputStr
+                    }
                 }
             }
             catch {
                 Write-Host "::error::Failed to push $RefName via git"
                 Write-SafeOutput -Message ([string]$_) -Prefix "::error::Git error: "
-                return $false
+                return @{ Success = $false; RequiresManualFix = $false; ErrorOutput = [string]$_ }
             }
         } else {
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to create/update ref $RefName : "
         }
         
-        return $false
+        return @{ Success = $false; RequiresManualFix = $false; ErrorOutput = $errorMessage }
     }
 }
 
