@@ -547,7 +547,27 @@ function New-GitHubRef
         }
     }
     catch {
-        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to create/update ref $RefName : "
+        # Extract detailed error information
+        $errorMessage = $_.Exception.Message
+        $statusCode = 0
+        
+        if ($_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
+        
+        # Check for permission errors (403 Forbidden)
+        if ($statusCode -eq 403) {
+            Write-SafeOutput -Message $errorMessage -Prefix "::error::Permission denied when creating/updating ref $RefName : "
+            Write-Host "::error title=Insufficient Permissions::Unable to create/update $RefName. The GitHub token lacks required permissions."
+            Write-Host "::error::Required workflow permissions:"
+            Write-Host "::error::  permissions:"
+            Write-Host "::error::    contents: write"
+            Write-Host "::error::    actions: write  # Required when modifying workflow files"
+            Write-Host "::error::See: https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication#permissions-for-the-github_token"
+        } else {
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to create/update ref $RefName : "
+        }
+        
         return $false
     }
 }
