@@ -87,7 +87,8 @@ function Invoke-AutoFix
 function Get-ImmutableReleaseRemediationCommands
 {
     param(
-        [string]$TagName
+        [string]$TagName,
+        [RepositoryState]$State = $null
     )
     
     $commands = @()
@@ -98,8 +99,27 @@ function Get-ImmutableReleaseRemediationCommands
     if ($TagName -match "^v(\d+)\.(\d+)\.(\d+)$") {
         $major = $matches[1]
         $minor = $matches[2]
-        $patch = [int]$matches[3] + 1
-        $nextVersion = "v$major.$minor.$patch"
+        $currentPatch = [int]$matches[3]
+        
+        # Calculate next available version by checking existing tags
+        $nextPatch = $currentPatch + 1
+        if ($State) {
+            # Find the highest patch version for this major.minor combination
+            $existingVersions = $State.Tags | Where-Object { 
+                $_.Version -match "^v$major\.$minor\.(\d+)$" 
+            } | ForEach-Object {
+                if ($_.Version -match "^v$major\.$minor\.(\d+)$") {
+                    [int]$matches[1]
+                }
+            } | Sort-Object -Descending
+            
+            if ($existingVersions) {
+                $highestPatch = $existingVersions[0]
+                $nextPatch = $highestPatch + 1
+            }
+        }
+        
+        $nextVersion = "v$major.$minor.$nextPatch"
         
         $commands += "# Delete the immutable release (if possible) and create a new version:"
         $commands += "gh release delete $TagName --yes"
