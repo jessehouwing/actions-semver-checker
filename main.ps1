@@ -643,7 +643,7 @@ if ($checkReleases -ne "none")
                             $issue.Status = "unfixable"
                             
                             # Use helper function to get remediation commands
-                            $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $tagVersion.version
+                            $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $tagVersion.version -State $State
                             $suggestedCommands += $remediationCommands
                         }
                         else
@@ -726,7 +726,7 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                         $issue.Status = "unfixable"
                         
                         # Use helper function to get remediation commands
-                        $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $release.tagName
+                        $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $release.tagName -State $State
                         $suggestedCommands += $remediationCommands
                     }
                     else
