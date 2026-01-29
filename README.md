@@ -355,16 +355,16 @@ List of versions to ignore during validation. This is useful for skipping legacy
 
 ```yaml
 # Comma-separated
-ignore-versions: 'v1.0.0,v2.0.0,v3.0.0-alpha'
+ignore-versions: 'v1.0.0,v2.0.0,v3.0.0'
 
 # Newline-separated (using YAML literal block)
 ignore-versions: |
   v1.0.0
   v2.0.0
-  v3.0.0-alpha
+  v3.0.0
 
 # JSON array
-ignore-versions: '["v1.0.0", "v2.0.0", "v3.0.0-alpha"]'
+ignore-versions: '["v1.0.0", "v2.0.0", "v3.0.0"]'
 ```
 
 **Wildcard support:**
@@ -376,7 +376,7 @@ You can use wildcards to match multiple versions:
 ignore-versions: 'v1.*'
 
 # Ignore all preview releases and specific version
-ignore-versions: 'v1.0.0,*-alpha,*-beta'
+ignore-versions: 'v1.0.0'
 ```
 
 **Use cases:**
