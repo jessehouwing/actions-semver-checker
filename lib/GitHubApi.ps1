@@ -587,7 +587,8 @@ function New-GitHubRef
                     $requiresWorkflowsPermission = $outputStr -match "refusing to allow a GitHub App to create or update workflow" -and $outputStr -match "without `[`"'`]?workflows`[`"'`]? permission"
                     
                     Write-Host "::error::Git push failed for $RefName"
-                    Write-SafeOutput -Message $outputStr -Prefix "::error::Git push error: "
+                    # Log the detailed error at debug level to avoid cluttering error output
+                    Write-SafeOutput -Message $outputStr -Prefix "::debug::Git push error details: "
                     
                     return @{ 
                         Success = $false
@@ -598,7 +599,7 @@ function New-GitHubRef
             }
             catch {
                 Write-Host "::error::Failed to push $RefName via git"
-                Write-SafeOutput -Message ([string]$_) -Prefix "::error::Git error: "
+                Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Git error details: "
                 return @{ Success = $false; RequiresManualFix = $false; ErrorOutput = [string]$_ }
             }
         } else {
