@@ -143,6 +143,48 @@ function Get-ImmutableReleaseRemediationCommands
     return $commands
 }
 
+function Get-ManualFixCommands
+{
+    <#
+    .SYNOPSIS
+    Extracts manual fix commands from all issues that need manual intervention
+    
+    .DESCRIPTION
+    Gets manual fix commands from issues that are unfixable or failed.
+    Supports both RemediationAction objects and legacy ManualFixCommand strings.
+    
+    .PARAMETER State
+    The RepositoryState object containing all validation issues
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State
+    )
+    
+    $commands = @()
+    
+    foreach ($issue in $State.Issues) {
+        # Only include unfixable or failed issues
+        if ($issue.Status -ne "unfixable" -and $issue.Status -ne "failed") {
+            continue
+        }
+        
+        # Try to get commands from RemediationAction first
+        if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
+            $actionCommands = $issue.RemediationAction.GetManualCommands($State)
+            if ($actionCommands) {
+                $commands += $actionCommands
+            }
+        }
+        # Fall back to ManualFixCommand string
+        elseif ($issue.ManualFixCommand) {
+            $commands += $issue.ManualFixCommand
+        }
+    }
+    
+    return $commands | Select-Object -Unique
+}
+
 function Invoke-AllAutoFixes
 {
     <#
@@ -150,8 +192,8 @@ function Invoke-AllAutoFixes
     Executes all auto-fix actions for pending issues in the State
     
     .DESCRIPTION
-    This function processes all ValidationIssues in the State that have AutoFixAction scriptblocks defined.
-    It executes the actions and updates the issue statuses accordingly.
+    This function processes all ValidationIssues in the State that have RemediationAction objects
+    defined. It executes the actions in priority order and updates the issue statuses accordingly. 
     This should be called AFTER displaying the planned changes to the user.
     
     .PARAMETER State
@@ -176,37 +218,52 @@ function Invoke-AllAutoFixes
         return
     }
     
-    # Process all issues that have auto-fix actions
-    foreach ($issue in $State.Issues) {
-        if ($issue.Status -ne "pending") {
-            continue  # Skip issues that have already been processed
+    # Separate issues by whether they have RemediationAction objects
+    $issuesWithActions = $State.Issues | Where-Object { 
+        $_.Status -eq "pending" -and $_.RemediationAction
+    }
+    
+    # Sort issues by priority (RemediationAction.Priority, lower = higher priority)
+    # This ensures: Delete (10) → Create/Update (20) → Release operations (30-40)
+    $sortedIssues = $issuesWithActions | Sort-Object { 
+        if ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
+            $_.RemediationAction.Priority
+        } else {
+            50  # Default priority for scriptblock-based actions
         }
-        
-        if (-not $issue.AutoFixAction) {
-            # No auto-fix action available, mark as unfixable
-            $issue.Status = "unfixable"
-            continue
-        }
-        
-        # Execute the auto-fix action
-        $description = "Fix $($issue.Type) for $($issue.Version)"
-        Write-Host "Auto-fix: $description"
-        
-        try {
-            $result = & $issue.AutoFixAction
+    }
+    
+    # Process all issues in priority order
+    foreach ($issue in $sortedIssues) {
+        # RemediationAction object handling
+        if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
+            $action = $issue.RemediationAction
             
-            if ($result) {
-                Write-Host "✓ Success: $description"
-                $issue.Status = "fixed"
-            } else {
-                Write-Host "✗ Failed: $description"
+            try {
+                $result = $action.Execute($State)
+                
+                if ($result) {
+                    $issue.Status = "fixed"
+                } else {
+                    $issue.Status = "failed"
+                }
+            }
+            catch {
+                Write-Host "✗ Failed: $($action.Description)"
+                Write-SafeOutput -Message ([string]$_) -Prefix "::error::Exception during auto-fix: "
                 $issue.Status = "failed"
             }
         }
-        catch {
-            Write-Host "✗ Failed: $description"
-            Write-SafeOutput -Message ([string]$_) -Prefix "::error::Exception during auto-fix: "
-            $issue.Status = "failed"
+        else {
+            # No auto-fix action available, mark as unfixable
+            $issue.Status = "unfixable"
+        }
+    }
+    
+    # Mark any remaining pending issues as unfixable
+    foreach ($issue in $State.Issues) {
+        if ($issue.Status -eq "pending") {
+            $issue.Status = "unfixable"
         }
     }
 }
