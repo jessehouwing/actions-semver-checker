@@ -349,6 +349,110 @@ jobs:
       contents: write
 ```
 
+## Architecture
+
+This action uses a modular architecture with a domain model at its core, making it maintainable, testable, and extensible.
+
+### Module Structure
+
+```
+actions-semver-checker/
+├── main.ps1              # Orchestrator (1,407 lines)
+│   ├── Initialize State
+│   ├── Collect tags, branches, releases
+│   ├── Run validations
+│   ├── Execute remediation (auto-fix)
+│   └── Report results
+│
+├── lib/                  # Reusable modules (1,114 lines)
+│   ├── StateModel.ps1    # Domain model (420 lines)
+│   │   ├── VersionRef class
+│   │   ├── ReleaseInfo class
+│   │   ├── ValidationIssue class (with status tracking)
+│   │   ├── RepositoryState class (single source of truth)
+│   │   └── RemediationPlan class (dependency ordering)
+│   │
+│   ├── GitHubApi.ps1     # GitHub REST API (432 lines)
+│   │   ├── Get releases with pagination
+│   │   ├── Create/delete tags and branches
+│   │   ├── Manage releases and attestations
+│   │   └── Handle rate limiting
+│   │
+│   ├── Remediation.ps1   # Auto-fix strategies (144 lines)
+│   │   ├── Execute fixes via REST API
+│   │   ├── Calculate next available version
+│   │   └── Generate manual fix commands
+│   │
+│   ├── Logging.ps1       # Safe output (75 lines)
+│   │   ├── Workflow command injection protection
+│   │   └── GitHub Actions formatting
+│   │
+│   └── VersionParser.ps1 # Version parsing (43 lines)
+│       └── Semantic version validation
+│
+└── main.Tests.ps1        # Comprehensive test suite (81 tests)
+```
+
+### Domain Model
+
+**RepositoryState** (single source of truth):
+- **Tags/Branches**: `VersionRef[]` with semantic parsing
+- **Releases**: `ReleaseInfo[]` with immutability status
+- **Issues**: `ValidationIssue[]` with lifecycle tracking
+- **Calculated metrics**: Counts derived from issue statuses
+
+**ValidationIssue statuses**:
+- `pending` → Not yet processed
+- `fixed` → Auto-fix succeeded
+- `failed` → Auto-fix failed
+- `unfixable` → Requires manual intervention
+
+### Design Principles
+
+1. **Single Source of Truth**: All state tracked in `RepositoryState` domain model
+2. **Status-Based Calculation**: Metrics calculated on-demand (no manual counters)
+3. **Separation of Concerns**: Each module has a single responsibility
+4. **Zero Breaking Changes**: 100% backward compatibility maintained
+
+### Validation Flow
+
+```
+1. Initialize
+   └── Create RepositoryState with configuration
+
+2. Collect
+   ├── Git tags (git tag -l v*)
+   ├── Git branches (git branch --remotes)
+   └── GitHub releases (REST API with pagination)
+
+3. Validate
+   ├── Check floating versions point to correct patches
+   ├── Verify releases exist for patch versions
+   ├── Ensure releases are immutable (not drafts)
+   └── Detect ambiguous refs (tag + branch conflicts)
+
+4. Remediate (if auto-fix enabled)
+   ├── Create/update tags via REST API
+   ├── Create/update branches via REST API
+   ├── Create draft releases via REST API
+   └── Track status: fixed/failed/unfixable
+
+5. Report
+   ├── Display state summary
+   ├── Show fixed/failed/unfixable counts
+   ├── Provide manual fix commands
+   └── Exit with appropriate code
+```
+
+### Contributing
+
+Want to contribute? See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- Module guide with detailed responsibilities
+- Testing guidelines
+- Code style conventions
+- Pull request process
+
 ## Migration from v1 to v2
 
 v2 is backward compatible with v1. The main differences:
