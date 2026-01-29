@@ -286,6 +286,22 @@ function Test-ImmutableReleaseError
 
 function Remove-GitHubRelease
 {
+    <#
+    .SYNOPSIS
+    Deletes a GitHub release via the REST API.
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER TagName
+    The tag name associated with the release.
+    
+    .PARAMETER ReleaseId
+    Optional. The release ID. If not provided, will be looked up by tag name.
+    
+    .OUTPUTS
+    Returns $true if deletion succeeded, $false otherwise.
+    #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
@@ -316,10 +332,12 @@ function Remove-GitHubRelease
                 Write-Host "::debug::Looking up release by tag name: $TagName"
                 $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/tags/$TagName"
                 
-                if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                    $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
-                } else {
-                    $response = Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                $response = Invoke-WithRetry -OperationDescription "Get release $TagName" -ScriptBlock {
+                    if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                        Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                    } else {
+                        Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                    }
                 }
                 $release = $response.Content | ConvertFrom-Json
                 $releaseIdToDelete = $release.id
@@ -330,10 +348,12 @@ function Remove-GitHubRelease
         $deleteUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$releaseIdToDelete"
         Write-Host "::debug::Deleting release ID $releaseIdToDelete for $TagName"
         
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $deleteResponse = Invoke-WebRequestWrapper -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
-        } else {
-            $deleteResponse = Invoke-WebRequest -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
+        Invoke-WithRetry -OperationDescription "Delete release $TagName" -ScriptBlock {
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                $deleteResponse = Invoke-WebRequestWrapper -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
+            } else {
+                $deleteResponse = Invoke-WebRequest -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
+            }
         }
         
         return $true
@@ -695,6 +715,19 @@ function New-GitHubRef
 
 function Remove-GitHubRef
 {
+    <#
+    .SYNOPSIS
+    Deletes a git reference (tag or branch) via the GitHub REST API.
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER RefName
+    The full reference name (e.g., "refs/tags/v1.0.0" or "refs/heads/main").
+    
+    .OUTPUTS
+    Returns $true if deletion succeeded, $false otherwise.
+    #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
@@ -711,10 +744,12 @@ function Remove-GitHubRef
         $headers = Get-ApiHeaders -Token $State.Token
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/$RefName"
         
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
-        } else {
-            $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
+        Invoke-WithRetry -OperationDescription "Delete ref $RefName" -ScriptBlock {
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
+            } else {
+                $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
+            }
         }
         
         return $true

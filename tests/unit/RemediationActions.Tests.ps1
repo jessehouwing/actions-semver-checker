@@ -1,9 +1,9 @@
 BeforeAll {
     # Import the remediation actions module
-    . "$PSScriptRoot/StateModel.ps1"
-    . "$PSScriptRoot/Logging.ps1"
-    . "$PSScriptRoot/GitHubApi.ps1"
-    . "$PSScriptRoot/RemediationActions.ps1"
+    . "$PSScriptRoot/../../lib/StateModel.ps1"
+    . "$PSScriptRoot/../../lib/Logging.ps1"
+    . "$PSScriptRoot/../../lib/GitHubApi.ps1"
+    . "$PSScriptRoot/../../lib/RemediationActions.ps1"
 }
 
 Describe "RemediationAction Classes" {

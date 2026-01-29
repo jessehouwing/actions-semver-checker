@@ -28,19 +28,29 @@ function Write-SafeOutput
     Write-Host "::$stopMarker::"
 }
 
-function write-actions-error
+function Write-ActionsError
 {
+    <#
+    .SYNOPSIS
+    Writes an error message in GitHub Actions workflow command format.
+    
+    .PARAMETER Message
+    The error message to output.
+    
+    .PARAMETER State
+    Optional RepositoryState object for tracking issues.
+    #>
     param(
-        [string] $message,
+        [string] $Message,
         [RepositoryState] $State = $null
     )
 
-    Write-Output $message
+    Write-Output $Message
     
     # If State is provided, add an error issue (for tracking)
     # This maintains backward compatibility when State is not passed
     if ($State) {
-        $issue = [ValidationIssue]::new("error", "error", $message)
+        $issue = [ValidationIssue]::new("error", "error", $Message)
         $State.AddIssue($issue)
     }
     else {
@@ -49,27 +59,47 @@ function write-actions-error
     }
 }
 
-function write-actions-warning
+function Write-ActionsWarning
 {
+    <#
+    .SYNOPSIS
+    Writes a warning message in GitHub Actions workflow command format.
+    
+    .PARAMETER Message
+    The warning message to output.
+    #>
     param(
-        [string] $message
+        [string] $Message
     )
 
-    Write-Output $message
+    Write-Output $Message
 }
 
-function write-actions-message
+function Write-ActionsMessage
 {
+    <#
+    .SYNOPSIS
+    Writes a message in GitHub Actions workflow command format with configurable severity.
+    
+    .PARAMETER Message
+    The message to output.
+    
+    .PARAMETER Severity
+    The severity level: 'error', 'warning', or 'none'.
+    
+    .PARAMETER State
+    Optional RepositoryState object for tracking issues.
+    #>
     param(
-        [string] $message,
-        [string] $severity = "error",  # Can be "error", "warning", or "none"
+        [string] $Message,
+        [string] $Severity = "error",  # Can be "error", "warning", or "none"
         [RepositoryState] $State = $null
     )
 
-    if ($severity -eq "error") {
-        write-actions-error $message -State $State
-    } elseif ($severity -eq "warning") {
-        write-actions-warning $message
+    if ($Severity -eq "error") {
+        Write-ActionsError -Message $Message -State $State
+    } elseif ($Severity -eq "warning") {
+        Write-ActionsWarning -Message $Message
     }
     # If "none", don't write anything
 }

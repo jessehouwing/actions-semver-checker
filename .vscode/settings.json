@@ -1,0 +1,12 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd /workspaces/actions-semver-checker && pwsh -Command \"Invoke-Pester -Path '\\./tests/integration' -Output Normal\" 2>&1 \\| head -30$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd /workspaces/actions-semver-checker && pwsh -Command \"Invoke-Pester -Path '\\./tests/integration' -Output Normal\" 2>&1 \\| head -50$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

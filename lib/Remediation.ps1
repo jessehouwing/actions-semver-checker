@@ -8,50 +8,6 @@
 # NOTE: Get-ImmutableReleaseRemediationCommands was removed as it was unused.
 # The functionality is now handled by RemediationAction classes in RemediationActions.ps1
 
-# NOTE: Get-ManualFixCommands is defined but never called directly.
-# It's kept for potential API use but Get-ManualInstructions is preferred.
-function Get-ManualFixCommands
-{
-    <#
-    .SYNOPSIS
-    Extracts manual fix commands from all issues that need manual intervention
-    
-    .DESCRIPTION
-    Gets manual fix commands from issues that are unfixable or failed.
-    Supports both RemediationAction objects and legacy ManualFixCommand strings.
-    
-    .PARAMETER State
-    The RepositoryState object containing all validation issues
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [RepositoryState]$State
-    )
-    
-    $commands = @()
-    
-    foreach ($issue in $State.Issues) {
-        # Only include unfixable or failed issues
-        if ($issue.Status -ne "unfixable" -and $issue.Status -ne "failed") {
-            continue
-        }
-        
-        # Try to get commands from RemediationAction first
-        if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
-            $actionCommands = $issue.RemediationAction.GetManualCommands($State)
-            if ($actionCommands) {
-                $commands += $actionCommands
-            }
-        }
-        # Fall back to ManualFixCommand string
-        elseif ($issue.ManualFixCommand) {
-            $commands += $issue.ManualFixCommand
-        }
-    }
-    
-    return $commands | Select-Object -Unique
-}
-
 function Get-ManualInstructions
 {
     <#

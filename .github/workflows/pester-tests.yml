@@ -9,21 +9,128 @@ on:
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
-  test:
-    name: Run Pester Tests
+  unit-tests:
+    name: Run Unit Tests
     runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Run Pester Tests
+      - name: Run Unit Tests
         shell: pwsh
         run: |
           $stopMarker = (New-Guid).Guid
           Write-Output "::stop-commands::$stopMarker"
 
-          Invoke-Pester -Path ./main.Tests.ps1 -CI
+          # Run unit tests with test result output
+          $config = New-PesterConfiguration
+          $config.Run.Path = './tests/unit'
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = 'unit-test-results.xml'
+          $config.TestResult.OutputFormat = 'NUnitXml'
+          $config.Output.Verbosity = 'Detailed'
+          $config.Run.Exit = $true
+          
+          Invoke-Pester -Configuration $config
 
           Write-Output "::$stopMarker::"
+      
+      - name: Upload Unit Test Results
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        if: always()
+        with:
+          name: unit-test-results
+          path: unit-test-results.xml
+
+      - name: Publish Unit Test Report
+        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
+        if: always()
+        with:
+          name: Unit Tests
+          path: unit-test-results.xml
+          reporter: java-junit
+
+  integration-tests:
+    name: Run Integration Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Integration Tests
+        shell: pwsh
+        run: |
+          $stopMarker = (New-Guid).Guid
+          Write-Output "::stop-commands::$stopMarker"
+
+          # Run integration tests with test result output
+          $config = New-PesterConfiguration
+          $config.Run.Path = './tests/integration'
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = 'integration-test-results.xml'
+          $config.TestResult.OutputFormat = 'NUnitXml'
+          $config.Output.Verbosity = 'Detailed'
+          $config.Run.Exit = $true
+          
+          Invoke-Pester -Configuration $config
+
+          Write-Output "::$stopMarker::"
+      
+      - name: Upload Integration Test Results
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        if: always()
+        with:
+          name: integration-test-results
+          path: integration-test-results.xml
+
+      - name: Publish Integration Test Report
+        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
+        if: always()
+        with:
+          name: Integration Tests
+          path: integration-test-results.xml
+          reporter: java-junit
+
+  legacy-tests:
+    name: Run Legacy Tests (main.Tests.ps1)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Run Legacy Tests
+        shell: pwsh
+        run: |
+          $stopMarker = (New-Guid).Guid
+          Write-Output "::stop-commands::$stopMarker"
+
+          # Run legacy tests with test result output
+          $config = New-PesterConfiguration
+          $config.Run.Path = './main.Tests.ps1'
+          $config.TestResult.Enabled = $true
+          $config.TestResult.OutputPath = 'legacy-test-results.xml'
+          $config.TestResult.OutputFormat = 'NUnitXml'
+          $config.Output.Verbosity = 'Detailed'
+          $config.Run.Exit = $true
+          
+          Invoke-Pester -Configuration $config
+
+          Write-Output "::$stopMarker::"
+      
+      - name: Upload Legacy Test Results
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        if: always()
+        with:
+          name: legacy-test-results
+          path: legacy-test-results.xml
+
+      - name: Publish Legacy Test Report
+        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
+        if: always()
+        with:
+          name: Legacy Tests
+          path: legacy-test-results.xml
+          reporter: java-junit

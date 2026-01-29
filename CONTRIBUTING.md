@@ -153,9 +153,9 @@ Workflow command injection protection:
 
 **Functions:**
 - `Write-SafeOutput`: Safely output untrusted data
-- `write-actions-error`: Log error with optional State tracking
-- `write-actions-warning`: Log warning
-- `write-actions-message`: Log message with severity
+- `Write-ActionsError`: Log error with optional State tracking
+- `Write-ActionsWarning`: Log warning
+- `Write-ActionsMessage`: Log message with severity
 
 **When to modify:**
 - Adding new output patterns

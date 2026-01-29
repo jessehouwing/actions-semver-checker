@@ -26,7 +26,7 @@ Created 5 focused modules:
 
 1. **lib/Logging.ps1** (63 lines)
    - `Write-SafeOutput`: Workflow command injection protection
-   - `write-actions-error/warning/message`: GitHub Actions commands
+   - `Write-ActionsError/Warning/Message`: GitHub Actions commands
 
 2. **lib/VersionParser.ps1** (44 lines)
    - `ConvertTo-Version`: Parse version strings with validation

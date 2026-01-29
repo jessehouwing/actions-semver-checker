@@ -1,4 +1,7 @@
 BeforeAll {
+    # Suppress progress reporting for folder cleanup operations
+    $ProgressPreference = 'SilentlyContinue'
+    
     # Create a temporary git repository for testing
     $script:testRepoPath = Join-Path $TestDrive "test-repo"
     $script:remoteRepoPath = Join-Path $TestDrive "remote-repo"

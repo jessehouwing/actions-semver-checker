@@ -65,6 +65,13 @@ $script:State.ApiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
 $script:State.ServerUrl = $env:GITHUB_SERVER_URL ?? "https://github.com"
 $script:State.Token = $env:GITHUB_TOKEN ?? ""
 
+# SECURITY: Mask the token to prevent accidental exposure in logs
+# Note: GitHub runner should mask GITHUB_TOKEN automatically, but we add this
+# for defense-in-depth in case tokens come from other sources
+if ($script:State.Token) {
+    Write-Host "::add-mask::$($script:State.Token)"
+}
+
 # Parse repository owner and name from GITHUB_REPOSITORY
 if ($env:GITHUB_REPOSITORY) {
     $parts = $env:GITHUB_REPOSITORY -split '/', 2
@@ -134,6 +141,11 @@ try {
     # Parse inputs with defaults
     $script:State.Token = $inputs.token ?? $script:State.Token
     
+    # SECURITY: Mask the token if it was provided via input (may be different from env var)
+    if ($inputs.token -and $inputs.token -ne $env:GITHUB_TOKEN) {
+        Write-Host "::add-mask::$($inputs.token)"
+    }
+    
     $checkMinorVersion = Normalize-CheckInput -value (($inputs.'check-minor-version' ?? "true") -as [string]) -default "error"
     $checkReleases = Normalize-CheckInput -value (($inputs.'check-releases' ?? "error") -as [string]) -default "error"
     $checkReleaseImmutability = Normalize-CheckInput -value (($inputs.'check-release-immutability' ?? "error") -as [string]) -default "error"
@@ -180,13 +192,13 @@ try {
             }
         }
         
-        # Validate each version pattern
+        # Validate each version pattern using Test-ValidVersionPattern for ReDoS prevention
         foreach ($ver in $rawVersions) {
             $verTrimmed = "$ver".Trim()
             if (-not $verTrimmed) { continue }
             
-            # Validate version pattern: vX, vX.Y, vX.Y.Z, or wildcards like v1.*, v2.0.*
-            if ($verTrimmed -match '^v\d+(\.\d+){0,2}(\.\*)?$' -or $verTrimmed -match '^v\d+\.\*$') {
+            # Use safe validation function that prevents ReDoS attacks
+            if (Test-ValidVersionPattern -Pattern $verTrimmed) {
                 $ignoreVersions += $verTrimmed
             } else {
                 Write-Host "::warning title=Invalid ignore-versions pattern::Pattern '$verTrimmed' does not match expected format (vX, vX.Y, vX.Y.Z, or wildcard like v1.*). Skipping."
@@ -359,8 +371,8 @@ $branchVersions = @()
 # UTILITY FUNCTIONS
 #############################################################################
 # Utility functions have been moved to lib/ modules:
-# - Write-SafeOutput, write-actions-* -> lib/Logging.ps1
-# - ConvertTo-Version -> lib/VersionParser.ps1
+# - Write-SafeOutput, Write-Actions* -> lib/Logging.ps1
+# - ConvertTo-Version, Test-ValidVersionPattern -> lib/VersionParser.ps1
 # - Get-ApiHeaders, Get-GitHubRepoInfo, Get-GitHubReleases, etc. -> lib/GitHubApi.ps1
 # - Invoke-AllAutoFixes, Get-ManualInstructions -> lib/Remediation.ps1
 # - Write-RepositoryStateSummary -> lib/StateModel.ps1
@@ -592,7 +604,7 @@ foreach ($tagVersion in $tagVersions)
             
             if (-not $autoFix)
             {
-                write-actions-warning "::warning $message"
+                Write-ActionsWarning "::warning $message"
             }
         }
         else
@@ -628,7 +640,7 @@ foreach ($tagVersion in $tagVersions)
             
             if (-not $autoFix)
             {
-                write-actions-error "::error $message"
+                Write-ActionsError "::error $message"
             }
         }
     }
@@ -729,7 +741,7 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
             {
                 $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
                 
-                $issue = [ValidationIssue]::new("draft_release", $messageType, "Release $($release.tagName) is still in draft status, publish it mutable")
+                $issue = [ValidationIssue]::new("draft_release", $messageType, "Release $($release.tagName) is still in draft status, publish it.")
                 $issue.Version = $release.tagName
                 $issue.IsAutoFixable = $true
                 $issue.RemediationAction = [PublishReleaseAction]::new($release.tagName, $release.id)
@@ -762,7 +774,7 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                             $State.AddIssue($issue)
                             
                             if (-not $autoFix) {
-                                write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but remains mutable and can be modified via force-push. Enable 'auto-fix' to automatically republish, or see: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/preventing-changes-to-your-releases"
+                                Write-ActionsWarning "::warning title=Mutable release::Release $($release.tagName) is published but remains mutable and can be modified via force-push. Enable 'auto-fix' to automatically republish, or see: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/preventing-changes-to-your-releases"
                             }
                         }
                     }
@@ -799,7 +811,7 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
             {
                 # Immutable release on a floating version - this is unfixable
                 $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
-                $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "Write-ActionsError" } else { "Write-ActionsWarning" }
                 & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has an immutable release, which conflicts with its mutable nature. This cannot be auto-fixed."
                 
                 $issue = [ValidationIssue]::new("immutable_floating_release", $messageType, "Floating version $($release.tagName) has an immutable release")
@@ -823,7 +835,7 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
                 if (-not $autoFix)
                 {
                     $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
-                    $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
+                    $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "Write-ActionsError" } else { "Write-ActionsWarning" }
                     & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has a mutable release, which should be removed."
                 }
             }
@@ -920,7 +932,7 @@ foreach ($majorVersion in $majorVersions)
                 
                 if (-not $autoFix)
                 {
-                    write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha" -severity $checkMinorVersion
+                    Write-ActionsMessage -Message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major).0 does not exist and must match: v$($majorVersion.major) ref $majorSha" -Severity $checkMinorVersion
                 }
             }
             else
@@ -960,7 +972,7 @@ foreach ($majorVersion in $majorVersions)
             
             if (-not $autoFix)
             {
-                write-actions-error "::error title=Version should be branch::Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled"
+                Write-ActionsError "::error title=Version should be branch::Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled"
             }
         }
         
@@ -978,7 +990,7 @@ foreach ($majorVersion in $majorVersions)
             
             if (-not $autoFix)
             {
-                write-actions-error "::error title=Version should be branch::Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled"
+                Write-ActionsError "::error title=Version should be branch::Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled"
             }
         }
     }
@@ -1005,7 +1017,7 @@ foreach ($majorVersion in $majorVersions)
             
             if (-not $autoFix)
             {
-                write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
+                Write-ActionsMessage -Message "::$($checkMinorVersion) title=Missing version::Version: v$($majorVersion.major) does not exist and must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -Severity $checkMinorVersion
             }
         }
 
@@ -1030,7 +1042,7 @@ foreach ($majorVersion in $majorVersions)
             
             if (-not $autoFix)
             {
-                write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -severity $checkMinorVersion
+                Write-ActionsMessage -Message "::$($checkMinorVersion) title=Incorrect version::Version: v$($majorVersion.major) ref $majorSha must match: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha" -Severity $checkMinorVersion
             }
         }
     }
@@ -1086,7 +1098,7 @@ foreach ($majorVersion in $majorVersions)
         
         if (-not $autoFix)
         {
-            write-actions-error "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
+            Write-ActionsError "::error title=Incorrect version::Version: v$($highestMinor.major) ref $majorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha"
         }
     }
 
@@ -1106,7 +1118,7 @@ foreach ($majorVersion in $majorVersions)
         
         if (-not $autoFix)
         {
-            write-actions-error "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
+            Write-ActionsError "::error title=Missing version::Version: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
         }
     }
 
@@ -1130,7 +1142,7 @@ foreach ($majorVersion in $majorVersions)
         
         if (-not $autoFix)
         {
-            write-actions-error "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
+            Write-ActionsError "::error title=Missing version::Version: v$($majorVersion.major) does not exist and must match: $sourceVersionForPatch ref $sourceShaForPatch"
         }
     }
 
@@ -1165,7 +1177,7 @@ foreach ($majorVersion in $majorVersions)
                 
                 if (-not $autoFix)
                 {
-                    write-actions-message "::$($checkMinorVersion) title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor" -severity $checkMinorVersion
+                    Write-ActionsMessage -Message "::$($checkMinorVersion) title=Missing version::Version: v$($highestMinor.major).$($highestMinor.minor) does not exist and must match: $sourceVersionForMinor ref $sourceShaForMinor" -Severity $checkMinorVersion
                 }
             }
         }
@@ -1191,7 +1203,7 @@ foreach ($majorVersion in $majorVersions)
             
             if (-not $autoFix)
             {
-                write-actions-message "::$($checkMinorVersion) title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha" -severity $checkMinorVersion
+                Write-ActionsMessage -Message "::$($checkMinorVersion) title=Incorrect version::Version: v$($highestMinor.major).$($highestMinor.minor) ref $minorSha must match: v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) ref $patchSha" -Severity $checkMinorVersion
             }
         }
     }
@@ -1226,7 +1238,7 @@ if ($useBranches) {
         
         if (-not $autoFix)
         {
-            write-actions-error "::error title=Incorrect version::Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
+            Write-ActionsError "::error title=Incorrect version::Version: latest (branch) ref $($latestBranch.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
         }
     } elseif (-not $latestBranch -and $highestVersion) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest"
@@ -1243,13 +1255,13 @@ if ($useBranches) {
         
         if (-not $autoFix)
         {
-            write-actions-error "::error title=Missing version::Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
+            Write-ActionsError "::error title=Missing version::Version: latest (branch) does not exist and must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
         }
     }
     
     # Warn if latest exists as a tag when we're using branches
     if ($latest) {
-        write-actions-warning "::warning title=Latest should be branch::Version: latest exists as a tag but should be a branch when floating-versions-use is 'branches'"
+        Write-ActionsWarning "::warning title=Latest should be branch::Version: latest exists as a tag but should be a branch when floating-versions-use is 'branches'"
     }
 } else {
     # When using tags, check if latest tag exists and points to correct version
@@ -1269,13 +1281,13 @@ if ($useBranches) {
         
         if (-not $autoFix)
         {
-            write-actions-error "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
+            Write-ActionsError "::error title=Incorrect version::Version: latest ref $($latest.sha) must match: v$($globalHighestPatchVersion.major).$($globalHighestPatchVersion.minor).$($globalHighestPatchVersion.build) ref $($highestVersion.sha)"
         }
     }
     
     # Warn if latest exists as a branch when we're using tags
     if ($latestBranch) {
-        write-actions-warning "::warning title=Latest should be tag::Version: latest exists as a branch but should be a tag when floating-versions-use is 'tags'"
+        Write-ActionsWarning "::warning title=Latest should be tag::Version: latest exists as a branch but should be a tag when floating-versions-use is 'tags'"
     }
 }
 
