@@ -858,7 +858,7 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
                 if ($autoFix)
                 {
                     Write-Host "Auto-fix: $fixDescription"
-                    $deleteSuccess = Remove-GitHubRelease -State $State -TagName $release.tagName
+                    $deleteSuccess = Remove-GitHubRelease -State $State -TagName $release.tagName -ReleaseId $release.id
                     
                     if ($deleteSuccess)
                     {
