@@ -212,10 +212,10 @@ if ($autoFix) {
     }
 }
 
-$tags = & git tag -l v* | Where-Object{ return ($_ -match "v\d+(\.\d+)*$") }
+$tags = & git tag -l v* | Where-Object{ return ($_ -match "^v\d+(\.\d+){0,2}$") }
 Write-Host "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
 
-$branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Trim() -match "^origin/(v\d+(\.\d+)*(-.*)?)$") } | ForEach-Object{ $_.Trim().Replace("origin/", "")}
+$branches = & git branch --list --quiet --remotes | Where-Object{ return ($_.Trim() -match "^origin/(v\d+(\.\d+){0,2}(-.*)?)$") } | ForEach-Object{ $_.Trim().Replace("origin/", "")}
 
 $tagVersions = @()
 $branchVersions = @()
