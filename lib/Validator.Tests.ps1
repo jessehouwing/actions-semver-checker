@@ -362,7 +362,7 @@ Describe "FloatingVersionReleaseValidator" {
         $releaseData = [PSCustomObject]@{
             tag_name = "latest"
             id = 12345
-            draft = $false
+            draft = $true  # Draft releases are mutable
             prerelease = $false
             html_url = "https://github.com/owner/repo/releases/tag/latest"
             target_commitish = "abc123"
@@ -373,7 +373,29 @@ Describe "FloatingVersionReleaseValidator" {
         $issues = $script:validator.Validate($script:state, $script:config)
         
         $issues.Count | Should -Be 1
+        $issues[0].Type | Should -Be "mutable_floating_release"
         $issues[0].Version | Should -Be "latest"
+    }
+    
+    It "Should report immutable release on floating version as unfixable" {
+        $releaseData = [PSCustomObject]@{
+            tag_name = "v1"
+            id = 12345
+            draft = $false  # Non-draft releases are immutable
+            prerelease = $false
+            html_url = "https://github.com/owner/repo/releases/tag/v1"
+            target_commitish = "abc123"
+        }
+        $release = [ReleaseInfo]::new($releaseData)
+        $script:state.Releases = @($release)
+        
+        $issues = $script:validator.Validate($script:state, $script:config)
+        
+        $issues.Count | Should -Be 1
+        $issues[0].Type | Should -Be "immutable_floating_release"
+        $issues[0].Status | Should -Be "unfixable"
+        $issues[0].Version | Should -Be "v1"
+        $issues[0].ManualFixCommand | Should -Match "WARNING.*Cannot delete immutable release"
     }
     
     It "Should skip ignored versions" {
