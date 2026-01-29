@@ -319,7 +319,7 @@ function Write-StateSummary {
             if ($release.isDraft) { $status += "draft" }
             if ($release.isPrerelease) { $status += "prerelease" }
             $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
-            $immutableSymbol = if ($release.IsImmutable) { "🔒" } else { "🔓" }
+            $immutableSymbol = if ($release.isImmutable) { "🔒" } else { "🔓" }
             Write-Host "  $immutableSymbol $($release.tagName)$statusStr" -ForegroundColor Gray
         }
     } elseif ($Releases.Count -gt 15) {
@@ -329,7 +329,7 @@ function Write-StateSummary {
             if ($release.isDraft) { $status += "draft" }
             if ($release.isPrerelease) { $status += "prerelease" }
             $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
-            $immutableSymbol = if ($release.IsImmutable) { "🔒" } else { "🔓" }
+            $immutableSymbol = if ($release.isImmutable) { "🔒" } else { "🔓" }
             Write-Host "  $immutableSymbol $($release.tagName)$statusStr" -ForegroundColor Gray
         }
     }
