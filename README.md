@@ -26,7 +26,7 @@ This strategy balances **stability** (pinned versions never change) with **conve
 - ✅ Can configure floating versions (major/minor/latest) to use branches or tags
 - ✅ Provides suggested commands to fix any issues with direct links to GitHub release pages
 - ✅ Optional auto-fix mode to automatically update version tags/branches
-- ✅ **NEW in v2:** No longer requires `fetch-depth: 0` or `fetch-tags: true` - uses GitHub API instead
+- ✅ **NEW in v2:** No checkout required - uses GitHub REST API exclusively
 - ✅ **NEW:** Ignore specific versions from validation (useful for legacy versions)
 - ✅ **NEW:** Auto-fix automatically republishes non-immutable releases to make them immutable (when `check-release-immutability` is enabled)
 - ✅ **NEW:** Retry logic with exponential backoff for better reliability
@@ -62,11 +62,9 @@ And a set of suggested Git commands to fix this:
 
 ## v2 (Current)
 
-**No special checkout configuration required!** Version 2 uses the GitHub API to fetch tags and branches, eliminating the need for full git history:
+**No checkout required!** Version 2 uses the GitHub REST API exclusively, so you don't need to checkout the repository:
 
 ```yaml
-- uses: actions/checkout@v4
-
 - uses: jessehouwing/actions-semver-checker@v2
 ```
 
@@ -80,7 +78,7 @@ This is a significant improvement over v1, making the action faster and simpler 
 Version 1 requires full git history and tags:
 
 ```yaml
-- uses: actions/checkout@v4
+- uses: actions/checkout@v6
   with:
     fetch-depth: 0      # Required for v1: Fetches full git history
     fetch-tags: true    # Required for v1: Fetches all tags
@@ -98,10 +96,6 @@ jobs:
     permissions:
       contents: write  # Required for auto-fix to push tags/branches
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: true  # Default, but explicit for clarity
-
       - uses: jessehouwing/actions-semver-checker@v2
         with:
           auto-fix: true
@@ -109,25 +103,131 @@ jobs:
 ```
 
 **Requirements:**
-- **`contents: write` permission** - Required to push tag/branch updates
+- **`contents: write` permission** - Required to push tag/branch updates via REST API
 - **`token`** - GitHub token for API calls (create releases, update refs)
-- **`persist-credentials: true`** (default) - Saves credentials for git push operations
+
+## Using Custom Tokens for Workflow File Changes
+
+The default `GITHUB_TOKEN` **cannot** push tags or branches that would modify files in `.github/workflows/`. This is a security feature of GitHub Actions. If your action repository has workflow files that change between versions, auto-fix will fail with a permission error.
+
+To work around this limitation, you can use either:
+1. **GitHub App Token** (Recommended for organizations)
+2. **Fine-grained Personal Access Token** (Simpler for personal repositories)
+
+### Option 1: GitHub App Token (Recommended)
+
+Using a GitHub App provides the most secure and manageable approach, especially for organizations.
+
+**Step 1:** Create a GitHub App with the following permissions:
+- **Repository permissions:**
+  - `Contents`: Read and write
+  - `Workflows`: Read and write *(this is the key permission)*
+  - `Metadata`: Read-only (automatically selected)
+
+**Step 2:** Install the App on your repository
+
+**Step 3:** Use the [actions/create-github-app-token](https://github.com/marketplace/actions/create-github-app-token) action:
+
+```yaml
+name: Auto-fix SemVer
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  fix-semver:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Scope the token to only this repository
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - uses: jessehouwing/actions-semver-checker@v2
+        with:
+          auto-fix: true
+          token: ${{ steps.app-token.outputs.token }}
+```
+
+**Benefits:**
+- Fine-grained permissions scoped to specific repositories
+- Can be managed at organization level
+- Token automatically expires (more secure than PATs)
+- Audit logging for all actions taken
+
+### Option 2: Fine-grained Personal Access Token
+
+For personal repositories or simpler setups, a fine-grained PAT works well.
+
+**Step 1:** Create a Fine-grained PAT at [GitHub Settings → Developer Settings → Personal Access Tokens → Fine-grained tokens](https://github.com/settings/tokens?type=beta)
+
+**Step 2:** Configure the token with these permissions:
+- **Repository access:** Select your action repository
+- **Repository permissions:**
+  - `Contents`: Read and write
+  - `Workflows`: Read and write *(this is the key permission)*
+  - `Metadata`: Read-only (automatically selected)
+
+**Step 3:** Add the token as a repository secret (e.g., `SEMVER_TOKEN`)
+
+**Step 4:** Use the token in your workflow:
+
+```yaml
+name: Auto-fix SemVer
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  fix-semver:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: jessehouwing/actions-semver-checker@v2
+        with:
+          auto-fix: true
+          token: ${{ secrets.SEMVER_TOKEN }}
+```
+
+> **⚠️ Security Note:** PATs are tied to a user account. If the user leaves the organization or their account is compromised, the token may need to be rotated. For organizations, GitHub App tokens are preferred.
+
+### When Do You Need a Custom Token?
+
+You need a custom token with `workflows` permission if:
+- Your action repository contains `.github/workflows/` files
+- These workflow files change between versions
+- You want to use `auto-fix: true` to push tags/branches
+
+If your repository has no workflow files, or workflow files don't change between versions, the default `GITHUB_TOKEN` with `contents: write` permission is sufficient.
+
+### Troubleshooting Token Issues
+
+If auto-fix fails with a permission error like:
+```
+refusing to allow a GitHub App to create or update workflow
+```
+
+This indicates the token lacks `workflows` permission. Follow one of the options above to use a properly configured token.
 
 # Usage
 
 ## Basic Usage
 
 ```yaml  
-- uses: actions/checkout@v4
-
 - uses: jessehouwing/actions-semver-checker@v2
   with:
     # Configures warnings for minor versions.
     # Default: true
-    check-minor-version: 'true'
+    check-minor-version: 'error'
 ```
-
-> **Note:** v2 uses the GitHub API to fetch tags and branches, so `fetch-depth: 0` and `fetch-tags: true` are no longer required.
 
 ## Configuration Options
 
@@ -143,14 +243,14 @@ GitHub token for API access. If not provided, falls back to the GITHUB_TOKEN env
 ```
 
 ### `check-minor-version`
-**Default:** `true`
+**Default:** `error`
 
 Configures whether to check minor versions (e.g., `v1.0`) in addition to major versions.
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
   with:
-    check-minor-version: 'true'
+    check-minor-version: 'error'
 ```
 
 ### `check-releases`
@@ -228,17 +328,13 @@ jobs:
     permissions:
       contents: write  # Required for auto-fix
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
       - uses: jessehouwing/actions-semver-checker@v2
         with:
           auto-fix: 'true'
 ```
 
 **Note:** 
-- Auto-fix handles git operations for tags/branches via REST API
+- Auto-fix handles all operations via REST API (no checkout required)
 - When `check-release-immutability` is set to `error` or `warning` (default), auto-fix will also automatically republish non-immutable releases to make them immutable
 - GitHub Release creation for new versions must be done manually (auto-fix creates draft releases only)
 
@@ -309,11 +405,6 @@ jobs:
       cancel-in-progress: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
       - uses: jessehouwing/actions-semver-checker@v2
         with:
           check-minor-version: 'true'
@@ -337,11 +428,6 @@ jobs:
       contents: write  # Required for auto-fix
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
       - uses: jessehouwing/actions-semver-checker@v2
         with:
           floating-versions-use: 'branches'
@@ -362,11 +448,6 @@ jobs:
   check-semver:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
       - uses: jessehouwing/actions-semver-checker@v2
         with:
           check-releases: 'error'

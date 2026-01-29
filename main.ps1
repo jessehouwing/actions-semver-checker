@@ -81,29 +81,9 @@ if ($env:GITHUB_REPOSITORY) {
     }
 }
 
-# If still not found, fall back to git remote
+# If still not found, warn user to configure GITHUB_REPOSITORY
 if (-not $script:State.RepoOwner -or -not $script:State.RepoName) {
-    $remoteUrl = & git config --get remote.origin.url 2>$null
-    if ($remoteUrl) {
-        # Parse owner/repo from various Git URL formats
-        # SSH: git@hostname:owner/repo.git
-        # HTTPS: https://hostname/owner/repo.git
-        # Handle both github.com and GitHub Enterprise Server
-        if ($remoteUrl -match '(?:https?://|git@)([^/:]+)[:/]([^/]+)/([^/]+?)(\.git)?$') {
-            $hostname = $matches[1]
-            $script:State.RepoOwner = $matches[2]
-            $script:State.RepoName = $matches[3]
-            
-            # Update server URL based on the parsed hostname
-            if ($hostname -ne "github.com") {
-                $script:State.ServerUrl = "https://$hostname"
-                # For GHE, API URL is typically https://hostname/api/v3
-                if ($script:State.ApiUrl -eq "https://api.github.com") {
-                    $script:State.ApiUrl = "https://$hostname/api/v3"
-                }
-            }
-        }
-    }
+    Write-Host "::warning::Could not determine repository owner/name. Ensure GITHUB_REPOSITORY environment variable is set."
 }
 
 #############################################################################
@@ -270,82 +250,18 @@ Write-Host "::debug::Check releases: $checkReleases"
 Write-Host "::debug::Check release immutability: $checkReleaseImmutability"
 Write-Host "::debug::Floating versions use: $floatingVersionsUse"
 
-# Validate git repository configuration
-Write-Host "::debug::Validating repository configuration..."
-
-# Note: This action now uses the GitHub API to fetch tags and branches,
-# eliminating the need for fetch-depth: 0 or fetch-tags: true.
-# Local git state is no longer required for tag/branch discovery.
-
-# Configure git credentials for auto-fix mode if needed
+# Validate token is available for auto-fix mode
 if ($autoFix) {
-    Write-Host "::debug::Auto-fix mode enabled, configuring git credentials..."
-    
     if (-not $script:State.Token) {
         $errorMessage = "::error title=Auto-fix requires token::Auto-fix mode is enabled but no GitHub token is available. Please provide a token via the 'token' input or ensure GITHUB_TOKEN is available.%0A%0AExample:%0A  - uses: jessehouwing/actions-semver-checker@v2%0A    with:%0A      auto-fix: true%0A      token: `${{ secrets.GITHUB_TOKEN }}"
         Write-Output $errorMessage
         $global:returnCode = 1
         exit 1
     }
-    
-    # Configure git to use token for authentication
-    # This handles cases where checkout action used persist-credentials: false
-    try {
-        # SECURITY: Use environment variable for token instead of embedding in command
-        # This prevents the token from being exposed in process listings or git config output
-        $env:GIT_ASKPASS_TOKEN = $script:State.Token
-        
-        # Create a minimal askpass script that returns credentials from environment
-        $askpassScript = @'
-#!/bin/sh
-case "$1" in
-    Username*) echo "x-access-token" ;;
-    Password*) echo "$GIT_ASKPASS_TOKEN" ;;
-esac
-'@
-        
-        # For Windows/PowerShell, use a different approach with credential helper
-        if ($IsWindows -or (-not $IsLinux -and -not $IsMacOS)) {
-            # Windows: Use credential helper with environment variable
-            & git config --local credential.helper "" 2>$null
-            $env:GIT_PASSWORD = $script:State.Token
-            $env:GIT_USERNAME = "x-access-token"
-            # Configure git to use environment variables for credentials
-            & git config --local credential.helper "!f() { echo username=`$GIT_USERNAME; echo password=`$GIT_PASSWORD; }; f" 2>$null
-        }
-        else {
-            # Unix: Use GIT_ASKPASS with a temporary script
-            $askpassPath = Join-Path ([System.IO.Path]::GetTempPath()) "git-askpass-$([guid]::NewGuid().ToString('N').Substring(0, 8)).sh"
-            $askpassScript | Out-File -FilePath $askpassPath -Encoding utf8 -Force
-            chmod +x $askpassPath 2>$null
-            $env:GIT_ASKPASS = $askpassPath
-            $env:GIT_TERMINAL_PROMPT = "0"
-            
-            # Store path for cleanup later
-            $script:AskpassScriptPath = $askpassPath
-        }
-        
-        # Configure git user identity for GitHub Actions bot
-        & git config --local user.name "github-actions[bot]" 2>$null
-        & git config --local user.email "github-actions[bot]@users.noreply.github.com" 2>$null
-        
-        # Also set up the URL rewrite to use HTTPS with token
-        $remoteUrl = & git config --get remote.origin.url 2>$null
-        if ($remoteUrl -and $remoteUrl -match '^https://') {
-            Write-Host "::debug::Configured git credential helper for HTTPS authentication"
-        }
-        elseif ($remoteUrl -and $remoteUrl -match '^git@') {
-            # Wrap remote URL in stop-commands to prevent workflow command injection
-            Write-SafeOutput -Message "$remoteUrl). Auto-fix may fail if SSH credentials are not available. Consider using HTTPS remote with checkout action." -Prefix "::warning title=SSH remote detected::Remote URL uses SSH ("
-        }
-    }
-    catch {
-        # Wrap exception message in stop-commands to prevent workflow command injection
-        Write-SafeOutput -Message ([string]$_) -Prefix "::warning title=Git configuration warning::Could not configure git credentials: "
-    }
+    Write-Host "::debug::Auto-fix mode enabled with token"
 }
 
-# Fetch tags and branches via GitHub API (no longer requires local git history)
+# Fetch tags and branches via GitHub API (no checkout required)
 Write-Host "::debug::Fetching tags from GitHub API..."
 $apiTags = Get-GitHubTags -State $script:State -Pattern "^v\d+(\.\d+){0,2}$"
 $tags = $apiTags | ForEach-Object { $_.name }

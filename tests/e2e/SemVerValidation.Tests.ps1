@@ -1086,36 +1086,6 @@ Describe "SemVer Checker" {
                 $env:GITHUB_TOKEN = $savedToken
             }
         }
-        
-        It "Should configure git credentials when auto-fix is enabled with token" {
-            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
-            
-            # Create a version that needs fixing
-            $commit = Get-CommitSha
-            git tag v1.0.0 $commit
-            git tag v1.0 $commit
-            
-            # Ensure token is available
-            $env:GITHUB_TOKEN = "test-token-12345"
-            
-            # Run with auto-fix
-            $result = Invoke-MainScript -AutoFix "true"
-            
-            # Should show auto-fix summary
-            $result.Output | Should -Match "Fixed issues:"
-            
-            # Verify git user identity is configured for GitHub Actions bot
-            # This proves the credential setup code ran
-            $userName = & git config --local user.name 2>$null
-            $userEmail = & git config --local user.email 2>$null
-            $userName | Should -Be "github-actions[bot]"
-            $userEmail | Should -Be "github-actions[bot]@users.noreply.github.com"
-            
-            # SECURITY: Verify the token is NOT embedded directly in git config output
-            # (the token should be passed via environment variables instead)
-            $allConfig = & git config --local --list 2>$null
-            $allConfig | Should -Not -Match "test-token-12345" -Because "Token should not be embedded in git config"
-        }
     }
     
     Context "Security - Workflow Command Injection Protection" {
