@@ -19,6 +19,7 @@
 . "$PSScriptRoot/lib/Logging.ps1"
 . "$PSScriptRoot/lib/VersionParser.ps1"
 . "$PSScriptRoot/lib/GitHubApi.ps1"
+. "$PSScriptRoot/lib/RemediationActions.ps1"
 . "$PSScriptRoot/lib/Remediation.ps1"
 
 #############################################################################
@@ -490,20 +491,18 @@ foreach ($tagVersion in $tagVersions)
                 # Keep branch, remove tag
                 $fixCmd = "git push origin :refs/tags/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous tag for $($tagVersion.version) (keeping branch)"
-                $apiAction = { Remove-GitHubRef -State $State -RefName "refs/tags/$($tagVersion.version)" }
             }
             else
             {
                 # Keep tag, remove branch (default)
                 $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous branch for $($tagVersion.version) (keeping tag)"
-                $apiAction = { Remove-GitHubRef -State $State -RefName "refs/heads/$($tagVersion.version)" }
             }
             
             $issue.ManualFixCommand = $fixCmd
             $issue.IsAutoFixable = $true
-            # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+            # Use RemediationAction class
+            $issue.RemediationAction = [DeleteBranchAction]::new($tagVersion.version)
             
             if (-not $autoFix)
             {
@@ -525,20 +524,22 @@ foreach ($tagVersion in $tagVersions)
                 # Keep branch, remove tag
                 $fixCmd = "git push origin :refs/tags/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous tag for $($tagVersion.version) (keeping branch at $($branchVersion.sha))"
-                $apiAction = { Remove-GitHubRef -State $State -RefName "refs/tags/$($tagVersion.version)" }
             }
             else
             {
                 # Keep tag, remove branch (default)
                 $fixCmd = "git push origin :refs/heads/$($tagVersion.version)"
                 $fixDescription = "Remove ambiguous branch for $($tagVersion.version) (keeping tag at $($tagVersion.sha))"
-                $apiAction = { Remove-GitHubRef -State $State -RefName "refs/heads/$($tagVersion.version)" }
             }
             
             $issue.ManualFixCommand = $fixCmd
             $issue.IsAutoFixable = $true
-            # Store the API action directly - no GetNewClosure needed for API actions
-            $issue.AutoFixAction = $apiAction
+            # Use RemediationAction class - determine action based on keepBranch
+            if ($keepBranch) {
+                $issue.RemediationAction = [DeleteTagAction]::new($tagVersion.version)
+            } else {
+                $issue.RemediationAction = [DeleteBranchAction]::new($tagVersion.version)
+            }
             
             if (-not $autoFix)
             {
@@ -616,53 +617,9 @@ if ($checkReleases -ne "none")
                 
                 # Setup auto-fix action for creating and publishing release
                 $issue.IsAutoFixable = $true
-                # Capture variables needed for the closure
-                $capturedTagName = $tagVersion.version
-                $capturedState = $State
-                $capturedRepoInfo = $repoInfo
-                $issue.AutoFixAction = {
-                    $fixDescription = "Create draft release for $capturedTagName"
-                    Write-Host "Auto-fix: $fixDescription"
-                    $releaseId = New-GitHubDraftRelease -State $capturedState -TagName $capturedTagName
-                    
-                    if ($releaseId)
-                    {
-                        Write-Host "✓ Success: $fixDescription"
-                        $createIssue = [ValidationIssue]::new("create_draft_release", "info", "Created draft release for $capturedTagName")
-                        $createIssue.Version = $capturedTagName
-                        $createIssue.Status = "fixed"
-                        $capturedState.AddIssue($createIssue)
-                        
-                        # Now try to publish the draft release
-                        $publishDescription = "Publish draft release for $capturedTagName"
-                        Write-Host "Auto-fix: $publishDescription"
-                        $publishResult = Publish-GitHubRelease -State $capturedState -TagName $capturedTagName -ReleaseId $releaseId
-                        
-                        if ($publishResult.Success)
-                        {
-                            Write-Host "✓ Success: $publishDescription"
-                            return $true
-                        }
-                        elseif ($publishResult.Unfixable)
-                        {
-                            Write-Host "✗ Unfixable: $publishDescription (tag used by immutable release)"
-                            return $false
-                        }
-                        else
-                        {
-                            Write-Host "✗ Failed: $publishDescription"
-                            # Log message about manual publishing requirement
-                            $editUrl = "$($capturedRepoInfo.Url)/releases/edit/$capturedTagName"
-                            Write-Host "::warning title=Manual action required::The draft release $capturedTagName must be published manually. Edit and publish at: $editUrl"
-                            return $false
-                        }
-                    }
-                    else
-                    {
-                        Write-Host "✗ Failed: $fixDescription"
-                        return $false
-                    }
-                }
+                # Use RemediationAction class - create draft release action
+                # Note: Publishing is handled separately by the remediation framework
+                $issue.RemediationAction = [CreateReleaseAction]::new($tagVersion.version, $true)
                 
                 if (-not $autoFix)
                 {
@@ -695,44 +652,12 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                 
                 $issue = [ValidationIssue]::new("draft_release", $messageType, "Release $($release.tagName) is still in draft status, making it mutable")
                 $issue.Version = $release.tagName
+                $issue.IsAutoFixable = $true
+                $issue.RemediationAction = [PublishReleaseAction]::new($release.tagName, $release.id)
                 $State.AddIssue($issue)
                 
-                # Try to auto-fix by publishing the draft release
-                if ($autoFix)
+                if (-not $autoFix)
                 {
-                    $publishDescription = "Publish draft release for $($release.tagName)"
-                    Write-Host "Auto-fix: $publishDescription"
-                    $publishResult = Publish-GitHubRelease -State $State -TagName $release.tagName -ReleaseId $release.id
-                    
-                    if ($publishResult.Success)
-                    {
-                        Write-Host "✓ Success: $publishDescription"
-                        $issue.Status = "fixed"
-                    }
-                    elseif ($publishResult.Unfixable)
-                    {
-                        Write-Host "✗ Unfixable: $publishDescription (tag used by immutable release)"
-                        $issue.Status = "unfixable"
-                        
-                        # Use helper function to get remediation commands
-                        $remediationCommands = Get-ImmutableReleaseRemediationCommands -TagName $release.tagName -State $State
-                        $suggestedCommands += $remediationCommands
-                    }
-                    else
-                    {
-                        Write-Host "✗ Failed: $publishDescription"
-                        $issue.Status = "failed"
-                        
-                        if ($repoInfo) {
-                            $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($release.tagName)"
-                        } else {
-                            $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
-                        }
-                    }
-                }
-                else
-                {
-                    $issue.Status = "unfixable"
                     if ($repoInfo) {
                         $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($repoInfo.Url)/releases/edit/$($release.tagName)"
                     } else {
@@ -750,32 +675,20 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
                         # Non-draft release that is not immutable can still be force-pushed
                         
                         # Check if we should republish for immutability
-                        # Only if check-release-immutability is enabled (error or warning) and auto-fix is enabled
-                        if ($checkReleaseImmutability -ne "none" -and $autoFix) {
+                        # Only if check-release-immutability is enabled (error or warning)
+                        if ($checkReleaseImmutability -ne "none") {
                             # Try to republish the release to make it immutable
                             $issue = [ValidationIssue]::new("non_immutable_release", "warning", "Release $($release.tagName) is not immutable")
                             $issue.Version = $release.tagName
+                            $issue.IsAutoFixable = $true
+                            $issue.RemediationAction = [RepublishReleaseAction]::new($release.tagName)
                             $State.AddIssue($issue)
                             
-                            $fixDescription = "Republish release $($release.tagName) to make it immutable"
-                            Write-Host "Auto-fix: $fixDescription"
-                            $republishResult = Republish-GitHubRelease -State $State -TagName $release.tagName
-                            
-                            if ($republishResult.Success) {
-                                Write-Host "✓ Success: $fixDescription"
-                                $issue.Status = "fixed"
-                            } else {
-                                Write-Host "✗ Failed: $fixDescription ($($republishResult.Reason))"
-                                $issue.Status = "failed"
-                                write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but is not immutable. Failed to republish: $($republishResult.Reason)"
+                            if (-not $autoFix) {
+                                write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but remains mutable and can be modified via force-push. Enable 'auto-fix' to automatically republish, or see: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/preventing-changes-to-your-releases"
                                 $suggestedCommands += "# Manually republish release $($release.tagName) to make it immutable"
                                 $suggestedCommands += "gh release edit $($release.tagName) --draft=true"
                                 $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
-                            }
-                        } else {
-                            # Just warn if auto-fix or immutability check is not enabled
-                            if ($checkReleaseImmutability -ne "none") {
-                                write-actions-warning "::warning title=Mutable release::Release $($release.tagName) is published but remains mutable and can be modified via force-push. Enable 'auto-fix' to automatically republish, or see: https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/preventing-changes-to-your-releases"
                             }
                         }
                     }
@@ -826,35 +739,15 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
             {
                 # Mutable release (draft or not immutable) on a floating version - can be auto-fixed by deleting it
                 $fixCmd = "gh release delete $($release.tagName) --yes"
-                $fixDescription = "Remove mutable release for floating version $($release.tagName)"
                 
                 $issue = [ValidationIssue]::new("mutable_floating_release", "warning", "Floating version $($release.tagName) has a mutable release")
                 $issue.Version = $release.tagName
                 $issue.ManualFixCommand = $fixCmd
+                $issue.IsAutoFixable = $true
+                $issue.RemediationAction = [DeleteReleaseAction]::new($release.tagName, $release.id)
                 $State.AddIssue($issue)
                 
-                # Try to auto-fix if enabled
-                if ($autoFix)
-                {
-                    Write-Host "Auto-fix: $fixDescription"
-                    $deleteSuccess = Remove-GitHubRelease -State $State -TagName $release.tagName -ReleaseId $release.id
-                    
-                    if ($deleteSuccess)
-                    {
-                        Write-Host "✓ Success: $fixDescription"
-                        $issue.Status = "fixed"
-                    }
-                    else
-                    {
-                        Write-Host "✗ Failed: $fixDescription"
-                        $issue.Status = "failed"
-                        $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
-                        $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
-                        & $messageFunc "::$messageType title=Release on floating version::Floating version $($release.tagName) has a mutable release, which should be removed."
-                        $suggestedCommands += $fixCmd
-                    }
-                }
-                else
+                if (-not $autoFix)
                 {
                     $messageType = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "error" } else { "warning" }
                     $messageFunc = if ($checkReleaseImmutability -eq "error" -or $checkReleases -eq "error") { "write-actions-error" } else { "write-actions-warning" }
@@ -919,7 +812,6 @@ foreach ($majorVersion in $majorVersions)
         if ($majorSha)
         {
             $fixCmd = "git push origin $majorSha`:refs/tags/v$($majorVersion.major).0.0"
-            $apiAction = { New-GitHubRef -State $State -RefName "refs/tags/v$($majorVersion.major).0.0" -Sha $majorSha -Force $false }
             
             $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version v$($majorVersion.major).0.0 does not exist and must match v$($majorVersion.major)")
             $issue.Version = "v$($majorVersion.major).0.0"
@@ -928,8 +820,8 @@ foreach ($majorVersion in $majorVersions)
             $State.AddIssue($issue)
             
             $issue.IsAutoFixable = $true
-            # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+            # Use RemediationAction class
+            $issue.RemediationAction = [CreateTagAction]::new("v$($majorVersion.major).0.0", $majorSha)
             
             if (-not $autoFix)
             {
@@ -941,8 +833,6 @@ foreach ($majorVersion in $majorVersions)
             if ($checkMinorVersion -ne "none")
             {
                 $fixCmd = "git push origin $majorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major).0"
-                $refType = $useBranches ? 'heads' : 'tags'
-                $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($majorVersion.major).0" -Sha $majorSha -Force $false }
                 
                 $issue = [ValidationIssue]::new("missing_minor_version", $checkMinorVersion, "Version v$($majorVersion.major).0 does not exist and must match v$($majorVersion.major)")
                 $issue.Version = "v$($majorVersion.major).0"
@@ -951,8 +841,12 @@ foreach ($majorVersion in $majorVersions)
                 $State.AddIssue($issue)
                 
                 $issue.IsAutoFixable = $true
-                # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+                # Use RemediationAction class
+                if ($useBranches) {
+                    $issue.RemediationAction = [CreateBranchAction]::new("v$($majorVersion.major).0", $majorSha)
+                } else {
+                    $issue.RemediationAction = [CreateTagAction]::new("v$($majorVersion.major).0", $majorSha)
+                }
                 
                 if (-not $autoFix)
                 {
@@ -986,11 +880,6 @@ foreach ($majorVersion in $majorVersions)
         if ($majorVersion_obj -and $majorVersion_obj.ref -match "^refs/tags/")
         {
             $fixCmd = "git branch v$($majorVersion.major) $majorSha && git push origin v$($majorVersion.major):refs/heads/v$($majorVersion.major) && git push origin :refs/tags/v$($majorVersion.major)"
-            $apiAction = { 
-                $createBranch = New-GitHubRef -State $State -RefName "refs/heads/v$($majorVersion.major)" -Sha $majorSha -Force $false
-                $deleteTag = Remove-GitHubRef -State $State -RefName "refs/tags/v$($majorVersion.major)"
-                return ($createBranch -and $deleteTag)
-            }
             
             $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Major version v$($majorVersion.major) is a tag but should be a branch")
             $issue.Version = "v$($majorVersion.major)"
@@ -998,8 +887,8 @@ foreach ($majorVersion in $majorVersions)
             $State.AddIssue($issue)
             
             $issue.IsAutoFixable = $true
-            # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+            # Use RemediationAction class - this creates a branch to replace the tag
+            $issue.RemediationAction = [CreateBranchAction]::new("v$($majorVersion.major)", $majorSha)
             
             if (-not $autoFix)
             {
@@ -1013,11 +902,6 @@ foreach ($majorVersion in $majorVersions)
         if ($minorVersion_obj -and $minorVersion_obj.ref -match "^refs/tags/")
         {
             $fixCmd = "git branch v$($majorVersion.major).$($highestMinor.minor) $minorSha && git push origin v$($majorVersion.major).$($highestMinor.minor):refs/heads/v$($majorVersion.major).$($highestMinor.minor) && git push origin :refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
-            $apiAction = {
-                $createBranch = New-GitHubRef -State $State -RefName "refs/heads/v$($majorVersion.major).$($highestMinor.minor)" -Sha $minorSha -Force $false
-                $deleteTag = Remove-GitHubRef -State $State -RefName "refs/tags/v$($majorVersion.major).$($highestMinor.minor)"
-                return ($createBranch -and $deleteTag)
-            }
             
             $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch")
             $issue.Version = "v$($majorVersion.major).$($highestMinor.minor)"
@@ -1025,8 +909,9 @@ foreach ($majorVersion in $majorVersions)
             $State.AddIssue($issue)
             
             $issue.IsAutoFixable = $true
-            # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+            # Use RemediationAction class - this creates a branch to replace the tag (complex multi-step)
+            # Note: The full fix requires creating branch AND deleting tag - handled by remediation framework
+            $issue.RemediationAction = [CreateBranchAction]::new("v$($majorVersion.major).$($highestMinor.minor)", $minorSha)
             
             if (-not $autoFix)
             {
@@ -1043,8 +928,6 @@ foreach ($majorVersion in $majorVersions)
         if (-not $majorSha -and $minorSha)
         {
             $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major)"
-            $refType = $useBranches ? 'heads' : 'tags'
-            $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($majorVersion.major)" -Sha $minorSha -Force $false }
             
             $issue = [ValidationIssue]::new("missing_major_version", $checkMinorVersion, "Version v$($majorVersion.major) does not exist and must match v$($highestMinor.major).$($highestMinor.minor)")
             $issue.Version = "v$($majorVersion.major)"
@@ -1053,8 +936,12 @@ foreach ($majorVersion in $majorVersions)
             $State.AddIssue($issue)
             
             $issue.IsAutoFixable = $true
-            # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+            # Use RemediationAction class
+            if ($useBranches) {
+                $issue.RemediationAction = [CreateBranchAction]::new("v$($majorVersion.major)", $minorSha)
+            } else {
+                $issue.RemediationAction = [CreateTagAction]::new("v$($majorVersion.major)", $minorSha)
+            }
             
             if (-not $autoFix)
             {
@@ -1066,8 +953,6 @@ foreach ($majorVersion in $majorVersions)
         if ($majorSha -and $minorSha -and ($majorSha -ne $minorSha))
         {
             $fixCmd = "git push origin $minorSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($majorVersion.major) --force"
-            $refType = $useBranches ? 'heads' : 'tags'
-            $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($majorVersion.major)" -Sha $minorSha -Force $true }
             
             $issue = [ValidationIssue]::new("incorrect_version", $checkMinorVersion, "Version v$($majorVersion.major) points to wrong SHA")
             $issue.Version = "v$($majorVersion.major)"
@@ -1077,8 +962,12 @@ foreach ($majorVersion in $majorVersions)
             $State.AddIssue($issue)
             
             $issue.IsAutoFixable = $true
-            # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+            # Use RemediationAction class
+            if ($useBranches) {
+                $issue.RemediationAction = [UpdateBranchAction]::new("v$($majorVersion.major)", $minorSha, $true)
+            } else {
+                $issue.RemediationAction = [UpdateTagAction]::new("v$($majorVersion.major)", $minorSha, $true)
+            }
             
             if (-not $autoFix)
             {
@@ -1121,8 +1010,6 @@ foreach ($majorVersion in $majorVersions)
     if ($majorSha -and $patchSha -and ($majorSha -ne $patchSha))
     {
         $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major) --force"
-        $refType = $useBranches ? 'heads' : 'tags'
-        $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($highestMinor.major)" -Sha $patchSha -Force $true }
         
         $issue = [ValidationIssue]::new("incorrect_version", "error", "Version v$($highestMinor.major) points to wrong SHA")
         $issue.Version = "v$($highestMinor.major)"
@@ -1132,8 +1019,12 @@ foreach ($majorVersion in $majorVersions)
         $State.AddIssue($issue)
         
         $issue.IsAutoFixable = $true
-        # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+        # Use RemediationAction class
+        if ($useBranches) {
+            $issue.RemediationAction = [UpdateBranchAction]::new("v$($highestMinor.major)", $patchSha, $true)
+        } else {
+            $issue.RemediationAction = [UpdateTagAction]::new("v$($highestMinor.major)", $patchSha, $true)
+        }
         
         if (-not $autoFix)
         {
@@ -1145,7 +1036,6 @@ foreach ($majorVersion in $majorVersions)
     if (-not $patchSha -and $sourceShaForPatch)
     {
         $fixCmd = "git push origin $sourceShaForPatch`:refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
-        $apiAction = { New-GitHubRef -State $State -RefName "refs/tags/v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)" -Sha $sourceShaForPatch -Force $false }
         
         $issue = [ValidationIssue]::new("missing_patch_version", "error", "Version v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build) does not exist")
         $issue.Version = "v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)"
@@ -1154,8 +1044,8 @@ foreach ($majorVersion in $majorVersions)
         $State.AddIssue($issue)
         
         $issue.IsAutoFixable = $true
-        # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+        # Use RemediationAction class
+        $issue.RemediationAction = [CreateTagAction]::new("v$($highestPatch.major).$($highestPatch.minor).$($highestPatch.build)", $sourceShaForPatch)
         
         if (-not $autoFix)
         {
@@ -1167,8 +1057,6 @@ foreach ($majorVersion in $majorVersions)
     if (-not $majorSha)
     {
         $fixCmd = "git push origin $sourceShaForPatch`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestPatch.major)"
-        $refType = $useBranches ? 'heads' : 'tags'
-        $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($highestPatch.major)" -Sha $sourceShaForPatch -Force $false }
         
         $issue = [ValidationIssue]::new("missing_major_version", "error", "Version v$($majorVersion.major) does not exist")
         $issue.Version = "v$($majorVersion.major)"
@@ -1177,8 +1065,12 @@ foreach ($majorVersion in $majorVersions)
         $State.AddIssue($issue)
         
         $issue.IsAutoFixable = $true
-        # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+        # Use RemediationAction class
+        if ($useBranches) {
+            $issue.RemediationAction = [CreateBranchAction]::new("v$($highestPatch.major)", $sourceShaForPatch)
+        } else {
+            $issue.RemediationAction = [CreateTagAction]::new("v$($highestPatch.major)", $sourceShaForPatch)
+        }
         
         if (-not $autoFix)
         {
@@ -1201,8 +1093,6 @@ foreach ($majorVersion in $majorVersions)
             
             if ($sourceShaForMinor) {
                 $fixCmd = "git push origin $sourceShaForMinor`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor)"
-                $refType = $useBranches ? 'heads' : 'tags'
-                $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($highestMinor.major).$($highestMinor.minor)" -Sha $sourceShaForMinor -Force $false }
                 
                 $issue = [ValidationIssue]::new("missing_minor_version", $checkMinorVersion, "Version v$($highestMinor.major).$($highestMinor.minor) does not exist")
                 $issue.Version = "v$($highestMinor.major).$($highestMinor.minor)"
@@ -1211,8 +1101,12 @@ foreach ($majorVersion in $majorVersions)
                 $State.AddIssue($issue)
                 
                 $issue.IsAutoFixable = $true
-                # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+                # Use RemediationAction class
+                if ($useBranches) {
+                    $issue.RemediationAction = [CreateBranchAction]::new("v$($highestMinor.major).$($highestMinor.minor)", $sourceShaForMinor)
+                } else {
+                    $issue.RemediationAction = [CreateTagAction]::new("v$($highestMinor.major).$($highestMinor.minor)", $sourceShaForMinor)
+                }
                 
                 if (-not $autoFix)
                 {
@@ -1225,8 +1119,6 @@ foreach ($majorVersion in $majorVersions)
         if ($minorSha -and $patchSha -and ($minorSha -ne $patchSha))
         {
             $fixCmd = "git push origin $patchSha`:refs/$($useBranches ? 'heads' : 'tags')/v$($highestMinor.major).$($highestMinor.minor) --force"
-            $refType = $useBranches ? 'heads' : 'tags'
-            $apiAction = { New-GitHubRef -State $State -RefName "refs/$refType/v$($highestMinor.major).$($highestMinor.minor)" -Sha $patchSha -Force $true }
             
             $issue = [ValidationIssue]::new("incorrect_minor_version", $checkMinorVersion, "Version v$($highestMinor.major).$($highestMinor.minor) points to wrong SHA")
             $issue.Version = "v$($highestMinor.major).$($highestMinor.minor)"
@@ -1236,8 +1128,12 @@ foreach ($majorVersion in $majorVersions)
             $State.AddIssue($issue)
             
             $issue.IsAutoFixable = $true
-            # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+            # Use RemediationAction class
+            if ($useBranches) {
+                $issue.RemediationAction = [UpdateBranchAction]::new("v$($highestMinor.major).$($highestMinor.minor)", $patchSha, $true)
+            } else {
+                $issue.RemediationAction = [UpdateTagAction]::new("v$($highestMinor.major).$($highestMinor.minor)", $patchSha, $true)
+            }
             
             if (-not $autoFix)
             {
@@ -1263,7 +1159,6 @@ if ($useBranches) {
     # When using branches, check if latest branch exists and points to correct version
     if ($latestBranch -and ($latestBranch.sha -ne $highestVersion.sha)) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest --force"
-        $apiAction = { New-GitHubRef -State $State -RefName "refs/heads/latest" -Sha $highestVersion.sha -Force $true }
         
         $issue = [ValidationIssue]::new("incorrect_latest_branch", "error", "Latest branch points to wrong SHA")
         $issue.Version = "latest"
@@ -1273,8 +1168,8 @@ if ($useBranches) {
         $State.AddIssue($issue)
         
         $issue.IsAutoFixable = $true
-        # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+        # Use RemediationAction class
+        $issue.RemediationAction = [UpdateBranchAction]::new("latest", $highestVersion.sha, $true)
         
         if (-not $autoFix)
         {
@@ -1283,7 +1178,6 @@ if ($useBranches) {
         }
     } elseif (-not $latestBranch -and $highestVersion) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/heads/latest"
-        $apiAction = { New-GitHubRef -State $State -RefName "refs/heads/latest" -Sha $highestVersion.sha -Force $false }
         
         $issue = [ValidationIssue]::new("missing_latest_branch", "error", "Latest branch does not exist")
         $issue.Version = "latest"
@@ -1292,8 +1186,8 @@ if ($useBranches) {
         $State.AddIssue($issue)
         
         $issue.IsAutoFixable = $true
-        # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+        # Use RemediationAction class
+        $issue.RemediationAction = [CreateBranchAction]::new("latest", $highestVersion.sha)
         
         if (-not $autoFix)
         {
@@ -1311,7 +1205,6 @@ if ($useBranches) {
     # When using tags, check if latest tag exists and points to correct version
     if ($latest -and $highestVersion -and ($latest.sha -ne $highestVersion.sha)) {
         $fixCmd = "git push origin $($highestVersion.sha):refs/tags/latest --force"
-        $apiAction = { New-GitHubRef -State $State -RefName "refs/tags/latest" -Sha $highestVersion.sha -Force $true }
         
         $issue = [ValidationIssue]::new("incorrect_latest_tag", "error", "Latest tag points to wrong SHA")
         $issue.Version = "latest"
@@ -1321,8 +1214,8 @@ if ($useBranches) {
         $State.AddIssue($issue)
         
         $issue.IsAutoFixable = $true
-        # Store the API action directly
-            $issue.AutoFixAction = $apiAction
+        # Use RemediationAction class
+        $issue.RemediationAction = [UpdateTagAction]::new("latest", $highestVersion.sha, $true)
         
         if (-not $autoFix)
         {
