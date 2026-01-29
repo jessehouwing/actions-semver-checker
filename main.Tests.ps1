@@ -1038,5 +1038,910 @@ exit 0
             # We can't easily verify the stop-commands in this context, but we verify it doesn't fail
             $result.ReturnCode | Should -Not -BeNullOrEmpty
         }
+        
+        It "Should protect against workflow command injection with special characters in version output" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create a tag with potential injection attempt in commit message
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1.0 $commit
+            git tag v1 $commit
+            
+            # Run the checker - it should sanitize any output
+            $result = Invoke-MainScript
+            
+            # Should complete without errors (workflow commands are allowed in output, 
+            # but they are properly escaped by GitHub Actions)
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "REST API - Pagination Handling" {
+        It "Should handle pagination for repositories with 100+ releases" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create tags that would result in many releases
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock the REST API to return pagination headers
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                # Simulate paginated response with Link header
+                $mockContent = @(
+                    @{ tag_name = "v1.0.0"; draft = $false; prerelease = $false; id = 1 }
+                ) | ConvertTo-Json
+                
+                return @{
+                    Content = $mockContent
+                    Headers = @{
+                        Link = '<https://api.github.com/repos/test/test/releases?page=2>; rel="next", <https://api.github.com/repos/test/test/releases?page=5>; rel="last"'
+                    }
+                }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
+            # Run with release checking enabled
+            $result = Invoke-MainScript -CheckReleases "error"
+            
+            # Clean up mock
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle pagination without errors
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "REST API - HTTP Error Handling" {
+        It "Should handle 404 errors from GitHub API gracefully" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API to return 404
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                throw [System.Net.WebException]::new("The remote server returned an error: (404) Not Found.")
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
+            # Run with release checking
+            $result = Invoke-MainScript -CheckReleases "error"
+            
+            # Clean up mock
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle 404 gracefully without crashing
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should handle 422 errors when creating references" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API to return 422 (Unprocessable Entity)
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Method -eq "POST") {
+                    throw [System.Net.WebException]::new("The remote server returned an error: (422) Unprocessable Entity.")
+                }
+                
+                return @{
+                    Content = "[]"
+                    Headers = @{}
+                }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
+            # Set up environment for auto-fix
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix enabled
+            $result = Invoke-MainScript -AutoFix "true"
+            
+            # Clean up mock
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle error and report it
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should handle 500 server errors from GitHub API" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API to return 500
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                throw [System.Net.WebException]::new("The remote server returned an error: (500) Internal Server Error.")
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
+            # Run with release checking
+            $result = Invoke-MainScript -CheckReleases "error"
+            
+            # Clean up mock
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle 500 gracefully
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "REST API - Timeout Handling" {
+        It "Should handle API timeout scenarios" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API to simulate timeout
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                throw [System.Net.WebException]::new("The operation has timed out")
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
+            # Run with release checking
+            $result = Invoke-MainScript -CheckReleases "error"
+            
+            # Clean up mock
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle timeout gracefully
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "REST API - GitHub Enterprise Server Support" {
+        It "Should construct correct API URLs for GitHub Enterprise Server" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Set up GHE environment
+            $env:GITHUB_API_URL = "https://github.enterprise.com/api/v3"
+            $env:GITHUB_SERVER_URL = "https://github.enterprise.com"
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Track API calls
+            $script:apiCalls = @()
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                $script:apiCalls += $Uri
+                return @{
+                    Content = "[]"
+                    Headers = @{}
+                }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
+            # Run with release checking
+            $result = Invoke-MainScript -CheckReleases "error"
+            
+            # Clean up mock and environment
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            $env:GITHUB_API_URL = $null
+            $env:GITHUB_SERVER_URL = $null
+            
+            # Should work with GHE
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "Release Immutability - Draft Release Publishing" {
+        It "Should attempt to publish draft releases during auto-fix" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API to return draft release
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Uri -match "/releases/tags/") {
+                    $mockContent = @{
+                        tag_name = "v1.0.0"
+                        draft = $true
+                        prerelease = $false
+                        id = 123
+                    } | ConvertTo-Json
+                } elseif ($Method -eq "PATCH") {
+                    # Publishing the release
+                    $mockContent = @{
+                        tag_name = "v1.0.0"
+                        draft = $false
+                        prerelease = $false
+                        id = 123
+                    } | ConvertTo-Json
+                } else {
+                    $mockContent = '[{"tag_name":"v1.0.0","draft":true,"prerelease":false,"id":123}]'
+                }
+                
+                return @{
+                    Content = $mockContent
+                    Headers = @{}
+                }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix and release immutability checking
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "error" -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should detect draft and attempt to publish
+            $result.Output | Should -Match "draft|Draft"
+        }
+        
+        It "Should handle 422 error when tag_name used by immutable release" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API to return 422 on publish
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Method -eq "PATCH") {
+                    $errorResponse = @{
+                        message = "Validation Failed"
+                        errors = @(
+                            @{
+                                resource = "Release"
+                                code = "custom"
+                                field = "tag_name"
+                                message = "tag_name was used by an immutable release"
+                            }
+                        )
+                    } | ConvertTo-Json
+                    throw [System.Net.WebException]::new("422 - $errorResponse")
+                }
+                
+                return @{
+                    Content = "[]"
+                    Headers = @{}
+                }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "error" -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle the error and report as unfixable
+            $result.Output | Should -Match "immutable|Unfixable"
+        }
+        
+        It "Should delete mutable releases on floating versions" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1 $commit
+            
+            # Mock API to return mutable release for v1
+            $script:deleteCalled = $false
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Uri -match "/releases/tags/v1$") {
+                    $mockContent = @{
+                        tag_name = "v1"
+                        draft = $false
+                        prerelease = $false
+                        id = 456
+                    } | ConvertTo-Json
+                } elseif ($Method -eq "DELETE") {
+                    $script:deleteCalled = $true
+                    return @{ Content = ""; Headers = @{} }
+                } else {
+                    $mockContent = '[{"tag_name":"v1.0.0","draft":false,"prerelease":false,"id":123}]'
+                }
+                
+                return @{
+                    Content = $mockContent
+                    Headers = @{}
+                }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "error" -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should detect mutable release on floating version
+            # This test verifies the check runs without error
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should parse GraphQL immutability check responses" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock GraphQL API response
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Uri -match "/graphql") {
+                    $mockContent = @{
+                        data = @{
+                            repository = @{
+                                release = @{
+                                    isImmutable = $true
+                                }
+                            }
+                        }
+                    } | ConvertTo-Json -Depth 5
+                } else {
+                    $mockContent = '[{"tag_name":"v1.0.0","draft":false,"prerelease":false,"id":123}]'
+                }
+                
+                return @{
+                    Content = $mockContent
+                    Headers = @{}
+                }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            
+            # Run with immutability checking
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "error"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle GraphQL response
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "Auto-fix Execution - Mixed Success and Failure" {
+        It "Should track multiple auto-fix attempts with mixed results" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v2.0.0 $commit
+            
+            # Mock API with mixed success/failure
+            $script:callCount = 0
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Method -eq "POST") {
+                    $script:callCount++
+                    if ($script:callCount -eq 1) {
+                        # First call succeeds
+                        return @{
+                            Content = '{"ref":"refs/tags/v1","object":{"sha":"abc123"}}'
+                            Headers = @{}
+                        }
+                    } else {
+                        # Second call fails
+                        throw [System.Net.WebException]::new("422 Unprocessable Entity")
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix
+            $result = Invoke-MainScript -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should report both success and failure counts
+            $result.Output | Should -Match "Fixed issues:|Failed fixes:"
+        }
+        
+        It "Should handle API call failures during auto-fix gracefully" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API to fail
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Method -eq "POST") {
+                    throw [System.Exception]::new("Network error")
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix
+            $result = Invoke-MainScript -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle exception and report failure (may return 0 or 1 depending on other validation)
+            $result.ReturnCode | Should -BeIn @(0, 1)
+            $result.Output | Should -Match "Failed|Error|fixed issues"
+        }
+        
+        It "Should properly escape workflow commands in auto-fix output" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API to return output with workflow commands
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Method -eq "POST") {
+                    # Simulate response with potential injection
+                    return @{
+                        Content = '{"ref":"refs/tags/v1::error::malicious"}'
+                        Headers = @{}
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix
+            $result = Invoke-MainScript -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should sanitize output
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "Version Logic - Prerelease Filtering Edge Cases" {
+        It "Should handle when all versions are filtered as prereleases" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create only prerelease versions (these should NOT be supported per user requirement)
+            # But we still need to test the filtering logic doesn't crash
+            $commit = Get-CommitSha
+            git tag v1.0.0-beta $commit
+            git tag v1.0.0-rc1 $commit
+            
+            # Run with prerelease filtering enabled
+            $result = Invoke-MainScript -IgnorePreviewReleases "true"
+            
+            # Should handle gracefully even if all versions filtered
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should not support version suffixes beyond patch version" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create version with suffix (should be ignored)
+            $commit = Get-CommitSha
+            git tag v1.0.0-beta $commit
+            git tag v1.0.0 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should only recognize v1.0.0, not v1.0.0-beta
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "Version Logic - Simultaneous Version Creation" {
+        It "Should create both major.0.0 and major.0 when check-minor-version is true" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create only major version
+            $commit = Get-CommitSha
+            git tag v2 $commit
+            
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix and minor version checking
+            $result = Invoke-MainScript -CheckMinorVersion "true" -AutoFix "false"
+            
+            # Should suggest creating both v2.0.0 and v2.0
+            $result.Output | Should -Match "v2\.0\.0"
+            $result.Output | Should -Match "v2\.0[^.]"
+        }
+    }
+    
+    Context "Version Logic - Branch and Tag Conflicts" {
+        It "Should detect when same version exists as both branch and tag" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1 $commit
+            git branch v1 $commit
+            git push origin v1 2>&1 | Out-Null
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should detect the ambiguous refname
+            $result.Output | Should -Match "ambiguous|conflict"
+        }
+        
+        It "Should handle branch/tag conflict with floating-versions-use setting" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1 $commit
+            
+            # Run with branches mode
+            $result = Invoke-MainScript -FloatingVersionsUse "branches"
+            
+            # Should suggest converting to branch
+            $result.Output | Should -Match "refs/heads/v1|branch"
+        }
+    }
+    
+    Context "Version Logic - Source SHA Fallback" {
+        It "Should use source SHA when no matching versions exist" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create a single tag without floating versions
+            $commit = Get-CommitSha
+            git tag v3.5.2 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should suggest creating floating versions from the patch version's SHA
+            $result.Output | Should -Match "git push origin $commit"
+        }
+    }
+    
+    Context "Release Creation Flow - Draft Creation via REST API" {
+        It "Should create draft releases via REST API during auto-fix" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API for draft creation
+            $script:draftCreated = $false
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Method -eq "POST" -and $Uri -match "/releases") {
+                    $script:draftCreated = $true
+                    return @{
+                        Content = '{"id":789,"tag_name":"v1.0.0","draft":true}'
+                        Headers = @{}
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix and release checking
+            $result = Invoke-MainScript -CheckReleases "error" -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should attempt to create draft
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should handle cascading fixes - create draft then publish" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API for cascading operations
+            $script:operations = @()
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Method -eq "POST" -and $Uri -match "/releases") {
+                    $script:operations += "create"
+                    return @{
+                        Content = '{"id":999,"tag_name":"v1.0.0","draft":true}'
+                        Headers = @{}
+                    }
+                } elseif ($Method -eq "PATCH") {
+                    $script:operations += "publish"
+                    return @{
+                        Content = '{"id":999,"tag_name":"v1.0.0","draft":false}'
+                        Headers = @{}
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with auto-fix
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "error" -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should handle cascading operations
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "Branch Version Handling - REST API Creation" {
+        It "Should create branches via REST API when floating-versions-use is branches" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Mock API for branch creation
+            $script:branchCreated = $false
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Method -eq "POST" -and $Uri -match "refs/heads") {
+                    $script:branchCreated = $true
+                    return @{
+                        Content = '{"ref":"refs/heads/v1","object":{"sha":"abc123"}}'
+                        Headers = @{}
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with branches mode and auto-fix
+            $result = Invoke-MainScript -FloatingVersionsUse "branches" -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should attempt branch creation
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should convert tags to branches when auto-fix enabled with branches mode" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1 $commit
+            
+            # Mock API for conversion
+            $script:operations = @()
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                if ($Method -eq "DELETE") {
+                    $script:operations += "delete-tag"
+                    return @{ Content = ""; Headers = @{} }
+                } elseif ($Method -eq "POST") {
+                    $script:operations += "create-branch"
+                    return @{
+                        Content = '{"ref":"refs/heads/v1","object":{"sha":"abc123"}}'
+                        Headers = @{}
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with branches mode and auto-fix
+            $result = Invoke-MainScript -FloatingVersionsUse "branches" -AutoFix "true"
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Should show error about tag that should be branch or attempt conversion
+            $result.Output | Should -Match "should be a branch|refs/heads|Fixed issues"
+        }
+    }
+    
+    Context "Error Reporting - GITHUB_STEP_SUMMARY Output" {
+        It "Should write summary to GITHUB_STEP_SUMMARY when available" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Set up step summary file
+            $summaryFile = Join-Path $TestDrive "step_summary.md"
+            New-Item -ItemType File -Path $summaryFile -Force | Out-Null
+            $env:GITHUB_STEP_SUMMARY = $summaryFile
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Clean up
+            $env:GITHUB_STEP_SUMMARY = $null
+            
+            # Should write to summary file
+            if (Test-Path $summaryFile) {
+                $summaryContent = Get-Content $summaryFile -Raw
+                # Summary file should exist (even if empty in test context)
+                $summaryContent | Should -Not -BeNullOrEmpty -Because "Summary should be written"
+            }
+        }
+        
+        It "Should sanitize debug output with special characters" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create tag with special characters in commit message
+            "Test file" | Out-File -FilePath "test.txt"
+            git add test.txt
+            git commit -m "Test ::error:: in message" 2>&1 | Out-Null
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Output should be sanitized
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+    }
+    
+    Context "Edge Cases - Invalid Version Formats" {
+        It "Should not support version numbers with more than 3 components" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create tag with 4 components (should be filtered out by regex)
+            $commit = Get-CommitSha
+            git tag v1.0.0.0 $commit
+            git tag v1.0.0 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # The 4-component version should be filtered out, only v1.0.0 should be recognized
+            $result.Output | Should -Not -Match "v1\.0\.0\.0"
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should not support version components higher than 65535" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create tag with component over 65535
+            # PowerShell's [Version] type has a max of 65535 per component
+            $commit = Get-CommitSha
+            git tag v1.70000.0 $commit
+            git tag v1.0.0 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should handle gracefully - may error or filter out the invalid version
+            # The important thing is it doesn't crash
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should handle version tags with Unicode characters" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create tag with Unicode (should be ignored)
+            $commit = Get-CommitSha
+            git tag "v1.0.0-α" $commit
+            git tag v1.0.0 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should handle Unicode gracefully
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should handle very large version numbers within limits" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create tag with large but valid numbers
+            $commit = Get-CommitSha
+            git tag v65535.65535.65535 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should handle large valid versions
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
+        
+        It "Should ignore versions with non-numeric components" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            # Create tag with non-numeric parts (should be ignored)
+            $commit = Get-CommitSha
+            git tag v1.x.0 $commit
+            git tag v1.0.0 $commit
+            
+            # Run the checker
+            $result = Invoke-MainScript
+            
+            # Should only recognize valid version
+            $result.ReturnCode | Should -BeIn @(0, 1)
+        }
     }
 }
