@@ -125,6 +125,7 @@ class ValidationIssue {
     [string]$ManualFixCommand
     [scriptblock]$AutoFixAction
     [string[]]$Dependencies  # Other issues that must be fixed first
+    [string]$Status       # "pending", "fixed", "failed", "unfixable"
     
     ValidationIssue([string]$type, [string]$severity, [string]$message) {
         $this.Type = $type
@@ -132,6 +133,7 @@ class ValidationIssue {
         $this.Message = $message
         $this.IsAutoFixable = $false
         $this.Dependencies = @()
+        $this.Status = "pending"
     }
     
     [string]ToString() {
@@ -163,18 +165,12 @@ class RepositoryState {
     
     # Issue tracking
     [ValidationIssue[]]$Issues
-    [int]$FixedIssues
-    [int]$FailedFixes
-    [int]$UnfixableIssues
     
     RepositoryState() {
         $this.Tags = @()
         $this.Branches = @()
         $this.Releases = @()
         $this.Issues = @()
-        $this.FixedIssues = 0
-        $this.FailedFixes = 0
-        $this.UnfixableIssues = 0
     }
     
     [void]AddIssue([ValidationIssue]$issue) {
@@ -195,6 +191,32 @@ class RepositoryState {
     
     [ValidationIssue[]]GetManualFixIssues() {
         return $this.Issues | Where-Object { -not $_.IsAutoFixable -and $_.ManualFixCommand }
+    }
+    
+    # Calculated properties (derived from issue statuses)
+    [int]GetFixedIssuesCount() {
+        return ($this.Issues | Where-Object { $_.Status -eq "fixed" }).Count
+    }
+    
+    [int]GetFailedFixesCount() {
+        return ($this.Issues | Where-Object { $_.Status -eq "failed" }).Count
+    }
+    
+    [int]GetUnfixableIssuesCount() {
+        return ($this.Issues | Where-Object { $_.Status -eq "unfixable" }).Count
+    }
+    
+    [int]GetReturnCode() {
+        # Return 1 if there are unresolved issues (failed or unfixable), 0 otherwise
+        # Fixed issues should not cause a failure
+        $failedCount = ($this.Issues | Where-Object { $_.Status -eq "failed" }).Count
+        $unfixableCount = ($this.Issues | Where-Object { $_.Status -eq "unfixable" }).Count
+        
+        if ($failedCount -gt 0 -or $unfixableCount -gt 0) {
+            return 1
+        } else {
+            return 0
+        }
     }
     
     [VersionRef[]]GetPatchVersions() {
@@ -389,7 +411,7 @@ function Write-ValidationSummary {
         
         Write-Host "Auto-fixable: $($autoFixable.Count)"
         Write-Host "Manual fix required: $($manualFix.Count)"
-        Write-Host "Unfixable: $($State.UnfixableIssues)"
+        Write-Host "Unfixable: $($State.GetUnfixableIssuesCount())"
         Write-Host ""
     }
     
