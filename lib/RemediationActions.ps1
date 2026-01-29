@@ -517,6 +517,36 @@ class ConvertTagToBranchAction : RemediationAction {
     }
 
     [bool] Execute([RepositoryState]$state) {
+        if ($state.RepoOwner -and $state.RepoName -and $state.Token) {
+            try {
+                $isImmutable = Test-ReleaseImmutability -Owner $state.RepoOwner -Repo $state.RepoName -Tag $this.Name -Token $state.Token -ApiUrl $state.ApiUrl
+                if ($isImmutable) {
+                    Write-Host "✗ Unfixable: Tag $($this.Name) is immutable and cannot be converted to a branch"
+                    $issue = $state.Issues | Where-Object { $_.Version -eq $this.Name -and $_.RemediationAction -eq $this } | Select-Object -First 1
+                    if ($issue) {
+                        $issue.Status = "unfixable"
+                        $issue.Message = "Tag $($this.Name) is immutable and cannot be converted to a branch. Consider keeping the tag or using ignore-versions."
+                    }
+                    return $false
+                }
+            } catch {
+                Write-Host "::debug::Failed to check release immutability for tag $($this.Name): $($_.Exception.Message)"
+            }
+        }
+
+        $branchExists = $state.Branches | Where-Object { $_.Version -eq $this.Name } | Select-Object -First 1
+        if ($branchExists) {
+            Write-Host "Auto-fix: Delete tag $($this.Name) (branch already exists)"
+            $deleteSuccess = Remove-GitHubRef -State $state -RefName "refs/tags/$($this.Name)"
+            if ($deleteSuccess) {
+                Write-Host "✓ Success: Removed tag $($this.Name)"
+                return $true
+            }
+
+            Write-Host "✗ Failed: Delete tag $($this.Name)"
+            return $false
+        }
+
         Write-Host "Auto-fix: Convert tag $($this.Name) to branch"
         $createResult = New-GitHubRef -State $state -RefName "refs/heads/$($this.Name)" -Sha $this.Sha -Force $false
 
@@ -545,6 +575,18 @@ class ConvertTagToBranchAction : RemediationAction {
     }
 
     [string[]] GetManualCommands([RepositoryState]$state) {
+        $issue = $state.Issues | Where-Object { $_.Version -eq $this.Name -and $_.RemediationAction -eq $this } | Select-Object -First 1
+        if ($issue -and $issue.Status -eq "unfixable") {
+            return @()
+        }
+
+        $branchExists = $state.Branches | Where-Object { $_.Version -eq $this.Name } | Select-Object -First 1
+        if ($branchExists) {
+            return @(
+                "git push origin :refs/tags/$($this.Name)"
+            )
+        }
+
         return @(
             "git push origin $($this.Sha):refs/heads/$($this.Name)",
             "git push origin :refs/tags/$($this.Name)"
@@ -563,6 +605,19 @@ class ConvertBranchToTagAction : RemediationAction {
     }
 
     [bool] Execute([RepositoryState]$state) {
+        $tagExists = $state.Tags | Where-Object { $_.Version -eq $this.Name } | Select-Object -First 1
+        if ($tagExists) {
+            Write-Host "Auto-fix: Delete branch $($this.Name) (tag already exists)"
+            $deleteSuccess = Remove-GitHubRef -State $state -RefName "refs/heads/$($this.Name)"
+            if ($deleteSuccess) {
+                Write-Host "✓ Success: Removed branch $($this.Name)"
+                return $true
+            }
+
+            Write-Host "✗ Failed: Delete branch $($this.Name)"
+            return $false
+        }
+
         Write-Host "Auto-fix: Convert branch $($this.Name) to tag"
         $createResult = New-GitHubRef -State $state -RefName "refs/tags/$($this.Name)" -Sha $this.Sha -Force $false
 
@@ -591,6 +646,13 @@ class ConvertBranchToTagAction : RemediationAction {
     }
 
     [string[]] GetManualCommands([RepositoryState]$state) {
+        $tagExists = $state.Tags | Where-Object { $_.Version -eq $this.Name } | Select-Object -First 1
+        if ($tagExists) {
+            return @(
+                "git push origin :refs/heads/$($this.Name)"
+            )
+        }
+
         return @(
             "git push origin $($this.Sha):refs/tags/$($this.Name)",
             "git push origin :refs/heads/$($this.Name)"

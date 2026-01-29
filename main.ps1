@@ -503,58 +503,41 @@ foreach ($bv in $branchVersions) {
     $script:State.Branches += $vr
 }
 
-foreach ($tagVersion in $tagVersions)
+# Always convert patch version branches (vX.Y.Z) to tags
+# If branches are not preferred, also convert floating branches (vX, vX.Y) to tags
+foreach ($branchVersion in $branchVersions)
 {
     # Skip ignored versions
-    if ($tagVersion.isIgnored) {
+    if ($branchVersion.isIgnored) {
         continue
     }
-    
-    $branchVersion = $branchVersions | Where-Object{ $_.version -eq $tagVersion.version } | Select-Object -First 1
 
-    if ($branchVersion)
+    if ($branchVersion.isPatchVersion -or -not $useBranches) {
+        $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Version $($branchVersion.version) is a branch but should be a tag")
+        $issue.Version = $branchVersion.version
+        $issue.SetRemediationAction([ConvertBranchToTagAction]::new($branchVersion.version, $branchVersion.sha))
+        $State.AddIssue($issue)
+    }
+}
+
+# When using branches for floating versions, convert floating tags (vX, vX.Y) to branches
+if ($useBranches)
+{
+    foreach ($tagVersion in $tagVersions)
     {
-        #############################################################################
-        # VALIDATION: Ambiguous References
-        # Check for versions that exist as both tag AND branch
-        # This causes confusion for users and must be resolved
-        #############################################################################
-        
-        # Determine which reference to keep based on floating-versions-use setting
-        $keepBranch = ($useBranches -eq $true)
-        
-        if ($branchVersion.sha -eq $tagVersion.sha)
-        {
-            # Same SHA - can auto-fix by removing the non-preferred reference
-            $severity = "warning"
-            $issue = [ValidationIssue]::new("ambiguous_reference", $severity, "Version $($tagVersion.version) exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha)) - same SHA")
-            $issue.Version = $tagVersion.version
-            $issue.CurrentSha = $tagVersion.sha
-            $State.AddIssue($issue)
-            
-            # Use RemediationAction class - determine action based on keepBranch
-            if ($keepBranch) {
-                $issue.SetRemediationAction([DeleteTagAction]::new($tagVersion.version))
-            } else {
-                $issue.SetRemediationAction([DeleteBranchAction]::new($tagVersion.version))
-            }
+        # Skip ignored versions
+        if ($tagVersion.isIgnored) {
+            continue
         }
-        else
-        {
-            # Different SHAs - can auto-fix by removing the non-preferred reference
-            $severity = "error"
-            $issue = [ValidationIssue]::new("ambiguous_reference", $severity, "Version $($tagVersion.version) exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha)) - different SHAs")
-            $issue.Version = $tagVersion.version
-            $issue.CurrentSha = $tagVersion.sha
-            $State.AddIssue($issue)
-            
-            # Use RemediationAction class - determine action based on keepBranch
-            if ($keepBranch) {
-                $issue.SetRemediationAction([DeleteTagAction]::new($tagVersion.version))
-            } else {
-                $issue.SetRemediationAction([DeleteBranchAction]::new($tagVersion.version))
-            }
+
+        if (-not ($tagVersion.isMajorVersion -or $tagVersion.isMinorVersion)) {
+            continue
         }
+
+        $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Version $($tagVersion.version) is a tag but should be a branch when floating-versions-use is 'branches'")
+        $issue.Version = $tagVersion.version
+        $issue.SetRemediationAction([ConvertTagToBranchAction]::new($tagVersion.version, $tagVersion.sha))
+        $State.AddIssue($issue)
     }
 }
 
@@ -848,26 +831,6 @@ foreach ($majorVersion in $majorVersions)
         Select-Object -First 1
     $minorSha = $minorVersion_obj.sha
     
-    # Check if major/minor versions use branches when use-branches is enabled
-    if ($useBranches)
-    {
-        if ($majorVersion_obj -and $majorVersion_obj.ref -match "^refs/tags/")
-        {
-            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Major version v$($majorVersion.major) is a tag but should be a branch when use-branches is enabled")
-            $issue.Version = "v$($majorVersion.major)"
-            $issue.SetRemediationAction([ConvertTagToBranchAction]::new("v$($majorVersion.major)", $majorSha))
-            $State.AddIssue($issue)
-        }
-        
-        if ($minorVersion_obj -and $minorVersion_obj.ref -match "^refs/tags/")
-        {
-            $issue = [ValidationIssue]::new("wrong_ref_type", "error", "Minor version v$($majorVersion.major).$($highestMinor.minor) is a tag but should be a branch when use-branches is enabled")
-            $issue.Version = "v$($majorVersion.major).$($highestMinor.minor)"
-            $issue.SetRemediationAction([ConvertTagToBranchAction]::new("v$($majorVersion.major).$($highestMinor.minor)", $minorSha))
-            $State.AddIssue($issue)
-        }
-    }
-
     if ($checkMinorVersion -ne "none")
     {
         if (-not $majorSha -and $minorSha)
