@@ -21,6 +21,13 @@ function Invoke-WithRetry
         [string]$OperationDescription = "operation"
     )
     
+    # Check if retries are disabled via environment variable (useful for faster test execution)
+    # Set $env:GITHUB_API_DISABLE_RETRY = 'true' to skip retries and fail immediately
+    if ($env:GITHUB_API_DISABLE_RETRY -eq 'true') {
+        Write-Host "::debug::Retries disabled for $OperationDescription (GITHUB_API_DISABLE_RETRY=true)"
+        return & $ScriptBlock
+    }
+    
     $attempt = 0
     $delay = $InitialDelaySeconds
     

@@ -1,6 +1,10 @@
 BeforeAll {
-    # Suppress progress reporting for folder cleanup operations
-    $ProgressPreference = 'SilentlyContinue'
+    # Suppress progress reporting for folder cleanup operations (must be global scope)
+    $global:ProgressPreference = 'SilentlyContinue'
+    
+    # Disable API retries for faster test execution
+    # Individual tests that need to verify retry behavior will override this
+    $env:GITHUB_API_DISABLE_RETRY = 'true'
     
     # Create a temporary git repository for testing
     $script:testRepoPath = Join-Path $TestDrive "test-repo"
@@ -211,6 +215,8 @@ BeforeAll {
 
 AfterAll {
     Set-Location $script:originalLocation
+    # Clean up environment variable
+    Remove-Item Env:GITHUB_API_DISABLE_RETRY -ErrorAction SilentlyContinue
 }
 
 Describe "SemVer Checker" {
@@ -2329,6 +2335,14 @@ exit 0
         BeforeAll {
             # Load the GitHubApi module to access Invoke-WithRetry
             . "$PSScriptRoot/../../lib/GitHubApi.ps1"
+            
+            # Re-enable retries for these tests since they specifically test retry behavior
+            $env:GITHUB_API_DISABLE_RETRY = 'false'
+        }
+        
+        AfterAll {
+            # Restore disabled state for any subsequent tests
+            $env:GITHUB_API_DISABLE_RETRY = 'true'
         }
         
         It "Should succeed on first attempt if no error" {

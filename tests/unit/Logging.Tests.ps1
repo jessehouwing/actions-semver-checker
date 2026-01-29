@@ -1,6 +1,6 @@
 BeforeAll {
-    # Suppress progress reporting for folder cleanup operations
-    $ProgressPreference = 'SilentlyContinue'
+    # Suppress progress reporting for folder cleanup operations (must be global scope)
+    $global:ProgressPreference = 'SilentlyContinue'
 
     # Load the module under test
     . "$PSScriptRoot/../../lib/StateModel.ps1"

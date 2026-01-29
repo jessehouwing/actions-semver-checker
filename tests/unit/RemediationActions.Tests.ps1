@@ -1,6 +1,6 @@
 BeforeAll {
-    # Suppress progress reporting for folder cleanup operations
-    $ProgressPreference = 'SilentlyContinue'
+    # Suppress progress reporting for folder cleanup operations (must be global scope)
+    $global:ProgressPreference = 'SilentlyContinue'
 
     # Import the remediation actions module
     . "$PSScriptRoot/../../lib/StateModel.ps1"

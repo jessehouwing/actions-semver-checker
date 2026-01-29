@@ -32,7 +32,8 @@
 				"ms-vscode.PowerShell",
 				"GitHub.vscode-github-actions",
 				"me-dutour-mathieu.vscode-github-actions",
-				"pspester.pester-test"
+				"pspester.pester-test",
+				"hbenl.vscode-test-explorer"
 			]
 		}
 	}

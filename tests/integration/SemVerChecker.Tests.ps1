@@ -1,6 +1,9 @@
 BeforeAll {
-    # Suppress progress reporting for folder cleanup operations
-    $ProgressPreference = 'SilentlyContinue'
+    # Suppress progress reporting for folder cleanup operations (must be global scope)
+    $global:ProgressPreference = 'SilentlyContinue'
+    
+    # Disable API retries for faster test execution
+    $env:GITHUB_API_DISABLE_RETRY = 'true'
     
     # Create a temporary git repository for testing
     $script:testRepoPath = Join-Path $TestDrive "test-repo"
@@ -211,6 +214,8 @@ BeforeAll {
 
 AfterAll {
     Set-Location $script:originalLocation
+    # Clean up environment variable
+    Remove-Item Env:GITHUB_API_DISABLE_RETRY -ErrorAction SilentlyContinue
 }
 
 Describe "SemVer Checker Integration Tests" {
