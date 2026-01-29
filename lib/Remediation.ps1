@@ -10,10 +10,14 @@ function Invoke-AutoFix
     param(
         [string]$Description,
         [string]$Command,
-        [scriptblock]$ApiAction = $null
+        [scriptblock]$ApiAction = $null,
+        [bool]$AutoFix = $false
     )
     
-    if (-not $autoFix)
+    # Use parameter if provided, otherwise fall back to script-level variable
+    $shouldAutoFix = if ($PSBoundParameters.ContainsKey('AutoFix')) { $AutoFix } else { $script:autoFix ?? $false }
+    
+    if (-not $shouldAutoFix)
     {
         return $false  # Not in auto-fix mode
     }

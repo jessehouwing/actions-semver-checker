@@ -273,16 +273,25 @@ class RemediationPlan {
             return
         }
         
-        $visited[$key] = $true
+        # Mark as visiting to detect cycles
+        $visited[$key] = "visiting"
         
         # Visit dependencies first
         foreach ($dep in $issue.Dependencies) {
             $depIssue = $this.AllIssues | Where-Object { ($_.Type + ":" + $_.Version) -eq $dep } | Select-Object -First 1
             if ($depIssue) {
+                $depKey = $depIssue.Type + ":" + $depIssue.Version
+                # Check for circular dependency
+                if ($visited.ContainsKey($depKey) -and $visited[$depKey] -eq "visiting") {
+                    Write-Warning "Circular dependency detected: $key -> $depKey"
+                    continue
+                }
                 $this.Visit($depIssue, $visited, $sorted)
             }
         }
         
+        # Mark as fully visited
+        $visited[$key] = "visited"
         [void]$sorted.Add($issue)
     }
 }
