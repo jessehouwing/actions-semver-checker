@@ -1,47 +1,16 @@
 $global:returnCode = 0
 
-# Get GitHub context information first
-$script:apiUrl = "https://api.github.com"
-$script:serverUrl = "https://github.com"
-$script:token = ""
+# Get GitHub context information from environment variables
+$script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
+$script:serverUrl = $env:GITHUB_SERVER_URL ?? "https://github.com"
+$script:token = $env:GITHUB_TOKEN ?? ""
 $script:repoOwner = $null
 $script:repoName = $null
 
-if ($env:GITHUB_CONTEXT) {
-    try {
-        $githubContext = $env:GITHUB_CONTEXT | ConvertFrom-Json
-        
-        # Use specific fields from GitHub context
-        $script:apiUrl = $githubContext.api_url ?? "https://api.github.com"
-        $script:serverUrl = $githubContext.server_url ?? "https://github.com"
-        $script:token = $githubContext.token ?? ""
-        $script:repoOwner = $githubContext.repository_owner
-        
-        # Get repo name from repository field (format: owner/repo)
-        if ($githubContext.repository) {
-            $script:repoName = ($githubContext.repository -split "/")[1]
-        }
-    }
-    catch {
-        # Fall back to environment variables if JSON parsing fails
-        $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
-        $script:token = $env:GITHUB_TOKEN ?? ""
-        
-        if ($env:GITHUB_REPOSITORY -and $env:GITHUB_REPOSITORY -match "^([^/]+)/(.+)$") {
-            $script:repoOwner = $matches[1]
-            $script:repoName = $matches[2]
-        }
-    }
-}
-else {
-    # Fall back to environment variables
-    $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
-    $script:token = $env:GITHUB_TOKEN ?? ""
-    
-    if ($env:GITHUB_REPOSITORY -and $env:GITHUB_REPOSITORY -match "^([^/]+)/(.+)$") {
-        $script:repoOwner = $matches[1]
-        $script:repoName = $matches[2]
-    }
+# Parse repository owner and name from GITHUB_REPOSITORY
+if ($env:GITHUB_REPOSITORY -and $env:GITHUB_REPOSITORY -match "^([^/]+)/(.+)$") {
+    $script:repoOwner = $matches[1]
+    $script:repoName = $matches[2]
 }
 
 # If still not found, fall back to git remote
