@@ -125,7 +125,12 @@ class ValidationIssue {
     [string]$ManualFixCommand
     [object]$RemediationAction  # RemediationAction instance
     [string[]]$Dependencies  # Other issues that must be fixed first
-    [string]$Status       # "pending", "fixed", "failed", "unfixable"
+    [string]$Status       # "pending", "fixed", "failed", "manual_fix_required", "unfixable"
+                          # - pending: Not yet attempted
+                          # - fixed: Successfully auto-fixed
+                          # - failed: Auto-fix attempted but failed
+                          # - manual_fix_required: Can be fixed manually (e.g., workflow permission issues)
+                          # - unfixable: Cannot be fixed (e.g., immutable release conflicts)
     
     ValidationIssue([string]$type, [string]$severity, [string]$message) {
         $this.Type = $type
@@ -248,13 +253,18 @@ class RepositoryState {
         return ($this.Issues | Where-Object { $_.Status -eq "unfixable" }).Count
     }
     
+    [int]GetManualFixRequiredCount() {
+        return ($this.Issues | Where-Object { $_.Status -eq "manual_fix_required" }).Count
+    }
+    
     [int]GetReturnCode() {
-        # Return 1 if there are unresolved issues (failed or unfixable), 0 otherwise
+        # Return 1 if there are unresolved issues (failed, manual_fix_required, or unfixable), 0 otherwise
         # Fixed issues should not cause a failure
         $failedCount = ($this.Issues | Where-Object { $_.Status -eq "failed" }).Count
+        $manualFixCount = ($this.Issues | Where-Object { $_.Status -eq "manual_fix_required" }).Count
         $unfixableCount = ($this.Issues | Where-Object { $_.Status -eq "unfixable" }).Count
         
-        if ($failedCount -gt 0 -or $unfixableCount -gt 0) {
+        if ($failedCount -gt 0 -or $manualFixCount -gt 0 -or $unfixableCount -gt 0) {
             return 1
         } else {
             return 0

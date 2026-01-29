@@ -192,7 +192,7 @@ function Get-ManualInstructions
     
     .DESCRIPTION
     Extracts and displays manual fix commands from RemediationAction objects for issues
-    that are unfixable or failed. Groups commands by action type for better readability.
+    that are unfixable, failed, or require manual fixes. Groups commands by action type for better readability.
     
     .PARAMETER State
     The RepositoryState object containing all validation issues
@@ -207,7 +207,7 @@ function Get-ManualInstructions
     )
     
     $issuesNeedingManualFix = $State.Issues | Where-Object { 
-        $_.Status -eq "unfixable" -or $_.Status -eq "failed" 
+        $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
     }
     
     if ($issuesNeedingManualFix.Count -eq 0) {
@@ -296,7 +296,7 @@ function Write-ManualInstructionsToStepSummary
     }
     
     $issuesNeedingManualFix = $State.Issues | Where-Object { 
-        $_.Status -eq "unfixable" -or $_.Status -eq "failed" 
+        $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
     }
     
     if ($issuesNeedingManualFix.Count -eq 0) {
@@ -431,9 +431,9 @@ function Write-UnresolvedIssues
         [RepositoryState]$State
     )
     
-    # Get all unresolved issues (failed or unfixable)
+    # Get all unresolved issues (failed, manual_fix_required, unfixable, or pending)
     $unresolvedIssues = $State.Issues | Where-Object { 
-        $_.Status -in @("failed", "unfixable", "pending")
+        $_.Status -in @("failed", "manual_fix_required", "unfixable", "pending")
     }
     
     if ($unresolvedIssues.Count -eq 0) {
@@ -443,7 +443,7 @@ function Write-UnresolvedIssues
     # Log each unresolved issue based on its severity
     foreach ($issue in $unresolvedIssues) {
         $messageType = $issue.Severity
-        $titlePrefix = if ($issue.Status -eq "unfixable") { "Unfixable" } elseif ($issue.Status -eq "failed") { "Failed to fix" } else { "Unresolved" }
+        $titlePrefix = if ($issue.Status -eq "unfixable") { "Unfixable" } elseif ($issue.Status -eq "manual_fix_required") { "Manual fix required" } elseif ($issue.Status -eq "failed") { "Failed to fix" } else { "Unresolved" }
         
         if ($messageType -eq "error") {
             Write-Output "::error title=$titlePrefix issue::$($issue.Message)"
