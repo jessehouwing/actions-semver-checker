@@ -1,11 +1,40 @@
+#############################################################################
+# Actions SemVer Checker - Main Script
+#############################################################################
+# This script validates semantic version tags and branches in a GitHub
+# repository to ensure proper version management for GitHub Actions.
+#
+# Key responsibilities:
+# 1. Validate that floating versions (v1, v1.0) point to correct patches
+# 2. Check that releases exist and are immutable
+# 3. Detect ambiguous refs (both tag and branch for same version)
+# 4. Auto-fix issues when enabled (requires contents: write permission)
+#############################################################################
+
+#############################################################################
+# GLOBAL STATE
+#############################################################################
+
 $global:returnCode = 0
 
-# Get GitHub context information from environment variables
+# GitHub context from environment
 $script:apiUrl = $env:GITHUB_API_URL ?? "https://api.github.com"
 $script:serverUrl = $env:GITHUB_SERVER_URL ?? "https://github.com"
 $script:token = $env:GITHUB_TOKEN ?? ""
 $script:repoOwner = $null
 $script:repoName = $null
+
+# Auto-fix tracking
+$script:fixedIssues = 0
+$script:failedFixes = 0
+$script:unfixableIssues = 0
+
+# Issue tracking for reporting
+$script:issuesFound = @()
+
+#############################################################################
+# REPOSITORY DETECTION
+#############################################################################
 
 # Parse repository owner and name from GITHUB_REPOSITORY
 if ($env:GITHUB_REPOSITORY) {
@@ -40,6 +69,10 @@ if (-not $script:repoOwner -or -not $script:repoName) {
         }
     }
 }
+
+#############################################################################
+# INPUT PARSING AND VALIDATION
+#############################################################################
 
 # Read inputs from JSON environment variable
 if (-not $env:inputs) {
@@ -199,6 +232,10 @@ $script:fixedIssues = 0
 $script:failedFixes = 0
 $script:unfixableIssues = 0
 
+#############################################################################
+# UTILITY FUNCTIONS
+#############################################################################
+
 function Write-SafeOutput
 {
     param(
@@ -299,6 +336,10 @@ function Invoke-AutoFix
         return $false
     }
 }
+
+#############################################################################
+# GITHUB API FUNCTIONS
+#############################################################################
 
 function write-actions-error
 {
@@ -802,6 +843,76 @@ function Remove-GitHubRef
     }
 }
 
+function Write-StateSummary {
+    param(
+        [array]$Tags,
+        [array]$Branches,
+        [array]$Releases,
+        [string]$Title = "Repository State Summary"
+    )
+    
+    Write-Host ""
+    Write-Host "=============================================================================" -ForegroundColor Cyan
+    Write-Host " $Title" -ForegroundColor Cyan
+    Write-Host "=============================================================================" -ForegroundColor Cyan
+    Write-Host ""
+    
+    Write-Host "Tags: $($Tags.Count)" -ForegroundColor White
+    if ($Tags.Count -gt 0 -and $Tags.Count -le 20) {
+        foreach ($tag in ($Tags | Sort-Object version)) {
+            $shaShort = $tag.sha.Substring(0, 7)
+            $versionType = if ($tag.isMajorVersion) { "major" } elseif ($tag.isMinorVersion) { "minor" } else { "patch" }
+            Write-Host "  $($tag.version) -> $shaShort ($versionType)" -ForegroundColor Gray
+        }
+    } elseif ($Tags.Count -gt 20) {
+        Write-Host "  (showing first 10 of $($Tags.Count) tags)" -ForegroundColor Gray
+        foreach ($tag in ($Tags | Sort-Object version | Select-Object -First 10)) {
+            $shaShort = $tag.sha.Substring(0, 7)
+            $versionType = if ($tag.isMajorVersion) { "major" } elseif ($tag.isMinorVersion) { "minor" } else { "patch" }
+            Write-Host "  $($tag.version) -> $shaShort ($versionType)" -ForegroundColor Gray
+        }
+    }
+    
+    Write-Host ""
+    Write-Host "Branches: $($Branches.Count)" -ForegroundColor White
+    if ($Branches.Count -gt 0) {
+        foreach ($branch in ($Branches | Sort-Object version)) {
+            $shaShort = $branch.sha.Substring(0, 7)
+            $versionType = if ($branch.isMajorVersion) { "major" } elseif ($branch.isMinorVersion) { "minor" } else { "patch" }
+            Write-Host "  $($branch.version) -> $shaShort ($versionType)" -ForegroundColor Gray
+        }
+    }
+    
+    Write-Host ""
+    Write-Host "Releases: $($Releases.Count)" -ForegroundColor White
+    if ($Releases.Count -gt 0 -and $Releases.Count -le 15) {
+        foreach ($release in ($Releases | Sort-Object tagName)) {
+            $status = @()
+            if ($release.isDraft) { $status += "draft" }
+            if ($release.isPrerelease) { $status += "prerelease" }
+            $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
+            Write-Host "  $($release.tagName)$statusStr" -ForegroundColor Gray
+        }
+    } elseif ($Releases.Count -gt 15) {
+        Write-Host "  (showing first 10 of $($Releases.Count) releases)" -ForegroundColor Gray
+        foreach ($release in ($Releases | Sort-Object tagName | Select-Object -First 10)) {
+            $status = @()
+            if ($release.isDraft) { $status += "draft" }
+            if ($release.isPrerelease) { $status += "prerelease" }
+            $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
+            Write-Host "  $($release.tagName)$statusStr" -ForegroundColor Gray
+        }
+    }
+    
+    Write-Host ""
+    Write-Host "=============================================================================" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+#############################################################################
+# MAIN EXECUTION
+#############################################################################
+
 # Get repository info for URLs
 $script:repoInfo = Get-GitHubRepoInfo
 
@@ -927,6 +1038,12 @@ foreach ($tagVersion in $tagVersions)
 
     if ($branchVersion)
     {
+        #############################################################################
+        # VALIDATION: Ambiguous References
+        # Check for versions that exist as both tag AND branch
+        # This causes confusion for users and must be resolved
+        #############################################################################
+        
         $message = "title=Ambiguous version: $($tagVersion.version)::Exists as both tag ($($tagVersion.sha)) and branch ($($branchVersion.sha))"
         
         # Determine which reference to keep based on floating-versions-use setting
@@ -997,6 +1114,9 @@ foreach ($tagVersion in $tagVersions)
     }
 }
 
+# Display current repository state summary
+Write-StateSummary -Tags $tagVersions -Branches $branchVersions -Releases $releases -Title "Current Repository State"
+
 # Validate that floating versions (vX or vX.Y) have corresponding patch versions
 $allVersions = $tagVersions + $branchVersions
 Write-Host "::debug::Validating floating versions. Total versions: $($allVersions.Count) (tags: $($tagVersions.Count), branches: $($branchVersions.Count))"
@@ -1033,7 +1153,11 @@ foreach ($version in $allVersions)
     }
 }
 
-# Check that every patch version (vX.Y.Z) has a corresponding release
+#############################################################################
+# VALIDATION: Patch Version Releases
+# Every patch version (vX.Y.Z) should have a corresponding GitHub Release
+#############################################################################
+
 if ($checkReleases -ne "none")
 {
     $releaseTagNames = $releases | ForEach-Object { $_.tagName }
@@ -1199,9 +1323,12 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
     }
 }
 
-# Check that floating versions (major/minor/latest) DO NOT have GitHub releases
-# Floating versions should not have releases as they are mutable by design
-# This check runs when either check-releases or check-release-immutability is enabled
+#############################################################################
+# VALIDATION: Floating Version Releases (Should Not Exist)
+# Floating versions (v1, v1.0, latest) should not have releases
+# as they are mutable by design and releases should be immutable
+#############################################################################
+
 if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $releases.Count -gt 0)
 {
     foreach ($release in $releases)
@@ -1293,6 +1420,13 @@ $minorVersions = $versionsForCalculation |
 $patchVersions = $versionsForCalculation | 
     ForEach-Object{ ConvertTo-Version "$($_.semver.major).$($_.semver.minor).$($_.semver.build)" } | 
     Select-Object -Unique
+
+#############################################################################
+# VALIDATION: Version Consistency
+# Ensure floating versions (v1, v1.0) point to the correct patch versions
+# Major version v1 should point to latest v1.X.Z
+# Minor version v1.0 should point to latest v1.0.Z
+#############################################################################
 
 foreach ($majorVersion in $majorVersions)
 {
@@ -1637,6 +1771,10 @@ if ($useBranches) {
         $suggestedCommands += "git push origin :refs/heads/latest"
     }
 }
+
+#############################################################################
+# FINAL SUMMARY AND EXIT
+#############################################################################
 
 # Display summary based on auto-fix mode
 if ($autoFix)
