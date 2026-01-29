@@ -26,6 +26,9 @@ This strategy balances **stability** (pinned versions never change) with **conve
 - ✅ Can configure floating versions (major/minor/latest) to use branches or tags
 - ✅ Provides suggested commands to fix any issues with direct links to GitHub release pages
 - ✅ Optional auto-fix mode to automatically update version tags/branches
+- ✅ **NEW:** Ignore specific versions from validation (useful for legacy versions)
+- ✅ **NEW:** Republish non-immutable releases to make them immutable (auto-migration feature)
+- ✅ **NEW:** Retry logic with exponential backoff for better reliability
 
 Example output:
 
@@ -224,6 +227,57 @@ jobs:
 ```
 
 **Note:** Auto-fix only handles git push commands for tags/branches. GitHub Release creation commands must be executed manually.
+
+### `ignore-versions`
+**Default:** `""` (empty)
+
+Comma-separated list of versions to ignore during validation. This is useful for skipping legacy or problematic versions that you don't want to validate.
+
+```yaml
+- uses: jessehouwing/actions-semver-checker@v2
+  with:
+    ignore-versions: 'v1.0.0,v2.0.0,v3.0.0-alpha'
+```
+
+**Use cases:**
+- Skip validation for legacy versions that don't follow current standards
+- Ignore problematic versions that can't be fixed
+- Exclude pre-release versions from validation
+
+### `republish-for-immutability`
+**Default:** `false`
+
+When immutable releases are enabled for a repository, existing releases are not automatically made immutable. This option, when combined with `auto-fix`, will republish non-immutable releases to make them immutable.
+
+**⚠️ Important:** This only works with `auto-fix: true` and requires `contents: write` permission:
+
+```yaml
+jobs:
+  check-semver:
+    permissions:
+      contents: write  # Required for republish-for-immutability
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - uses: jessehouwing/actions-semver-checker@v2
+        with:
+          auto-fix: 'true'
+          republish-for-immutability: 'true'
+```
+
+**How it works:**
+1. The action checks if releases are immutable using GitHub's GraphQL API
+2. For non-immutable patch version releases (vX.Y.Z), it:
+   - Temporarily converts the release to draft
+   - Publishes it again to make it immutable
+3. Only applies to patch versions (vX.Y.Z), not floating versions (vX, vX.Y)
+
+**Use cases:**
+- Migrating a repository to use immutable releases
+- Fixing releases that were created before immutability was enabled
+- Ensuring all releases follow GitHub's recommended immutable release strategy
 
 ## Examples
 
@@ -461,16 +515,20 @@ v2 is backward compatible with v1. The main differences:
   - `token` - Explicit GitHub token input
   - `check-releases` - Now accepts "error" (default), "warning", or "none"
   - `check-release-immutability` - Now accepts "error" (default), "warning", or "none"
+  - `ignore-versions` - Comma-separated list of versions to ignore (NEW in v2.1)
+  - `republish-for-immutability` - Auto-republish non-immutable releases (NEW in v2.1)
 
 - **Configuration improvements:**
   - `floating-versions-use` replaces `use-branches` - Now accepts `tags` (default) or `branches`
   - Release suggestions include direct GitHub edit links
   - Link header-based pagination for better API performance
+  - Retry logic with exponential backoff for better reliability (NEW in v2.1)
 
 - **Opt-in features:**
   - `ignore-preview-releases: true` (default) - Set to `false` to include prereleases in floating version calculations
   - `floating-versions-use: tags` (default) - Set to `branches` to use branches for floating versions
   - `auto-fix: false` (default) - Set to `true` to automatically fix missing/incorrect tags
+  - `republish-for-immutability: false` (default) - Set to `true` to republish non-immutable releases (NEW in v2.1)
 
 If you want warnings instead of errors for release checks:
 
@@ -488,4 +546,21 @@ To disable release checks entirely (v1 behavior):
   with:
     check-releases: 'none'
     check-release-immutability: 'none'
+```
+
+To skip validation for specific versions:
+
+```yaml
+- uses: jessehouwing/actions-semver-checker@v2
+  with:
+    ignore-versions: 'v1.0.0,v2.0.0-beta'
+```
+
+To automatically republish non-immutable releases:
+
+```yaml
+- uses: jessehouwing/actions-semver-checker@v2
+  with:
+    auto-fix: 'true'
+    republish-for-immutability: 'true'
 ```
