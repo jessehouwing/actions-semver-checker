@@ -234,11 +234,11 @@ class CreateTagAction : RemediationAction {
         } else {
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
-                Write-Host "✗ Unfixable: Cannot create tag $($this.TagName) - requires 'workflows' permission to modify workflow files"
-                # Find this issue in the state and mark it as requiring manual fix (unfixable by automation)
+                Write-Host "✗ Manual fix required: Cannot create tag $($this.TagName) - requires 'workflows' permission to modify workflow files"
+                # Find this issue in the state and mark it as requiring manual fix
                 $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.RemediationAction -eq $this } | Select-Object -First 1
                 if ($issue) {
-                    $issue.Status = "unfixable"
+                    $issue.Status = "manual_fix_required"
                     # Update message to be more helpful
                     $issue.Message = "Version $($this.TagName) cannot be created by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please create manually."
                 }
@@ -278,10 +278,10 @@ class UpdateTagAction : RemediationAction {
         } else {
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
-                Write-Host "✗ Unfixable: Cannot update tag $($this.TagName) - requires 'workflows' permission to modify workflow files"
+                Write-Host "✗ Manual fix required: Cannot update tag $($this.TagName) - requires 'workflows' permission to modify workflow files"
                 $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.RemediationAction -eq $this } | Select-Object -First 1
                 if ($issue) {
-                    $issue.Status = "unfixable"
+                    $issue.Status = "manual_fix_required"
                     # Update message to be more helpful
                     $issue.Message = "Version $($this.TagName) cannot be updated by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please update manually."
                 }
@@ -352,10 +352,10 @@ class CreateBranchAction : RemediationAction {
         } else {
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
-                Write-Host "✗ Unfixable: Cannot create branch $($this.BranchName) - requires 'workflows' permission to modify workflow files"
+                Write-Host "✗ Manual fix required: Cannot create branch $($this.BranchName) - requires 'workflows' permission to modify workflow files"
                 $issue = $state.Issues | Where-Object { $_.Version -eq $this.BranchName -and $_.RemediationAction -eq $this } | Select-Object -First 1
                 if ($issue) {
-                    $issue.Status = "unfixable"
+                    $issue.Status = "manual_fix_required"
                     # Update message to be more helpful
                     $issue.Message = "Version $($this.BranchName) cannot be created by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please create manually."
                 }
@@ -395,10 +395,10 @@ class UpdateBranchAction : RemediationAction {
         } else {
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
-                Write-Host "✗ Unfixable: Cannot update branch $($this.BranchName) - requires 'workflows' permission to modify workflow files"
+                Write-Host "✗ Manual fix required: Cannot update branch $($this.BranchName) - requires 'workflows' permission to modify workflow files"
                 $issue = $state.Issues | Where-Object { $_.Version -eq $this.BranchName -and $_.RemediationAction -eq $this } | Select-Object -First 1
                 if ($issue) {
-                    $issue.Status = "unfixable"
+                    $issue.Status = "manual_fix_required"
                     # Update message to be more helpful
                     $issue.Message = "Version $($this.BranchName) cannot be updated by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please update manually."
                 }
