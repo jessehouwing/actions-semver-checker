@@ -620,6 +620,7 @@ function Get-ImmutableReleaseRemediationCommands
     
     # The tag is already used by an immutable release
     # The only solution is to delete the release and create a new version
+    # This function expects semantic version tags in the format vX.Y.Z
     if ($TagName -match "^v(\d+)\.(\d+)\.(\d+)$") {
         $major = $matches[1]
         $minor = $matches[2]
@@ -635,6 +636,14 @@ function Get-ImmutableReleaseRemediationCommands
         $commands += "git push origin $nextVersion"
         $commands += "gh release create $nextVersion --draft --title `"$nextVersion`" --notes `"Release $nextVersion`""
         $commands += "gh release edit $nextVersion --draft=false"
+    }
+    else {
+        # Tag doesn't match expected vX.Y.Z format
+        $commands += "# Manual remediation required for tag: $TagName"
+        $commands += "# The tag is used by an immutable release. You must delete the release and tag, then create a new version."
+        $commands += "gh release delete $TagName --yes"
+        $commands += "git tag -d $TagName"
+        $commands += "git push origin :refs/tags/$TagName"
     }
     
     return $commands
@@ -688,17 +697,14 @@ function Publish-GitHubRelease
         $isUnfixable = $false
         
         # Check if this is a 422 error about tag_name being used by an immutable release
-        # First check the HTTP status code if available, then check the error message
+        # First check the HTTP status code if available
         $statusCode = $null
         if ($_.Exception.Response) {
             $statusCode = $_.Exception.Response.StatusCode.value__
         }
         
-        if ($statusCode -eq 422 -and $errorMessage -match "tag_name was used by an immutable release") {
-            $isUnfixable = $true
-            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
-        } elseif ($errorMessage -match "422.*tag_name was used by an immutable release") {
-            # Fallback pattern matching if status code is not available
+        # Check for the specific error condition
+        if (($statusCode -eq 422 -or $errorMessage -match "422") -and $errorMessage -match "tag_name was used by an immutable release") {
             $isUnfixable = $true
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
         } else {
