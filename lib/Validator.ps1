@@ -200,6 +200,11 @@ class FloatingVersionReleaseValidator : ValidatorBase {
             
             if ($isFloatingVersion) {
                 # Check if the release is truly immutable
+                # Note: We use the simplified IsImmutable property from ReleaseInfo which only checks
+                # if the release is not a draft. For a more thorough check, use Test-ReleaseImmutability
+                # from GitHubApi.ps1 which makes a GraphQL API call to get the true immutability status.
+                # This validator uses the simpler check for performance reasons, as it runs in a pipeline
+                # with other validators. The main.ps1 script does the thorough check when needed.
                 $isImmutable = $release.IsImmutable
                 
                 if ($isImmutable) {
