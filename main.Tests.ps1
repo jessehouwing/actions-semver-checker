@@ -1256,72 +1256,48 @@ exit 0
     }
     
     Context "Release Immutability - Draft Release Publishing" {
-        It "Should attempt to publish draft releases during auto-fix" {
+        It "Should create remediation action for missing release with AutoPublish when immutability checking enabled" {
             Initialize-TestRepo -Path $script:testRepoPath -WithRemote
             
             $commit = Get-CommitSha
             git tag v1.0.0 $commit
             
-            # Mock API to return draft release and handle creation/publishing
-            $global:InvokeWebRequestWrapper = {
-                param($Uri, $Headers, $Method, $Body, $TimeoutSec, $ContentType)
-                
-                if ($Uri -match "/releases/tags/") {
-                    # Getting a specific release by tag
-                    $mockContent = @{
-                        tag_name = "v1.0.0"
-                        draft = $true
-                        prerelease = $false
-                        id = 123
-                        html_url = "https://github.com/test/test/releases/v1.0.0"
-                    } | ConvertTo-Json
-                } elseif ($Uri -match "/releases/\d+" -and $Method -eq "PATCH") {
-                    # Publishing the release (updating draft status)
-                    $mockContent = @{
-                        tag_name = "v1.0.0"
-                        draft = $false
-                        prerelease = $false
-                        id = 123
-                        html_url = "https://github.com/test/test/releases/v1.0.0"
-                    } | ConvertTo-Json
-                } elseif ($Uri -match "/releases$|/releases\?" -and $Method -eq "POST") {
-                    # Creating a new draft release
-                    $mockContent = @{
-                        tag_name = "v1.0.0"
-                        draft = $true
-                        prerelease = $false
-                        id = 124
-                        html_url = "https://github.com/test/test/releases/v1.0.0"
-                    } | ConvertTo-Json
-                } elseif ($Uri -match "/releases$|/releases\?") {
-                    # Listing releases
-                    $mockContent = '[{"tag_name":"v1.0.0","draft":true,"prerelease":false,"id":123,"html_url":"https://github.com/test/test/releases/v1.0.0"}]'
-                } else {
-                    # Default: empty releases list
-                    $mockContent = '[]'
-                }
-                
-                return @{
-                    Content = $mockContent
-                    Headers = @{}
-                }
-            }
-            
-            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
             $env:GITHUB_TOKEN = "test-token"
             
-            # Run with auto-fix and release immutability checking
-            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "error" -AutoFix "true"
+            # Run with release checking and immutability checking (no auto-fix to inspect State)
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "error" -AutoFix "false"
             
-            # Clean up
-            if (Test-Path function:global:Invoke-WebRequestWrapper) {
-                Remove-Item function:global:Invoke-WebRequestWrapper
+            # Check that the State has a CreateReleaseAction with AutoPublish=true for the missing release
+            $global:State.Issues | Should -Not -BeNullOrEmpty
+            $createIssues = $global:State.Issues | Where-Object { 
+                $_.RemediationAction -and $_.RemediationAction.GetType().Name -eq "CreateReleaseAction" 
             }
+            $createIssues | Should -Not -BeNullOrEmpty
+            $createIssues[0].Version | Should -Be "v1.0.0"
+            $createIssues[0].RemediationAction.AutoPublish | Should -Be $true
+            $createIssues[0].RemediationAction.TagName | Should -Be "v1.0.0"
+        }
+        
+        It "Should use CreateReleaseAction without AutoPublish when immutability checking disabled" {
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
             
-            # Should detect draft release and publish it
-            # The output should show either that a draft release was found and published,
-            # or that a new release was created and published (with AutoPublish)
-            $result.Output | Should -Match "release|Release"
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Run with release checking but NO immutability checking
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "none" -AutoFix "false"
+            
+            # Check that the State has a CreateReleaseAction with AutoPublish=false
+            $global:State.Issues | Should -Not -BeNullOrEmpty
+            $createIssues = $global:State.Issues | Where-Object { 
+                $_.RemediationAction -and $_.RemediationAction.GetType().Name -eq "CreateReleaseAction" 
+            }
+            $createIssues | Should -Not -BeNullOrEmpty
+            $createIssues[0].Version | Should -Be "v1.0.0"
+            $createIssues[0].RemediationAction.AutoPublish | Should -Be $false
+            $createIssues[0].RemediationAction.TagName | Should -Be "v1.0.0"
         }
         
         It "Should handle 422 error when tag_name used by immutable release" {
