@@ -25,14 +25,17 @@ function Get-ApiHeaders
 
 function Get-GitHubRepoInfo
 {
-    param()
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State
+    )
     
-    # Return the already-parsed repository info from script-level variables
-    if ($script:repoOwner -and $script:repoName) {
+    # Return the repository info from State
+    if ($State.RepoOwner -and $State.RepoName) {
         return @{
-            Owner = $script:repoOwner
-            Repo = $script:repoName
-            Url = "$script:serverUrl/$script:repoOwner/$script:repoName"
+            Owner = $State.RepoOwner
+            Repo = $State.RepoName
+            Url = "$($State.ServerUrl)/$($State.RepoOwner)/$($State.RepoName)"
         }
     }
     
@@ -105,18 +108,22 @@ query(`$owner: String!, `$name: String!, `$tag: String!) {
 
 function Get-GitHubReleases
 {
-    param()
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State
+    )
     
     try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
             return @()
         }
         
         # Use GitHub REST API to get releases
-        $headers = Get-ApiHeaders -Token $script:token
+        $headers = Get-ApiHeaders -Token $State.Token
         $allReleases = @()
-        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases?per_page=100"
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases?per_page=100"
         
         do {
             # Use a wrapper to allow for test mocking
@@ -170,18 +177,21 @@ function Get-GitHubReleases
 function Remove-GitHubRelease
 {
     param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
         [string]$TagName
     )
     
     try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
             return $false
         }
         
         # First, get the release ID for this tag
-        $headers = Get-ApiHeaders -Token $script:token
-        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/tags/$TagName"
+        $headers = Get-ApiHeaders -Token $State.Token
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/tags/$TagName"
         
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
@@ -191,7 +201,7 @@ function Remove-GitHubRelease
         $release = $response.Content | ConvertFrom-Json
         
         # Now delete the release
-        $deleteUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/$($release.id)"
+        $deleteUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$($release.id)"
         
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $deleteResponse = Invoke-WebRequestWrapper -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
@@ -211,18 +221,21 @@ function Remove-GitHubRelease
 function New-GitHubDraftRelease
 {
     param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
         [string]$TagName
     )
     
     try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
             return $null
         }
         
         # Create a draft release
-        $headers = Get-ApiHeaders -Token $script:token
-        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases"
+        $headers = Get-ApiHeaders -Token $State.Token
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases"
         
         $body = @{
             tag_name = $TagName
@@ -251,22 +264,25 @@ function New-GitHubDraftRelease
 function Publish-GitHubRelease
 {
     param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
         [string]$TagName,
         [Parameter(Mandatory=$false)]
         [int]$ReleaseId
     )
     
     try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
             return @{ Success = $false; Unfixable = $false }
         }
         
-        $headers = Get-ApiHeaders -Token $script:token
+        $headers = Get-ApiHeaders -Token $State.Token
         
         # If ReleaseId is not provided, fetch it by tag name
         if (-not $ReleaseId) {
-            $releasesUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/tags/$TagName"
+            $releasesUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/tags/$TagName"
             
             if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
                 $releaseResponse = Invoke-WebRequestWrapper -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
@@ -278,7 +294,7 @@ function Publish-GitHubRelease
         }
         
         # Update the release to publish it (set draft to false)
-        $updateUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/$ReleaseId"
+        $updateUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$ReleaseId"
         $body = @{
             draft = $false
         } | ConvertTo-Json
@@ -317,21 +333,24 @@ function Publish-GitHubRelease
 function New-GitHubRef
 {
     param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
         [string]$RefName,  # e.g., "refs/tags/v1.0.0" or "refs/heads/main"
         [string]$Sha,
         [bool]$Force = $true  # Force update if ref exists
     )
     
     try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
             return $false
         }
         
-        $headers = Get-ApiHeaders -Token $script:token
+        $headers = Get-ApiHeaders -Token $State.Token
         
         # Try to update the ref first (in case it exists)
-        $updateUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/$RefName"
+        $updateUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/$RefName"
         $body = @{
             sha = $Sha
             force = $Force
@@ -355,7 +374,7 @@ function New-GitHubRef
             
             # Only try to create if the ref doesn't exist (404 error)
             if ($is404) {
-                $createUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/refs"
+                $createUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/refs"
                 $createBody = @{
                     ref = $RefName
                     sha = $Sha
@@ -383,17 +402,20 @@ function New-GitHubRef
 function Remove-GitHubRef
 {
     param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
         [string]$RefName  # e.g., "refs/tags/v1.0.0" or "refs/heads/main"
     )
     
     try {
-        # Use the pre-obtained repo info
-        if (-not $script:repoInfo) {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
             return $false
         }
         
-        $headers = Get-ApiHeaders -Token $script:token
-        $url = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/$RefName"
+        $headers = Get-ApiHeaders -Token $State.Token
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/$RefName"
         
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
