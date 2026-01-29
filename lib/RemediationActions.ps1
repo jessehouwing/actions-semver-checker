@@ -13,6 +13,7 @@ class RemediationAction {
     [string]$Description
     [string]$Version
     [int]$Priority  # Lower number = higher priority (for ordering)
+    [bool]$IncludeCommentsInManualCommands = $false  # Control whether to include explanatory comments
     
     RemediationAction([string]$description, [string]$version) {
         $this.Description = $description
@@ -25,7 +26,7 @@ class RemediationAction {
         throw "Execute must be implemented in derived class"
     }
     
-    # Get manual fix command(s)
+    # Get manual fix command(s) - without comments by default
     [string[]] GetManualCommands([RepositoryState]$state) {
         throw "GetManualCommands must be implemented in derived class"
     }
@@ -42,10 +43,18 @@ class RemediationAction {
 class CreateReleaseAction : RemediationAction {
     [string]$TagName
     [bool]$IsDraft
+    [bool]$AutoPublish = $false  # If true, publish immediately after creation
     
     CreateReleaseAction([string]$tagName, [bool]$isDraft) : base("Create release", $tagName) {
         $this.TagName = $tagName
         $this.IsDraft = $isDraft
+        $this.Priority = 30  # Create after tags
+    }
+    
+    CreateReleaseAction([string]$tagName, [bool]$isDraft, [bool]$autoPublish) : base("Create release", $tagName) {
+        $this.TagName = $tagName
+        $this.IsDraft = $isDraft
+        $this.AutoPublish = $autoPublish
         $this.Priority = 30  # Create after tags
     }
     
@@ -55,6 +64,21 @@ class CreateReleaseAction : RemediationAction {
         
         if ($releaseId) {
             Write-Host "✓ Success: Created draft release for $($this.TagName)"
+            
+            # If AutoPublish is enabled, publish the release immediately
+            if ($this.AutoPublish) {
+                Write-Host "Auto-fix: Publish draft release for $($this.TagName)"
+                $publishResult = Publish-GitHubRelease -State $state -TagName $this.TagName -ReleaseId $releaseId
+                
+                if ($publishResult.Success) {
+                    Write-Host "✓ Success: Published release for $($this.TagName)"
+                    return $true
+                } else {
+                    Write-Host "✗ Failed: Publish release for $($this.TagName)"
+                    return $false
+                }
+            }
+            
             return $true
         } else {
             Write-Host "✗ Failed: Create draft release for $($this.TagName)"
@@ -63,9 +87,17 @@ class CreateReleaseAction : RemediationAction {
     }
     
     [string[]] GetManualCommands([RepositoryState]$state) {
-        return @(
-            "gh release create $($this.TagName) --draft --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`""
-        )
+        if ($this.AutoPublish) {
+            # Create and immediately publish
+            return @(
+                "gh release create $($this.TagName) --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`""
+            )
+        } else {
+            # Create as draft
+            return @(
+                "gh release create $($this.TagName) --draft --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`""
+            )
+        }
     }
 }
 
@@ -99,14 +131,7 @@ class PublishReleaseAction : RemediationAction {
     }
     
     [string[]] GetManualCommands([RepositoryState]$state) {
-        $repoInfo = Get-GitHubRepoInfo -State $state
-        $commands = @("gh release edit $($this.TagName) --draft=false")
-        
-        if ($repoInfo) {
-            $commands[0] += "  # Or edit at: $($repoInfo.Url)/releases/edit/$($this.TagName)"
-        }
-        
-        return $commands
+        return @("gh release edit $($this.TagName) --draft=false")
     }
 }
 
@@ -133,7 +158,6 @@ class RepublishReleaseAction : RemediationAction {
     
     [string[]] GetManualCommands([RepositoryState]$state) {
         return @(
-            "# Manually republish release $($this.TagName) to make it immutable",
             "gh release edit $($this.TagName) --draft=true",
             "gh release edit $($this.TagName) --draft=false"
         )
