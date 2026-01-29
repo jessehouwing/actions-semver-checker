@@ -5,6 +5,53 @@
 # for releases, tags, branches, and other git references.
 #############################################################################
 
+#############################################################################
+# Retry Helper Function
+# Provides exponential backoff retry logic for API calls
+#############################################################################
+
+function Invoke-WithRetry
+{
+    param(
+        [Parameter(Mandatory)]
+        [scriptblock]$ScriptBlock,
+        
+        [int]$MaxRetries = 3,
+        [int]$InitialDelaySeconds = 1,
+        [string]$OperationDescription = "operation"
+    )
+    
+    $attempt = 0
+    $delay = $InitialDelaySeconds
+    
+    while ($attempt -lt $MaxRetries) {
+        $attempt++
+        
+        try {
+            Write-Host "::debug::Attempt $attempt of $MaxRetries for $OperationDescription"
+            return & $ScriptBlock
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            
+            # Check if this is a retryable error (network, timeout, rate limit)
+            $isRetryable = $errorMessage -match '(timeout|connection|429|503|502|500)' -or
+                          $_.Exception.GetType().Name -match '(WebException|HttpRequestException)'
+            
+            if ($attempt -ge $MaxRetries -or -not $isRetryable) {
+                Write-Host "::debug::Non-retryable error or max retries reached for $OperationDescription"
+                throw
+            }
+            
+            Write-Host "::warning::$OperationDescription failed (attempt $attempt/$MaxRetries): $errorMessage. Retrying in $delay seconds..."
+            Start-Sleep -Seconds $delay
+            
+            # Exponential backoff: double the delay each time
+            $delay = $delay * 2
+        }
+    }
+}
+
 function Get-ApiHeaders
 {
     param(
@@ -327,6 +374,92 @@ function Publish-GitHubRelease
         }
         
         return @{ Success = $false; Unfixable = $isUnfixable }
+    }
+}
+
+function Republish-GitHubRelease
+{
+    <#
+    .SYNOPSIS
+    Republish a release to make it immutable.
+    
+    .DESCRIPTION
+    When immutable releases are enabled for a repository, existing releases
+    are not automatically made immutable. This function converts a mutable
+    release to immutable by temporarily making it a draft, then publishing it again.
+    
+    This only works for patch versions (vX.Y.Z) and will fail if the release
+    is already immutable.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        [Parameter(Mandatory)]
+        [string]$TagName
+    )
+    
+    try {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return @{ Success = $false; Reason = "No repo info available" }
+        }
+        
+        $headers = Get-ApiHeaders -Token $State.Token
+        
+        # Step 1: Get the release by tag name
+        $releasesUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/tags/$TagName"
+        
+        $releaseResponse = Invoke-WithRetry -OperationDescription "Get release $TagName" -ScriptBlock {
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                Invoke-WebRequestWrapper -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+            } else {
+                Invoke-RestMethod -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+            }
+        }
+        
+        $releaseId = $releaseResponse.id
+        $isDraft = $releaseResponse.draft
+        
+        # Step 2: Check if already immutable
+        $isImmutable = Test-ReleaseImmutability -Owner $repoInfo.Owner -Repo $repoInfo.Repo -Tag $TagName -Token $State.Token -ApiUrl $State.ApiUrl
+        
+        if ($isImmutable) {
+            Write-Host "::debug::Release $TagName is already immutable, skipping"
+            return @{ Success = $true; Reason = "Already immutable" }
+        }
+        
+        # If not already in draft, make it a draft first
+        if (-not $isDraft) {
+            Write-Host "::debug::Converting release $TagName to draft"
+            $updateUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$releaseId"
+            $draftBody = @{
+                draft = $true
+            } | ConvertTo-Json
+            
+            Invoke-WithRetry -OperationDescription "Convert release $TagName to draft" -ScriptBlock {
+                if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                    Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $draftBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+                } else {
+                    Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $draftBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+                }
+            }
+        }
+        
+        # Step 3: Publish the release to make it immutable
+        Write-Host "::debug::Publishing release $TagName to make it immutable"
+        $publishResult = Publish-GitHubRelease -State $State -TagName $TagName -ReleaseId $releaseId
+        
+        if ($publishResult.Success) {
+            return @{ Success = $true; Reason = "Republished successfully" }
+        } else {
+            return @{ Success = $false; Reason = "Failed to publish" }
+        }
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to republish release for $TagName : "
+        return @{ Success = $false; Reason = $errorMessage }
     }
 }
 

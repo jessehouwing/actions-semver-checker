@@ -203,6 +203,8 @@ class RepositoryState {
     [string]$CheckImmutability   # "error", "warning", "none"
     [bool]$IgnorePreviewReleases
     [string]$FloatingVersionsUse # "tags", "branches", "both"
+    [string[]]$IgnoreVersions    # List of versions to ignore
+    [bool]$RepublishForImmutability  # Re-publish non-immutable releases to make them immutable
     
     # Issue tracking
     [ValidationIssue[]]$Issues

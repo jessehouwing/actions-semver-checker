@@ -247,19 +247,44 @@ Based on value vs. effort analysis:
    - Color-coded visualization
    - **Status**: Fully implemented and tested
 
-### Medium Priority (Recommended next)
-3. **Phase 12: Configuration File Support** - Flexibility for users
-   - **Effort**: Medium | **Value**: Medium (power user feature)
-   - Enable .semver-checker.yml for per-repo config
-
-4. **Phase 9: Enhanced Validation Module** - Continue modularization
+### Medium Priority (In Progress 🔄)
+3. **Phase 9: Enhanced Validation Module** - 🔄 IN PROGRESS
    - **Effort**: Medium | **Value**: Medium (better maintainability)
-   - Extract validators into separate module
+   - ✅ Created lib/Validator.ps1 with base validator infrastructure
+   - ✅ Implemented validator pipeline pattern
+   - ✅ Extracted ReleaseValidator, ReleaseImmutabilityValidator, FloatingVersionReleaseValidator
+   - ⏳ TODO: Extract VersionConsistencyValidator (complex, deferred)
+   - ⏳ TODO: Add unit tests for validators
+   
+4. **Phase 13: Enhanced Error Recovery** - 🔄 IN PROGRESS
+   - **Effort**: Medium | **Value**: High (better reliability)
+   - ✅ Implemented retry logic with exponential backoff (Invoke-WithRetry)
+   - ✅ Added timeout handling for API calls
+   - ✅ Better error categorization (retryable vs non-retryable)
+   - ⏳ TODO: Add partial success tracking
+   - ⏳ TODO: Add resume capability after failures
+   
+5. **Phase 17: Additional Features** - 🔄 IN PROGRESS
+   - **Effort**: Medium | **Value**: High (power user features)
+   - ✅ Added ignore-versions input to skip specific versions
+   - ✅ Implemented republish-for-immutability feature
+   - ✅ Added Republish-GitHubRelease function
+   - ✅ Integrated republishing into validation flow
 
-### Low Priority (Future enhancements)
-5. **Phase 11: Performance Optimizations** - Only needed for large repos
-6. **Phase 13: Enhanced Error Recovery** - Incremental improvement
-7. **Phase 10, 14, 15, 16**: Specialized features for specific use cases
+### Removed from Plan ❌
+6. **Phase 12: Configuration File Support** - ❌ REMOVED PER USER REQUEST
+   - Will not be implemented
+
+### Low Priority (Future enhancements) ⏭️
+7. **Phase 11: Performance Optimizations** - Plan to be created
+   - Only needed for large repos
+   - Deferred to future enhancement
+   
+8. **Phase 10, 14, 15, 16**: Skipped per user request
+   - Phase 10: What-If Mode - Skipped
+   - Phase 14: CI/CD Integration - Skipped
+   - Phase 15: Multi-Version Support - Skipped
+   - Phase 16: Audit/Reporting - Skipped
 
 ## Success Metrics
 
@@ -323,24 +348,68 @@ The refactoring has created a solid foundation. Here are recommended next steps:
 - Better understanding of what auto-fix will do
 - Improved confidence before executing changes
 
-### Phase 9: Enhanced Validation Module (Low Priority)
+### Phase 9: Enhanced Validation Module (In Progress 🔄)
 **Goal**: Extract validation logic into separate module
 
-- [ ] Create lib/Validator.ps1
-- [ ] Extract validation functions from main.ps1
-- [ ] Implement validator classes for each check type:
-  - AmbiguousRefValidator
-  - FloatingVersionValidator
-  - ReleaseValidator
-  - ImmutabilityValidator
-- [ ] Add validator pipeline pattern
-- [ ] Each validator returns ValidationIssues
+- [x] Create lib/Validator.ps1
+- [x] Implement ValidatorBase class
+- [x] Implement validator classes for each check type:
+  - [x] FloatingVersionValidator
+  - [x] ReleaseValidator
+  - [x] ReleaseImmutabilityValidator
+  - [x] FloatingVersionReleaseValidator
+  - [ ] VersionConsistencyValidator (deferred - complex)
+- [x] Add validator pipeline pattern (ValidatorPipeline class)
+- [x] Each validator returns ValidationIssues
+- [x] Support for ignore-versions configuration
+- [ ] Add unit tests for validators
+
+**Status**: Core infrastructure complete, complex validators deferred
 
 **Benefits**:
 - Further reduce main.ps1 size
 - Validators can be unit tested independently
 - Easy to add new validation rules
 - Clear separation of concerns
+
+### Phase 13: Enhanced Error Recovery (In Progress 🔄)
+**Goal**: Graceful handling of partial failures
+
+- [x] Implement retry logic with exponential backoff (Invoke-WithRetry)
+- [x] Better error categorization (retryable vs non-retryable)
+- [x] Timeout handling for API calls
+- [ ] Track partial success/failure (using ValidationIssue.Status)
+- [ ] Resume capability after failures
+- [ ] Better error reporting with grouped logs
+- [ ] Rollback capability for failed operations
+
+**Status**: Basic retry logic implemented, advanced features pending
+
+**Benefits**:
+- More resilient to transient failures
+- Better handling of network issues
+- Improved reliability
+- Clearer error messages
+
+### Phase 17: Additional Features (In Progress 🔄)
+**Goal**: Power user features for version management
+
+- [x] Add ignore-versions input to action.yaml
+- [x] Parse ignore-versions from inputs
+- [x] Integrate ignore-versions into validators
+- [x] Add republish-for-immutability input
+- [x] Implement Republish-GitHubRelease function
+- [x] Integrate republishing into validation flow
+- [ ] Add comprehensive tests for new features
+- [ ] Document new features in README
+
+**Status**: Core functionality complete, testing and documentation pending
+
+**Benefits**:
+- Flexibility to skip problematic versions
+- Automatic conversion of releases to immutable
+- Better support for repositories migrating to immutable releases
+- Reduced manual intervention
 
 ### Phase 10: What-If Mode Enhancement (Low Priority)
 **Goal**: Comprehensive dry-run capability
