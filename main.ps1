@@ -227,10 +227,7 @@ $branchVersions = @()
 
 $suggestedCommands = @()
 
-# Auto-fix tracking
-$script:fixedIssues = 0
-$script:failedFixes = 0
-$script:unfixableIssues = 0
+# Auto-fix tracking variables are initialized in GLOBAL STATE section above
 
 #############################################################################
 # UTILITY FUNCTIONS
@@ -860,14 +857,14 @@ function Write-StateSummary {
     Write-Host "Tags: $($Tags.Count)" -ForegroundColor White
     if ($Tags.Count -gt 0 -and $Tags.Count -le 20) {
         foreach ($tag in ($Tags | Sort-Object version)) {
-            $shaShort = $tag.sha.Substring(0, 7)
+            $shaShort = if ($tag.sha -and $tag.sha.Length -ge 7) { $tag.sha.Substring(0, 7) } else { "unknown" }
             $versionType = if ($tag.isMajorVersion) { "major" } elseif ($tag.isMinorVersion) { "minor" } else { "patch" }
             Write-Host "  $($tag.version) -> $shaShort ($versionType)" -ForegroundColor Gray
         }
     } elseif ($Tags.Count -gt 20) {
         Write-Host "  (showing first 10 of $($Tags.Count) tags)" -ForegroundColor Gray
         foreach ($tag in ($Tags | Sort-Object version | Select-Object -First 10)) {
-            $shaShort = $tag.sha.Substring(0, 7)
+            $shaShort = if ($tag.sha -and $tag.sha.Length -ge 7) { $tag.sha.Substring(0, 7) } else { "unknown" }
             $versionType = if ($tag.isMajorVersion) { "major" } elseif ($tag.isMinorVersion) { "minor" } else { "patch" }
             Write-Host "  $($tag.version) -> $shaShort ($versionType)" -ForegroundColor Gray
         }
@@ -875,9 +872,16 @@ function Write-StateSummary {
     
     Write-Host ""
     Write-Host "Branches: $($Branches.Count)" -ForegroundColor White
-    if ($Branches.Count -gt 0) {
+    if ($Branches.Count -gt 0 -and $Branches.Count -le 15) {
         foreach ($branch in ($Branches | Sort-Object version)) {
-            $shaShort = $branch.sha.Substring(0, 7)
+            $shaShort = if ($branch.sha -and $branch.sha.Length -ge 7) { $branch.sha.Substring(0, 7) } else { "unknown" }
+            $versionType = if ($branch.isMajorVersion) { "major" } elseif ($branch.isMinorVersion) { "minor" } else { "patch" }
+            Write-Host "  $($branch.version) -> $shaShort ($versionType)" -ForegroundColor Gray
+        }
+    } elseif ($Branches.Count -gt 15) {
+        Write-Host "  (showing first 10 of $($Branches.Count) branches)" -ForegroundColor Gray
+        foreach ($branch in ($Branches | Sort-Object version | Select-Object -First 10)) {
+            $shaShort = if ($branch.sha -and $branch.sha.Length -ge 7) { $branch.sha.Substring(0, 7) } else { "unknown" }
             $versionType = if ($branch.isMajorVersion) { "major" } elseif ($branch.isMinorVersion) { "minor" } else { "patch" }
             Write-Host "  $($branch.version) -> $shaShort ($versionType)" -ForegroundColor Gray
         }
