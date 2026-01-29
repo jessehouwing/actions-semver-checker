@@ -73,6 +73,12 @@ class PublishReleaseAction : RemediationAction {
     [string]$TagName
     [int]$ReleaseId
     
+    PublishReleaseAction([string]$tagName) : base("Publish release", $tagName) {
+        $this.TagName = $tagName
+        $this.ReleaseId = 0  # Will be looked up if needed
+        $this.Priority = 40  # Publish after creation
+    }
+    
     PublishReleaseAction([string]$tagName, [int]$releaseId) : base("Publish release", $tagName) {
         $this.TagName = $tagName
         $this.ReleaseId = $releaseId

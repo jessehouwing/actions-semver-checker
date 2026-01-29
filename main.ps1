@@ -501,8 +501,12 @@ foreach ($tagVersion in $tagVersions)
             
             $issue.ManualFixCommand = $fixCmd
             $issue.IsAutoFixable = $true
-            # Use RemediationAction class
-            $issue.RemediationAction = [DeleteBranchAction]::new($tagVersion.version)
+            # Use RemediationAction class - determine action based on keepBranch
+            if ($keepBranch) {
+                $issue.RemediationAction = [DeleteTagAction]::new($tagVersion.version)
+            } else {
+                $issue.RemediationAction = [DeleteBranchAction]::new($tagVersion.version)
+            }
             
             if (-not $autoFix)
             {
@@ -613,13 +617,18 @@ if ($checkReleases -ne "none")
                 
                 $issue = [ValidationIssue]::new("missing_release", $messageType, "Version $($tagVersion.version) does not have a GitHub Release")
                 $issue.Version = $tagVersion.version
+                $issue.IsAutoFixable = $true
+                $issue.RemediationAction = [CreateReleaseAction]::new($tagVersion.version, $true)
                 $State.AddIssue($issue)
                 
-                # Setup auto-fix action for creating and publishing release
-                $issue.IsAutoFixable = $true
-                # Use RemediationAction class - create draft release action
-                # Note: Publishing is handled separately by the remediation framework
-                $issue.RemediationAction = [CreateReleaseAction]::new($tagVersion.version, $true)
+                # If release immutability checking is enabled, also create a follow-up action to publish the draft
+                if ($checkReleaseImmutability -ne "none") {
+                    $publishIssue = [ValidationIssue]::new("unpublished_draft", "info", "Draft release $($tagVersion.version) needs to be published")
+                    $publishIssue.Version = $tagVersion.version
+                    $publishIssue.IsAutoFixable = $true
+                    $publishIssue.RemediationAction = [PublishReleaseAction]::new($tagVersion.version)  # ReleaseId will be looked up
+                    $State.AddIssue($publishIssue)
+                }
                 
                 if (-not $autoFix)
                 {
@@ -886,9 +895,8 @@ foreach ($majorVersion in $majorVersions)
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
-            $issue.IsAutoFixable = $true
-            # Use RemediationAction class - this creates a branch to replace the tag
-            $issue.RemediationAction = [CreateBranchAction]::new("v$($majorVersion.major)", $majorSha)
+            # Note: Not auto-fixable - requires creating branch AND deleting tag in sequence
+            $issue.IsAutoFixable = $false
             
             if (-not $autoFix)
             {
@@ -908,10 +916,8 @@ foreach ($majorVersion in $majorVersions)
             $issue.ManualFixCommand = $fixCmd
             $State.AddIssue($issue)
             
-            $issue.IsAutoFixable = $true
-            # Use RemediationAction class - this creates a branch to replace the tag (complex multi-step)
-            # Note: The full fix requires creating branch AND deleting tag - handled by remediation framework
-            $issue.RemediationAction = [CreateBranchAction]::new("v$($majorVersion.major).$($highestMinor.minor)", $minorSha)
+            # Note: Not auto-fixable - requires creating branch AND deleting tag in sequence
+            $issue.IsAutoFixable = $false
             
             if (-not $autoFix)
             {
