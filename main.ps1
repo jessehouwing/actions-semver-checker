@@ -607,6 +607,51 @@ function New-GitHubDraftRelease
     }
 }
 
+function Publish-GitHubRelease
+{
+    param(
+        [string]$TagName
+    )
+    
+    try {
+        # Use the pre-obtained repo info
+        if (-not $script:repoInfo) {
+            return $false
+        }
+        
+        # First, get the release ID for this tag
+        $headers = Get-ApiHeaders -Token $script:token
+        $releasesUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/tags/$TagName"
+        
+        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+            $releaseResponse = Invoke-WebRequestWrapper -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+        } else {
+            $releaseResponse = Invoke-RestMethod -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+        }
+        
+        $releaseId = $releaseResponse.id
+        
+        # Update the release to publish it (set draft to false)
+        $updateUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/releases/$releaseId"
+        $body = @{
+            draft = $false
+        } | ConvertTo-Json
+        
+        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+            $response = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+        } else {
+            $response = Invoke-WebRequest -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+        }
+        
+        return $true
+    }
+    catch {
+        # Wrap exception message in stop-commands to prevent workflow command injection
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to publish release for $TagName : "
+        return $false
+    }
+}
+
 # Get repository info for URLs
 $script:repoInfo = Get-GitHubRepoInfo
 
@@ -864,12 +909,31 @@ if ($checkReleases -ne "none")
                         Write-Host "✓ Success: $fixDescription"
                         $script:fixedIssues++
                         
-                        # Log message about manual publishing requirement
-                        $editUrl = "$($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
-                        Write-Host "::warning title=Manual action required::The draft release $($tagVersion.version) must be published manually due to marketplace requirements. Edit and publish at: $editUrl"
+                        # Now try to publish the draft release
+                        $publishDescription = "Publish draft release for $($tagVersion.version)"
+                        Write-Host "Auto-fix: $publishDescription"
+                        $publishSuccess = Publish-GitHubRelease -TagName $tagVersion.version
                         
-                        # Note: We don't add this to suggestedCommands because the draft was created successfully
-                        # The user just needs to manually publish it via the UI
+                        if ($publishSuccess)
+                        {
+                            Write-Host "✓ Success: $publishDescription"
+                            $script:fixedIssues++
+                        }
+                        else
+                        {
+                            Write-Host "✗ Failed: $publishDescription"
+                            $script:failedFixes++
+                            
+                            # Log message about manual publishing requirement
+                            $editUrl = "$($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                            Write-Host "::warning title=Manual action required::The draft release $($tagVersion.version) must be published manually. Edit and publish at: $editUrl"
+                            
+                            if ($script:repoInfo) {
+                                $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($tagVersion.version)"
+                            } else {
+                                $suggestedCommands += "gh release edit $($tagVersion.version) --draft=false"
+                            }
+                        }
                     }
                     else
                     {
@@ -909,14 +973,42 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
         {
             if ($release.isDraft)
             {
-                $script:unfixableIssues++
                 $messageType = if ($checkReleaseImmutability -eq "error") { "error" } else { "warning" }
                 $messageFunc = if ($checkReleaseImmutability -eq "error") { "write-actions-error" } else { "write-actions-warning" }
                 & $messageFunc "::$messageType title=Draft release::Release $($release.tagName) is still in draft status, making it mutable. Publish the release to make it immutable."
-                if ($script:repoInfo) {
-                    $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($release.tagName)"
-                } else {
-                    $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
+                
+                # Try to auto-fix by publishing the draft release
+                if ($autoFix)
+                {
+                    $publishDescription = "Publish draft release for $($release.tagName)"
+                    Write-Host "Auto-fix: $publishDescription"
+                    $publishSuccess = Publish-GitHubRelease -TagName $release.tagName
+                    
+                    if ($publishSuccess)
+                    {
+                        Write-Host "✓ Success: $publishDescription"
+                        $script:fixedIssues++
+                    }
+                    else
+                    {
+                        Write-Host "✗ Failed: $publishDescription"
+                        $script:failedFixes++
+                        
+                        if ($script:repoInfo) {
+                            $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($release.tagName)"
+                        } else {
+                            $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
+                        }
+                    }
+                }
+                else
+                {
+                    $script:unfixableIssues++
+                    if ($script:repoInfo) {
+                        $suggestedCommands += "gh release edit $($release.tagName) --draft=false  # Or edit at: $($script:repoInfo.Url)/releases/edit/$($release.tagName)"
+                    } else {
+                        $suggestedCommands += "gh release edit $($release.tagName) --draft=false"
+                    }
                 }
             }
             else
