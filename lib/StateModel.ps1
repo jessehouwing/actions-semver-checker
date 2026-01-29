@@ -123,7 +123,7 @@ class ValidationIssue {
     [bool]$IsAutoFixable
     [string]$FixCategory  # "create_tag", "update_tag", "delete_release", etc.
     [string]$ManualFixCommand
-    [scriptblock]$AutoFixAction
+    [object]$RemediationAction  # RemediationAction instance
     [string[]]$Dependencies  # Other issues that must be fixed first
     [string]$Status       # "pending", "fixed", "failed", "unfixable"
     

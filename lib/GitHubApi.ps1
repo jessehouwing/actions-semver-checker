@@ -313,13 +313,13 @@ function New-GitHubDraftRelease
         
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            $releaseObj = $response.Content | ConvertFrom-Json
         } else {
-            $responseObj = Invoke-RestMethod -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-            $response = $responseObj
+            $releaseObj = Invoke-RestMethod -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         }
         
         # Return the release ID so it can be used for publishing
-        return $response.id
+        return $releaseObj.id
     }
     catch {
         # Wrap exception message in stop-commands to prevent workflow command injection

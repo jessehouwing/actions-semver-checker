@@ -1,0 +1,181 @@
+BeforeAll {
+    # Import the remediation actions module
+    . "$PSScriptRoot/StateModel.ps1"
+    . "$PSScriptRoot/Logging.ps1"
+    . "$PSScriptRoot/GitHubApi.ps1"
+    . "$PSScriptRoot/RemediationActions.ps1"
+}
+
+Describe "RemediationAction Classes" {
+    BeforeEach {
+        $script:state = [RepositoryState]::new()
+        $script:state.RepoOwner = "test-owner"
+        $script:state.RepoName = "test-repo"
+        $script:state.ApiUrl = "https://api.github.com"
+        $script:state.ServerUrl = "https://github.com"
+        $script:state.Token = "test-token"
+    }
+    
+    Context "CreateTagAction" {
+        It "Should create action with correct properties" {
+            $action = [CreateTagAction]::new("v1.0.0", "abc123")
+            
+            $action.TagName | Should -Be "v1.0.0"
+            $action.Sha | Should -Be "abc123"
+            $action.Priority | Should -Be 20
+            $action.Description | Should -Be "Create tag"
+            $action.Version | Should -Be "v1.0.0"
+        }
+        
+        It "Should generate correct manual commands" {
+            $action = [CreateTagAction]::new("v1.0.0", "abc123")
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 1
+            $commands[0] | Should -Match "git push origin abc123:refs/tags/v1.0.0"
+        }
+    }
+    
+    Context "UpdateTagAction" {
+        It "Should create action with force flag" {
+            $action = [UpdateTagAction]::new("v1.0.0", "abc123", $true)
+            
+            $action.TagName | Should -Be "v1.0.0"
+            $action.Sha | Should -Be "abc123"
+            $action.Force | Should -Be $true
+            $action.Priority | Should -Be 20
+        }
+        
+        It "Should generate correct manual commands with force" {
+            $action = [UpdateTagAction]::new("v1.0.0", "abc123", $true)
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 1
+            $commands[0] | Should -Match "--force"
+        }
+        
+        It "Should generate correct manual commands without force" {
+            $action = [UpdateTagAction]::new("v1.0.0", "abc123", $false)
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 1
+            $commands[0] | Should -Not -Match "--force"
+        }
+    }
+    
+    Context "DeleteTagAction" {
+        It "Should have highest priority (delete first)" {
+            $action = [DeleteTagAction]::new("v1.0.0")
+            
+            $action.Priority | Should -Be 10
+        }
+        
+        It "Should generate correct manual commands" {
+            $action = [DeleteTagAction]::new("v1.0.0")
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 2
+            $commands[0] | Should -Match "git tag -d v1.0.0"
+            $commands[1] | Should -Match "git push origin :refs/tags/v1.0.0"
+        }
+    }
+    
+    Context "CreateReleaseAction" {
+        It "Should create action for draft release" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $true)
+            
+            $action.TagName | Should -Be "v1.0.0"
+            $action.IsDraft | Should -Be $true
+            $action.Priority | Should -Be 30
+        }
+        
+        It "Should generate correct manual commands" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $true)
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 1
+            $commands[0] | Should -Match "gh release create v1.0.0 --draft"
+        }
+    }
+    
+    Context "PublishReleaseAction" {
+        It "Should create action with release ID" {
+            $action = [PublishReleaseAction]::new("v1.0.0", 12345)
+            
+            $action.TagName | Should -Be "v1.0.0"
+            $action.ReleaseId | Should -Be 12345
+            $action.Priority | Should -Be 40
+        }
+        
+        It "Should generate correct manual commands" {
+            $action = [PublishReleaseAction]::new("v1.0.0", 12345)
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 1
+            $commands[0] | Should -Match "gh release edit v1.0.0 --draft=false"
+        }
+    }
+    
+    Context "DeleteReleaseAction" {
+        It "Should have high priority (delete early)" {
+            $action = [DeleteReleaseAction]::new("v1.0.0", 12345)
+            
+            $action.Priority | Should -Be 10
+        }
+        
+        It "Should generate correct manual commands" {
+            $action = [DeleteReleaseAction]::new("v1.0.0", 12345)
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 1
+            $commands[0] | Should -Match "gh release delete v1.0.0 --yes"
+        }
+    }
+    
+    Context "Priority Ordering" {
+        It "Should order actions correctly by priority" {
+            $actions = @(
+                [CreateTagAction]::new("v1.0.0", "abc123"),           # Priority 20
+                [PublishReleaseAction]::new("v1.0.0", 12345),        # Priority 40
+                [DeleteTagAction]::new("v1.0.0"),                     # Priority 10
+                [CreateReleaseAction]::new("v1.0.0", $true),         # Priority 30
+                [UpdateTagAction]::new("v1.0.0", "def456", $true)    # Priority 20
+            )
+            
+            $sorted = $actions | Sort-Object -Property Priority
+            
+            # First should be delete (priority 10)
+            $sorted[0].GetType().Name | Should -Be "DeleteTagAction"
+            # Then creates/updates (priority 20)
+            $sorted[1].Priority | Should -Be 20
+            $sorted[2].Priority | Should -Be 20
+            # Then create release (priority 30)
+            $sorted[3].GetType().Name | Should -Be "CreateReleaseAction"
+            # Finally publish (priority 40)
+            $sorted[4].GetType().Name | Should -Be "PublishReleaseAction"
+        }
+    }
+    
+    Context "Branch Actions" {
+        It "Should create branch action" {
+            $action = [CreateBranchAction]::new("v1", "abc123")
+            
+            $action.BranchName | Should -Be "v1"
+            $action.Sha | Should -Be "abc123"
+            $action.Priority | Should -Be 20
+        }
+        
+        It "Should generate correct branch commands" {
+            $action = [CreateBranchAction]::new("v1", "abc123")
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands[0] | Should -Match "git push origin abc123:refs/heads/v1"
+        }
+        
+        It "Should delete branch with high priority" {
+            $action = [DeleteBranchAction]::new("v1")
+            
+            $action.Priority | Should -Be 10
+        }
+    }
+}
