@@ -19,6 +19,7 @@ class VersionRef {
     [bool]$IsMinor
     [bool]$IsMajor
     [bool]$IsPrerelease
+    [bool]$IsIgnored      # Whether this version is in the ignore-versions list
     [int]$Major
     [int]$Minor
     [int]$Patch
@@ -81,6 +82,7 @@ class ReleaseInfo {
     [bool]$IsDraft
     [bool]$IsPrerelease
     [bool]$IsImmutable
+    [bool]$IsIgnored      # Whether this release's tag is in the ignore-versions list
     [int]$Id
     [string]$HtmlUrl
     
@@ -351,8 +353,10 @@ function Write-RepositoryStateSummary {
             $shaShort = if ($sha -and $sha.Length -ge 7) { $sha.Substring(0, 7) } else { "unknown" }
             $isMajor = $tag.isMajorVersion ?? $tag.IsMajor
             $isMinor = $tag.isMinorVersion ?? $tag.IsMinor
+            $isIgnored = $tag.isIgnored ?? $tag.IsIgnored
             $typeLabel = if ($isMajor) { "major" } elseif ($isMinor) { "minor" } else { "patch" }
-            Write-Host "  $version -> $shaShort ($typeLabel)" -ForegroundColor Gray
+            $ignoredStr = if ($isIgnored) { " [ignored]" } else { "" }
+            Write-Host "  $version -> $shaShort ($typeLabel)$ignoredStr" -ForegroundColor Gray
         }
     }
     Write-Host ""
@@ -371,8 +375,10 @@ function Write-RepositoryStateSummary {
             $shaShort = if ($sha -and $sha.Length -ge 7) { $sha.Substring(0, 7) } else { "unknown" }
             $isMajor = $branch.isMajorVersion ?? $branch.IsMajor
             $isMinor = $branch.isMinorVersion ?? $branch.IsMinor
+            $isIgnored = $branch.isIgnored ?? $branch.IsIgnored
             $typeLabel = if ($isMajor) { "major" } elseif ($isMinor) { "minor" } else { "patch" }
-            Write-Host "  $version -> $shaShort ($typeLabel)" -ForegroundColor Gray
+            $ignoredStr = if ($isIgnored) { " [ignored]" } else { "" }
+            Write-Host "  $version -> $shaShort ($typeLabel)$ignoredStr" -ForegroundColor Gray
         }
     }
     Write-Host ""
@@ -390,9 +396,11 @@ function Write-RepositoryStateSummary {
             $isDraft = $release.isDraft ?? $release.IsDraft
             $isPrerelease = $release.isPrerelease ?? $release.IsPrerelease
             $isImmutable = $release.isImmutable ?? $release.IsImmutable
+            $isIgnored = $release.isIgnored ?? $release.IsIgnored
             $status = @()
             if ($isDraft) { $status += "draft" }
             if ($isPrerelease) { $status += "prerelease" }
+            if ($isIgnored) { $status += "ignored" }
             $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
             $immutableSymbol = if ($isImmutable) { "🔒" } else { "🔓" }
             Write-Host "  $immutableSymbol $tagName$statusStr" -ForegroundColor Gray

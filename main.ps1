@@ -458,9 +458,10 @@ $releaseMap = @{}
 if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none" -or $ignorePreviewReleases) -and $repoInfo)
 {
     $releases = Get-GitHubReleases -State $script:State
-    # Create a map for quick lookup
+    # Create a map for quick lookup and set isIgnored property
     foreach ($release in $releases)
     {
+        $release.isIgnored = Test-VersionIgnored -Version $release.tagName -IgnoreVersions $ignoreVersions
         $releaseMap[$release.tagName] = $release
     }
 }
@@ -544,10 +545,8 @@ if ($apiLatestBranch -and $apiLatestBranch.Count -gt 0) {
 
 foreach ($branch in $branches)
 {
-    # Skip ignored versions
-    if (Test-VersionIgnored -Version $branch -IgnoreVersions $ignoreVersions) {
-        continue
-    }
+    # Check if this version should be ignored
+    $isIgnored = Test-VersionIgnored -Version $branch -IgnoreVersions $ignoreVersions
     
     # Determine if this is a patch version (vX.Y.Z) or a floating version (vX or vX.Y)
     # Strip any prerelease suffix (e.g., -beta) before counting parts
@@ -571,6 +570,7 @@ foreach ($branch in $branches)
         isPatchVersion = $isPatchVersion
         isMinorVersion = $isMinorVersion
         isMajorVersion = $isMajorVersion
+        isIgnored = $isIgnored
     }
 }
 
@@ -578,15 +578,22 @@ foreach ($branch in $branches)
 foreach ($tv in $tagVersions) {
     $vr = [VersionRef]::new($tv.version, $tv.ref, $tv.sha, "tag")
     $vr.IsPrerelease = $tv.isPrerelease
+    $vr.IsIgnored = $tv.isIgnored
     $script:State.Tags += $vr
 }
 foreach ($bv in $branchVersions) {
     $vr = [VersionRef]::new($bv.version, $bv.ref, $bv.sha, "branch")
+    $vr.IsIgnored = $bv.isIgnored
     $script:State.Branches += $vr
 }
 
 foreach ($tagVersion in $tagVersions)
 {
+    # Skip ignored versions
+    if ($tagVersion.isIgnored) {
+        continue
+    }
+    
     $branchVersion = $branchVersions | Where-Object{ $_.version -eq $tagVersion.version } | Select-Object -First 1
 
     if ($branchVersion)
@@ -674,6 +681,12 @@ Write-Host "::debug::Validating floating versions. Total versions: $($allVersion
 
 foreach ($version in $allVersions)
 {
+    # Skip ignored versions
+    if ($version.isIgnored) {
+        Write-Host "::debug::Skipping ignored version $($version.version)"
+        continue
+    }
+    
     Write-Host "::debug::Checking version $($version.version) - isMajor:$($version.isMajorVersion) isMinor:$($version.isMinorVersion) isPatch:$($version.isPatchVersion)"
     
     if ($version.isMajorVersion)
@@ -715,6 +728,11 @@ if ($checkReleases -ne "none")
     
     foreach ($tagVersion in $tagVersions)
     {
+        # Skip ignored versions
+        if ($tagVersion.isIgnored) {
+            continue
+        }
+        
         # Only check patch versions (vX.Y.Z format with 3 parts) - floating versions don't need releases
         if ($tagVersion.isPatchVersion)
         {
@@ -744,6 +762,12 @@ if ($checkReleaseImmutability -ne "none" -and $releases.Count -gt 0)
 {
     foreach ($release in $releases)
     {
+        # Skip ignored releases
+        if ($release.isIgnored) {
+            Write-Host "::debug::Skipping ignored release $($release.tagName)"
+            continue
+        }
+        
         # Only check releases for patch versions (vX.Y.Z format)
         if ($release.tagName -match "^v\d+\.\d+\.\d+$")
         {
@@ -793,6 +817,12 @@ if (($checkReleases -ne "none" -or $checkReleaseImmutability -ne "none") -and $r
 {
     foreach ($release in $releases)
     {
+        # Skip ignored releases
+        if ($release.isIgnored) {
+            Write-Host "::debug::Skipping ignored floating version release $($release.tagName)"
+            continue
+        }
+        
         # Check if this is a floating version (vX, vX.Y, or "latest")
         $isFloatingVersion = $release.tagName -match "^v\d+$" -or $release.tagName -match "^v\d+\.\d+$" -or $release.tagName -eq "latest"
         
@@ -875,6 +905,12 @@ foreach ($majorVersion in $majorVersions)
         Where-Object{ $_.version -eq "v$($majorVersion.major)" } | 
         Select-Object -First 1
     $majorSha = $majorVersion_obj.sha
+    
+    # Skip if this major version is ignored
+    if ($majorVersion_obj -and $majorVersion_obj.isIgnored) {
+        Write-Host "::debug::Skipping ignored major version v$($majorVersion.major)"
+        continue
+    }
     
     # If no minor versions exist for this major version, we need to create v{major}.0.0 and v{major}.0
     if (-not $highestMinor)
