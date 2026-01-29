@@ -766,19 +766,32 @@ function New-GitHubRef
             return $true
         }
         catch {
-            # If update failed (ref doesn't exist), try to create it
-            $createUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/refs"
-            $createBody = @{
-                ref = $RefName
-                sha = $Sha
-            } | ConvertTo-Json
-            
-            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $createResponse = Invoke-WebRequestWrapper -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-            } else {
-                $createResponse = Invoke-RestMethod -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            # Check if this is a 404 error (ref doesn't exist)
+            $is404 = $false
+            if ($_.Exception.Response) {
+                $statusCode = $_.Exception.Response.StatusCode.value__
+                $is404 = ($statusCode -eq 404)
             }
-            return $true
+            
+            # Only try to create if the ref doesn't exist (404 error)
+            if ($is404) {
+                $createUrl = "$script:apiUrl/repos/$($script:repoInfo.Owner)/$($script:repoInfo.Repo)/git/refs"
+                $createBody = @{
+                    ref = $RefName
+                    sha = $Sha
+                } | ConvertTo-Json
+                
+                if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                    $createResponse = Invoke-WebRequestWrapper -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+                } else {
+                    $createResponse = Invoke-RestMethod -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+                }
+                return $true
+            }
+            else {
+                # Re-throw the error if it's not a 404
+                throw
+            }
         }
     }
     catch {
