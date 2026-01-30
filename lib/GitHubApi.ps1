@@ -80,6 +80,40 @@ function Get-ApiHeaders
     return $headers
 }
 
+function Throw-GitHubApiFailure
+{
+    param(
+        [Parameter(Mandatory)]
+        [string]$Operation,
+        [Parameter(Mandatory)]
+        $ErrorRecord
+    )
+
+    $detailMessage = $null
+    $statusCode = $null
+
+    if ($ErrorRecord -is [System.Management.Automation.ErrorRecord]) {
+        if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
+            $detailMessage = $ErrorRecord.ErrorDetails.Message
+        } elseif ($ErrorRecord.Exception -and $ErrorRecord.Exception.Message) {
+            $detailMessage = $ErrorRecord.Exception.Message
+        }
+
+        if ($ErrorRecord.Exception -and $ErrorRecord.Exception.Response) {
+            $statusCode = $ErrorRecord.Exception.Response.StatusCode.value__
+        }
+    }
+
+    if (-not $detailMessage) {
+        $detailMessage = [string]$ErrorRecord
+    }
+
+    $statusSuffix = if ($statusCode) { " (HTTP $statusCode)" } else { "" }
+    Write-SafeOutput -Message $detailMessage -Prefix "::error::GitHub API request failed during $Operation$statusSuffix. "
+
+    throw "GitHub API request failed during $Operation$statusSuffix"
+}
+
 function Get-GitHubRepoInfo
 {
     param(
@@ -157,9 +191,7 @@ query(`$owner: String!, `$name: String!, `$tag: String!) {
         return $false
     }
     catch {
-        Write-Verbose "Failed to check release immutability: $_"
-        # If API call fails, assume not immutable
-        return $false
+        Throw-GitHubApiFailure -Operation "release immutability check for $Tag" -ErrorRecord $_
     }
 }
 
@@ -229,8 +261,7 @@ function Get-GitHubReleases
         return $allReleases
     }
     catch {
-        # Silently fail if API is not accessible
-        return @()
+        Throw-GitHubApiFailure -Operation "fetching releases" -ErrorRecord $_
     }
 }
 
@@ -318,7 +349,7 @@ function Get-GitHubTags
                         $sha = $tagObj.object.sha
                     }
                     catch {
-                        Write-Host "::debug::Failed to dereference annotated tag $tagName, using tag object SHA"
+                        Throw-GitHubApiFailure -Operation "dereferencing annotated tag $tagName" -ErrorRecord $_
                     }
                 }
                 
@@ -347,8 +378,7 @@ function Get-GitHubTags
         return $allTags
     }
     catch {
-        Write-Host "::debug::Failed to fetch tags via API: $_"
-        return @()
+        Throw-GitHubApiFailure -Operation "fetching tags" -ErrorRecord $_
     }
 }
 
@@ -436,8 +466,7 @@ function Get-GitHubBranches
         return $allBranches
     }
     catch {
-        Write-Host "::debug::Failed to fetch branches via API: $_"
-        return @()
+        Throw-GitHubApiFailure -Operation "fetching branches" -ErrorRecord $_
     }
 }
 
@@ -509,15 +538,24 @@ function Get-GitHubRef
                 $sha = $tagObj.object.sha
             }
             catch {
-                Write-Host "::debug::Failed to dereference annotated tag $RefName"
+                Throw-GitHubApiFailure -Operation "dereferencing annotated ref $RefName" -ErrorRecord $_
             }
         }
         
         return $sha
     }
     catch {
-        Write-Host "::debug::Ref $RefType/$RefName not found: $_"
-        return $null
+        $statusCode = $null
+        if ($_.Exception -and $_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
+
+        if ($statusCode -eq 404) {
+            Write-Host "::debug::Ref $RefType/$RefName not found"
+            return $null
+        }
+
+        Throw-GitHubApiFailure -Operation "fetching ref $RefType/$RefName" -ErrorRecord $_
     }
 }
 
