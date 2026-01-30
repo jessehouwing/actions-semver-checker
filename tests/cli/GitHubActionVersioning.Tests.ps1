@@ -1,5 +1,5 @@
 BeforeAll {
-    # Suppress progress reporting for folder cleanup operations (must be global scope)
+    # Suppress progress bars for cleaner test output (affects all operations in test session)
     $global:ProgressPreference = 'SilentlyContinue'
 
     # Import the module

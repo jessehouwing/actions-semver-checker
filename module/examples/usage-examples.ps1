@@ -93,11 +93,11 @@ Write-Host ""
 Write-Host "Example 6: Custom validation configuration" -ForegroundColor Green
 Write-Host @"
 Command:
-  Test-GitHubActionVersioning -Repository 'owner/repo' ``
-    -CheckMinorVersion 'warning' ``
-    -CheckReleases 'error' ``
-    -CheckReleaseImmutability 'none' ``
-    -IgnorePreviewReleases `$false ``
+  Test-GitHubActionVersioning -Repository 'owner/repo' `
+    -CheckMinorVersion 'warning' `
+    -CheckReleases 'error' `
+    -CheckReleaseImmutability 'none' `
+    -IgnorePreviewReleases `$false `
     -FloatingVersionsUse 'branches'
 "@ -ForegroundColor Gray
 Write-Host ""

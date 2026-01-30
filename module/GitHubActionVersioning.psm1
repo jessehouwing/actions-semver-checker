@@ -154,13 +154,7 @@ function Test-GitHubActionVersioning
     if (-not $Repository) {
         Write-ActionsError -Message "Repository not specified. Provide -Repository parameter or set GITHUB_REPOSITORY environment variable." -State $state
         if ($PassThru) {
-            return @{
-                Issues = $state.Issues
-                FixedCount = 0
-                FailedCount = 0
-                UnfixableCount = 0
-                ReturnCode = 1
-            }
+            return New-ErrorResult -State $state
         }
         return 1
     }
@@ -170,13 +164,7 @@ function Test-GitHubActionVersioning
     if ($parts.Count -ne 2 -or -not $parts[0] -or -not $parts[1]) {
         Write-ActionsError -Message "Invalid repository format. Expected 'owner/repo', got '$Repository'" -State $state
         if ($PassThru) {
-            return @{
-                Issues = $state.Issues
-                FixedCount = 0
-                FailedCount = 0
-                UnfixableCount = 0
-                ReturnCode = 1
-            }
+            return New-ErrorResult -State $state
         }
         return 1
     }
@@ -220,8 +208,8 @@ function Test-GitHubActionVersioning
     # Resolve API URLs
     #############################################################################
     
-    $state.ApiUrl = if ($ApiUrl) { $ApiUrl } else { $env:GITHUB_API_URL ?? "https://api.github.com" }
-    $state.ServerUrl = if ($ServerUrl) { $ServerUrl } else { $env:GITHUB_SERVER_URL ?? "https://github.com" }
+    $state.ApiUrl = if ($ApiUrl) { $ApiUrl } elseif ($env:GITHUB_API_URL) { $env:GITHUB_API_URL } else { "https://api.github.com" }
+    $state.ServerUrl = if ($ServerUrl) { $ServerUrl } elseif ($env:GITHUB_SERVER_URL) { $env:GITHUB_SERVER_URL } else { "https://github.com" }
     
     #############################################################################
     # Configure State
@@ -239,13 +227,7 @@ function Test-GitHubActionVersioning
     if ($AutoFix -and -not $Token) {
         Write-ActionsError -Message "Auto-fix mode requires a GitHub token. Provide -Token or ensure GITHUB_TOKEN is set." -State $state
         if ($PassThru) {
-            return @{
-                Issues = $state.Issues
-                FixedCount = 0
-                FailedCount = 0
-                UnfixableCount = 0
-                ReturnCode = 1
-            }
+            return New-ErrorResult -State $state
         }
         return 1
     }
@@ -286,13 +268,7 @@ function Test-GitHubActionVersioning
     catch {
         Write-ActionsError -Message "Failed to fetch repository data: $_" -State $state
         if ($PassThru) {
-            return @{
-                Issues = $state.Issues
-                FixedCount = 0
-                FailedCount = 0
-                UnfixableCount = 0
-                ReturnCode = 1
-            }
+            return New-ErrorResult -State $state
         }
         return 1
     }
@@ -423,3 +399,19 @@ function Test-GitHubActionVersioning
 
 # Export the cmdlet
 Export-ModuleMember -Function Test-GitHubActionVersioning
+
+# Helper function for creating error result
+function New-ErrorResult {
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State
+    )
+    
+    return @{
+        Issues = $State.Issues
+        FixedCount = 0
+        FailedCount = 0
+        UnfixableCount = 0
+        ReturnCode = 1
+    }
+}

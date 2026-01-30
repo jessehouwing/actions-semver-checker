@@ -49,10 +49,6 @@ function Write-ActionsError
         $issue = [ValidationIssue]::new("error", "error", $Message)
         $State.AddIssue($issue)
     }
-    else {
-        # Fallback for test harness compatibility
-        $global:returnCode = 1
-    }
 }
 
 function Write-ActionsWarning
