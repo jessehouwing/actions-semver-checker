@@ -153,12 +153,17 @@ function Read-ActionInputs {
         return $null
     }
     
-    # Parse token
-    $token = $inputs.token ?? $State.Token
+    # Parse token (treat empty/whitespace as not provided)
+    $tokenInput = $inputs.token
+    if ([string]::IsNullOrWhiteSpace($tokenInput)) {
+        $token = $State.Token
+    } else {
+        $token = $tokenInput
+    }
     
     # SECURITY: Mask the token if it was provided via input (may be different from env var)
-    if ($inputs.token -and $inputs.token -ne $env:GITHUB_TOKEN) {
-        Write-Host "::add-mask::$($inputs.token)"
+    if (-not [string]::IsNullOrWhiteSpace($tokenInput) -and $tokenInput -ne $env:GITHUB_TOKEN) {
+        Write-Host "::add-mask::$($tokenInput)"
     }
     
     # Parse check levels
