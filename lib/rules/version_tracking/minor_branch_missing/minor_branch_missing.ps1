@@ -77,7 +77,7 @@ $Rule_MinorBranchMissing = [ValidationRule]@{
         $issue = [ValidationIssue]::new(
             "missing_minor_version",
             $severity,
-            "Minor version branch $version is missing but patch versions exist"
+            "Minor version branch $version does not exist. It should point to $($highestPatch.Version) at $($highestPatch.Sha)"
         )
         $issue.Version = $version
         $issue.ExpectedSha = $highestPatch.Sha

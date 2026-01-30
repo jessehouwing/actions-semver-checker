@@ -57,7 +57,7 @@ $Rule_MajorBranchMissing = [ValidationRule]@{
         $issue = [ValidationIssue]::new(
             "missing_major_version",
             "error",
-            "Major version branch $version is missing but patch versions exist"
+            "Major version branch $version does not exist. It should point to $($highestPatch.Version) at $($highestPatch.Sha)"
         )
         $issue.Version = $version
         $issue.ExpectedSha = $highestPatch.Sha

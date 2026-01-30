@@ -155,6 +155,105 @@ Describe "minor_tag_missing" {
             $result[0].Major | Should -Be 1
             $result[0].Minor | Should -Be 0
         }
+        
+        It "should return v{major}.0 when major tag exists without patches" {
+            $state = [RepositoryState]::new()
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "major123", "tag")
+            # No v1.x.x patches exist
+            $state.IgnoreVersions = @()
+            
+            $config = @{ 
+                'floating-versions-use' = 'tags'
+                'check-minor-version' = 'error'
+            }
+            $result = & $Rule_MinorTagMissing.Condition $state $config
+            
+            $result.Count | Should -Be 1
+            $result[0].Major | Should -Be 1
+            $result[0].Minor | Should -Be 0
+            $result[0].SourceSha | Should -Be "major123"
+        }
+        
+        It "should not return v{major}.0 when major tag has patches" {
+            $state = [RepositoryState]::new()
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "major123", "tag")
+            $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "patch456", "tag")
+            # Patch exists, so Case 1 applies - missing minor should be from patch, not major tag
+            $state.IgnoreVersions = @()
+            
+            $config = @{ 
+                'floating-versions-use' = 'tags'
+                'check-minor-version' = 'error'
+            }
+            $result = & $Rule_MinorTagMissing.Condition $state $config
+            
+            # Should still find v1.0 missing from Case 1 (patch exists)
+            $result.Count | Should -Be 1
+            $result[0].Major | Should -Be 1
+            $result[0].Minor | Should -Be 0
+            # Case 1 doesn't set SourceSha (it uses highestPatch lookup in CreateIssue)
+            $result[0].PSObject.Properties.Name | Should -Not -Contain "SourceSha"
+            
+            # Verify CreateIssue uses patch SHA (v1.0.0), not major tag SHA (v1)
+            $config.'ignore-preview-releases' = $true
+            $issue = & $Rule_MinorTagMissing.CreateIssue $result[0] $state $config
+            $issue.ExpectedSha | Should -Be "patch456"
+            $issue.RemediationAction.Sha | Should -Be "patch456"
+        }
+        
+        It "should not return v{major}.0 when minor tag already exists" {
+            $state = [RepositoryState]::new()
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "major123", "tag")
+            $state.Tags += [VersionRef]::new("v1.0", "refs/tags/v1.0", "minor456", "tag")
+            # Major tag exists, minor tag exists, no patches
+            $state.IgnoreVersions = @()
+            
+            $config = @{ 
+                'floating-versions-use' = 'tags'
+                'check-minor-version' = 'error'
+            }
+            $result = & $Rule_MinorTagMissing.Condition $state $config
+            
+            $result.Count | Should -Be 0
+        }
+        
+        It "should handle multiple major tags without patches" {
+            $state = [RepositoryState]::new()
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "major1", "tag")
+            $state.Tags += [VersionRef]::new("v2", "refs/tags/v2", "major2", "tag")
+            # No patches for either major
+            $state.IgnoreVersions = @()
+            
+            $config = @{ 
+                'floating-versions-use' = 'tags'
+                'check-minor-version' = 'error'
+            }
+            $result = & $Rule_MinorTagMissing.Condition $state $config
+            
+            $result.Count | Should -Be 2
+            $v1Result = $result | Where-Object { $_.Major -eq 1 }
+            $v2Result = $result | Where-Object { $_.Major -eq 2 }
+            $v1Result.Minor | Should -Be 0
+            $v1Result.SourceSha | Should -Be "major1"
+            $v2Result.Minor | Should -Be 0
+            $v2Result.SourceSha | Should -Be "major2"
+        }
+        
+        It "should skip ignored major tags" {
+            $state = [RepositoryState]::new()
+            $ignoredMajor = [VersionRef]::new("v1", "refs/tags/v1", "major123", "tag")
+            $ignoredMajor.IsIgnored = $true
+            $state.Tags += $ignoredMajor
+            $state.IgnoreVersions = @("v1")
+            
+            $config = @{ 
+                'floating-versions-use' = 'tags'
+                'check-minor-version' = 'error'
+            }
+            $result = & $Rule_MinorTagMissing.Condition $state $config
+            
+            $result.Count | Should -Be 0
+        }
     }
     
     Context "CreateIssue" {
@@ -210,6 +309,49 @@ Describe "minor_tag_missing" {
             
             $issue.RemediationAction.TagName | Should -Be "v2.1"
             $issue.RemediationAction.Sha | Should -Be "new456"
+        }
+        
+        It "should use SourceSha when major tag exists without patches" {
+            $state = [RepositoryState]::new()
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "major123", "tag")
+            # No patches exist
+            $state.IgnoreVersions = @()
+            
+            # Item from Condition includes SourceSha for major tag case
+            $item = [PSCustomObject]@{ Major = 1; Minor = 0; SourceSha = "major123" }
+            $config = @{ 
+                'ignore-preview-releases' = $true
+                'check-minor-version' = 'error'
+            }
+            
+            $issue = & $Rule_MinorTagMissing.CreateIssue $item $state $config
+            
+            $issue.Type | Should -Be "missing_minor_version"
+            $issue.Version | Should -Be "v1.0"
+            $issue.ExpectedSha | Should -Be "major123"
+            $issue.RemediationAction.TagName | Should -Be "v1.0"
+            $issue.RemediationAction.Sha | Should -Be "major123"
+        }
+        
+        It "should fallback to major tag lookup when no SourceSha and no patches" {
+            $state = [RepositoryState]::new()
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "major123", "tag")
+            # No patches exist
+            $state.IgnoreVersions = @()
+            
+            # Item without SourceSha (edge case - shouldn't normally happen with updated Condition)
+            $item = [PSCustomObject]@{ Major = 1; Minor = 0 }
+            $config = @{ 
+                'ignore-preview-releases' = $true
+                'check-minor-version' = 'error'
+            }
+            
+            $issue = & $Rule_MinorTagMissing.CreateIssue $item $state $config
+            
+            $issue.Type | Should -Be "missing_minor_version"
+            $issue.Version | Should -Be "v1.0"
+            $issue.ExpectedSha | Should -Be "major123"
+            $issue.RemediationAction.Sha | Should -Be "major123"
         }
     }
     

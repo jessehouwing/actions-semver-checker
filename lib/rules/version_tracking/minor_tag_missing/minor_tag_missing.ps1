@@ -23,36 +23,61 @@ $Rule_MinorTagMissing = [ValidationRule]@{
             return @()
         }
         
-        # Get all unique major.minor numbers from patch versions
         $allRefs = $State.Tags + $State.Branches
         $patchVersions = $allRefs | Where-Object { $_.IsPatch -and -not $_.IsIgnored }
         
-        if ($patchVersions.Count -eq 0) {
-            return @()
+        $missingMinors = @()
+        
+        # Case 1: Get all unique major.minor numbers from existing patch versions
+        if ($patchVersions.Count -gt 0) {
+            # Group by major.minor
+            $minorNumbers = $patchVersions | ForEach-Object { 
+                [PSCustomObject]@{
+                    Major = $_.Major
+                    Minor = $_.Minor
+                }
+            } | Group-Object -Property { "$($_.Major).$($_.Minor)" } | ForEach-Object {
+                $parts = $_.Name -split '\.'
+                [PSCustomObject]@{
+                    Major = [int]$parts[0]
+                    Minor = [int]$parts[1]
+                }
+            } | Sort-Object { $_.Major }, { $_.Minor }
+            
+            # Find which minor versions don't have a minor tag
+            foreach ($minorVersion in $minorNumbers) {
+                $minorTag = $State.Tags | Where-Object { 
+                    $_.Version -eq "v$($minorVersion.Major).$($minorVersion.Minor)" 
+                }
+                if ($null -eq $minorTag) {
+                    $missingMinors += $minorVersion
+                }
+            }
         }
         
-        # Group by major.minor
-        $minorNumbers = $patchVersions | ForEach-Object { 
-            [PSCustomObject]@{
-                Major = $_.Major
-                Minor = $_.Minor
+        # Case 2: Major version tags without any patches need v{major}.0 minor tag
+        # This handles the case where v1 exists but no v1.x.x patches exist yet
+        $majorTags = $State.Tags | Where-Object { $_.IsMajor -and -not $_.IsIgnored }
+        foreach ($majorTag in $majorTags) {
+            $major = $majorTag.Major
+            
+            # Check if any patches exist for this major version
+            $hasPatches = $patchVersions | Where-Object { $_.Major -eq $major }
+            if ($hasPatches) {
+                continue  # Case 1 handles this
             }
-        } | Group-Object -Property { "$($_.Major).$($_.Minor)" } | ForEach-Object {
-            $parts = $_.Name -split '\.'
-            [PSCustomObject]@{
-                Major = [int]$parts[0]
-                Minor = [int]$parts[1]
-            }
-        } | Sort-Object { $_.Major }, { $_.Minor }
-        
-        # Find which minor versions don't have a minor tag
-        $missingMinors = @()
-        foreach ($minorVersion in $minorNumbers) {
+            
+            # Check if v{major}.0 minor tag already exists
             $minorTag = $State.Tags | Where-Object { 
-                $_.Version -eq "v$($minorVersion.Major).$($minorVersion.Minor)" 
+                $_.Version -eq "v$major.0" 
             }
             if ($null -eq $minorTag) {
-                $missingMinors += $minorVersion
+                # Add v{major}.0 as missing - use major tag's SHA as source
+                $missingMinors += [PSCustomObject]@{
+                    Major = $major
+                    Minor = 0
+                    SourceSha = $majorTag.Sha  # Store SHA from major tag for CreateIssue
+                }
             }
         }
         
@@ -67,9 +92,28 @@ $Rule_MinorTagMissing = [ValidationRule]@{
     CreateIssue = { param([PSCustomObject]$Item, [RepositoryState]$State, [hashtable]$Config)
         $version = "v$($Item.Major).$($Item.Minor)"
         
-        # Get the highest patch for this minor version to determine the SHA
+        # Get the SHA - either from highest patch or from the SourceSha (major tag)
         $ignorePreviewReleases = $Config.'ignore-preview-releases'
         $highestPatch = Get-HighestPatchForMinor -State $State -Major $Item.Major -Minor $Item.Minor -ExcludePrereleases $ignorePreviewReleases
+        
+        $targetSha = $null
+        $targetVersion = $null
+        
+        if ($highestPatch) {
+            $targetSha = $highestPatch.Sha
+            $targetVersion = $highestPatch.Version
+        } elseif ($Item.SourceSha) {
+            # No patches exist - use the SHA from the major tag
+            $targetSha = $Item.SourceSha
+            $targetVersion = "v$($Item.Major)"
+        } else {
+            # Fallback: look up major tag SHA
+            $majorTag = $State.Tags | Where-Object { $_.Version -eq "v$($Item.Major)" } | Select-Object -First 1
+            if ($majorTag) {
+                $targetSha = $majorTag.Sha
+                $targetVersion = $majorTag.Version
+            }
+        }
         
         $checkMinorVersion = $Config.'check-minor-version'
         $severity = if ($checkMinorVersion -eq 'warning') { 'warning' } else { 'error' }
@@ -77,11 +121,11 @@ $Rule_MinorTagMissing = [ValidationRule]@{
         $issue = [ValidationIssue]::new(
             "missing_minor_version",
             $severity,
-            "Minor version tag $version is missing but patch versions exist"
+            "Minor version tag $version does not exist. It should point to $targetVersion at $targetSha"
         )
         $issue.Version = $version
-        $issue.ExpectedSha = $highestPatch.Sha
-        $issue.RemediationAction = [CreateTagAction]::new($version, $highestPatch.Sha)
+        $issue.ExpectedSha = $targetSha
+        $issue.RemediationAction = [CreateTagAction]::new($version, $targetSha)
         
         return $issue
     }

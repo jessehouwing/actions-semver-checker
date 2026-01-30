@@ -58,7 +58,7 @@ $Rule_MajorTagMissing = [ValidationRule]@{
         $issue = [ValidationIssue]::new(
             "missing_major_version",
             "error",
-            "$version does not exist but should point to $($highestPatch.Version) at $($highestPatch.Sha)"
+            "$version does not exist. It should point to $($highestPatch.Version) at $($highestPatch.Sha)"
         )
         $issue.Version = $version
         $issue.ExpectedSha = $highestPatch.Sha
