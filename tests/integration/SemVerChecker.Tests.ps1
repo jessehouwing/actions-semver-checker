@@ -4,6 +4,7 @@ BeforeAll {
     
     # Disable API retries for faster test execution
     $env:GITHUB_API_DISABLE_RETRY = 'true'
+    $env:GITHUB_API_ALLOW_GIT_FALLBACK = 'true'
     
     # Create a temporary git repository for testing
     $script:testRepoPath = Join-Path $TestDrive "test-repo"
@@ -217,6 +218,7 @@ AfterAll {
     Set-Location $script:originalLocation
     # Clean up environment variables
     Remove-Item Env:GITHUB_API_DISABLE_RETRY -ErrorAction SilentlyContinue
+    Remove-Item Env:GITHUB_API_ALLOW_GIT_FALLBACK -ErrorAction SilentlyContinue
     Remove-Item Env:GITHUB_REPOSITORY -ErrorAction SilentlyContinue
 }
 
