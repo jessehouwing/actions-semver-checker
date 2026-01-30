@@ -51,12 +51,11 @@ $Rule_ReleaseShouldBeImmutable = [ValidationRule]@{
     
     CreateIssue = { param([ReleaseInfo]$ReleaseInfo, [RepositoryState]$State, [hashtable]$Config)
         $version = $ReleaseInfo.TagName
-        
-        # Note: This is always a warning since it requires repository settings to be enabled
-        # and cannot be fixed by just republishing if the setting is not enabled
+
+        $severity = if ($Config.'check-release-immutability' -eq 'warning') { 'warning' } else { 'error' }
         $issue = [ValidationIssue]::new(
             "non_immutable_release",
-            "warning",
+            $severity,
             "Release $version is published but not immutable (repository 'Release immutability' setting may not be enabled)"
         )
         $issue.Version = $version

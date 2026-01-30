@@ -223,7 +223,7 @@ Describe "release_should_be_immutable" {
     }
     
     Context "CreateIssue" {
-        It "should create issue with warning severity" {
+        It "should create issue with error severity when configured as error" {
             $releaseData = [PSCustomObject]@{
                 tag_name = "v1.0.0"
                 id = 123
@@ -239,10 +239,29 @@ Describe "release_should_be_immutable" {
             $issue = & $Rule_ReleaseShouldBeImmutable.CreateIssue $releaseInfo $state $config
             
             $issue.Type | Should -Be "non_immutable_release"
-            $issue.Severity | Should -Be "warning"
+            $issue.Severity | Should -Be "error"
             $issue.Message | Should -BeLike "*v1.0.0*"
             $issue.RemediationAction | Should -Not -BeNullOrEmpty
             $issue.RemediationAction.GetType().Name | Should -Be "RepublishReleaseAction"
+        }
+
+        It "should create issue with warning severity when configured as warning" {
+            $releaseData = [PSCustomObject]@{
+                tag_name = "v1.0.1"
+                id = 124
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.1"
+                target_commitish = "abc124"
+            }
+            $releaseInfo = [ReleaseInfo]::new($releaseData)
+            $state = [RepositoryState]::new()
+            $config = @{ 'check-release-immutability' = 'warning' }
+
+            $issue = & $Rule_ReleaseShouldBeImmutable.CreateIssue $releaseInfo $state $config
+
+            $issue.Type | Should -Be "non_immutable_release"
+            $issue.Severity | Should -Be "warning"
         }
         
         It "should configure RepublishReleaseAction with tag name" {
