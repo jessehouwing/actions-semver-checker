@@ -115,8 +115,7 @@ Describe "New-GitHubRef" {
                 throw $mockException
             }
 
-            Mock Invoke-WebRequestWrapper $throw403
-            Mock Invoke-RestMethod $throw403
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $throw403
 
             $result = New-GitHubRef -State $state -RefName "refs/tags/v1.0.0" -Sha "abc123" -Force $false
 
@@ -125,6 +124,9 @@ Describe "New-GitHubRef" {
             $result.ErrorOutput | Should -Match "git fallback is disabled"
         }
         finally {
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
             Pop-Location
         }
     }
