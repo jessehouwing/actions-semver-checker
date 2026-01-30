@@ -72,25 +72,18 @@ This strategy balances **stability** (pinned versions never change) with **conve
 - ✅ Provides suggested commands to fix any issues with direct links to GitHub release pages
 - ✅ Optional auto-fix mode to automatically update version tags/branches
 - ✅ **NEW in v2:** No checkout required - uses GitHub REST API exclusively
-- ✅ **NEW:** Ignore specific versions from validation (useful for legacy versions)
-- ✅ **NEW:** Auto-fix automatically republishes non-immutable releases to make them immutable (when `check-release-immutability` is enabled)
-- ✅ **NEW:** Retry logic with exponential backoff for better reliability
+- ✅ Ignore specific versions from validation (useful for legacy versions)
+- ✅ Auto-fix automatically republishes non-immutable releases to make them immutable (when `check-release-immutability` is enabled)
+- ✅ Retry logic with exponential backoff for better reliability
 
 Example output:
 
 > ### Annotations
 >
-> 🔴 Incorrect version
+> 🔴 Manual Remediation Required
 > ```
 > Version: v1 ref 59499a44cd4482b68a7e989a5e7dd781414facfa must match: v1.0.6 ref 1a13fd188ebef96fb179faedfabcc8de5cb6189d
-> ```
-> 
-> 🔴 Incorrect version
-> ```
 > Version: v1.0 ref 59499a44cd4482b68a7e989a5e7dd781414facfa must match: v1.0.6 ref 1a13fd188ebef96fb179faedfabcc8de5cb6189d
-> ```
-> 🔴 Incorrect version
-> ```
 > Version: latest ref 59499a44cd4482b68a7e989a5e7dd781414facfa must match: v1.0.6 ref 1a13fd188ebef96fb179faedfabcc8de5cb6189d
 > ```
 
@@ -124,7 +117,7 @@ The action uses a modular rule-based validation system. Each rule can be configu
 | `patch_release_required` | Ensures every patch version has a GitHub Release | [📖 Details](lib/rules/releases/patch_release_required/README.md) |
 | `release_should_be_published` | Validates that releases are published, not drafts | [📖 Details](lib/rules/releases/release_should_be_published/README.md) |
 | `release_should_be_immutable` | Ensures releases are truly immutable | [📖 Details](lib/rules/releases/release_should_be_immutable/README.md) |
-| `floating_version_no_release` | Warns when floating versions point to commits without releases | [📖 Details](lib/rules/releases/floating_version_no_release/README.md) |
+| `floating_version_no_release` | Warns when a release exists for a floating version | [📖 Details](lib/rules/releases/floating_version_no_release/README.md) |
 
 ### Version Tracking Rules
 
@@ -348,10 +341,6 @@ This indicates the token lacks `workflows` permission. Follow one of the options
 
 ```yaml  
 - uses: jessehouwing/actions-semver-checker@v2
-  with:
-    # Configures warnings for minor versions.
-    # Default: true
-    check-minor-version: 'error'
 ```
 
 ## Configuration Options
@@ -372,6 +361,11 @@ GitHub token for API access. If not provided, falls back to the GITHUB_TOKEN env
 
 Configures whether to check minor versions (e.g., `v1.0`) in addition to major versions.
 
+**Options:** `error`, `warning`, or `none`
+- `error` or `true`: Report as error and fail the action
+- `warning`: Report as warning but don't fail
+- `none` or `false`: Skip this check entirely
+
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
   with:
@@ -384,9 +378,9 @@ Configures whether to check minor versions (e.g., `v1.0`) in addition to major v
 Check that every build version (e.g., `v1.0.0`) has a corresponding GitHub Release.
 
 **Options:** `error`, `warning`, or `none`
-- `error`: Report as error and fail the action
+- `error` or `true`: Report as error and fail the action
 - `warning`: Report as warning but don't fail
-- `none`: Skip this check entirely
+- `none` or `false`: Skip this check entirely
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
@@ -400,9 +394,9 @@ Check that every build version (e.g., `v1.0.0`) has a corresponding GitHub Relea
 Check that releases are immutable (not in draft status). Draft releases allow tag changes, making them mutable.
 
 **Options:** `error`, `warning`, or `none`
-- `error`: Report as error and fail the action
+- `error` or `true`: Report as error and fail the action
 - `warning`: Report as warning but don't fail
-- `none`: Skip this check entirely
+- `none` or `false`: Skip this check entirely
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
@@ -461,11 +455,10 @@ jobs:
 **Note:** 
 - Auto-fix handles all operations via REST API (no checkout required)
 - When `check-release-immutability` is set to `error` or `warning` (default), auto-fix will also automatically republish non-immutable releases to make them immutable
-- GitHub Release creation for new versions must be done manually (auto-fix creates draft releases only)
 
 **Auto-fix behavior for releases:**
 When `auto-fix: true` is enabled and `check-release-immutability` is set to `error` or `warning`:
-1. Creates draft releases for missing patch versions (vX.Y.Z)
+1. Creates releases for missing patch versions (vX.Y.Z)
 2. Attempts to publish draft releases automatically
 3. **Republishes non-immutable releases** by temporarily converting them to draft and publishing again to make them immutable
 
@@ -525,6 +518,8 @@ on:
 
 jobs:
   check-semver:
+    permissions:
+      contents: read
     concurrency:
       group: '${{ github.workflow }}'
       cancel-in-progress: true
@@ -537,7 +532,7 @@ jobs:
           check-release-immutability: 'true'
 ```
 
-### Auto-fix with Branches
+### Auto-fix enabled
 
 ```yaml
 name: Auto-fix SemVer
@@ -555,7 +550,7 @@ jobs:
     steps:
       - uses: jessehouwing/actions-semver-checker@v2
         with:
-          floating-versions-use: 'branches'
+          token: ${{ secrets.GITHUB_TOKEN }}
           auto-fix: 'true'
 ```
 
@@ -576,7 +571,7 @@ jobs:
       - uses: jessehouwing/actions-semver-checker@v2
         with:
           check-releases: 'error'
-          # ignore-preview-releases: true (default)
+          ignore-preview-releases: false
 ```
 
 ## Suggested Fixes
@@ -588,9 +583,6 @@ When issues are detected, the action provides specific commands to fix them, inc
 gh release create v1.0.0 --draft --title "v1.0.0" --notes "Release v1.0.0"
 gh release edit v1.0.0 --draft=false  # Or edit at: https://github.com/{owner}/{repo}/releases/edit/v1.0.0
 ```
-
-**Note:** Creating releases as drafts first is important to maintain immutability checks. The action provides direct links to the GitHub release edit page for convenience.
-
 ### Updating Version Tags
 ```bash
 git push origin <sha>:refs/tags/v1 --force
@@ -607,7 +599,7 @@ git push origin <sha>:refs/heads/latest --force
 ## Permissions
 
 ### Read-only Mode (Default)
-No special permissions required. The action only checks and reports issues.
+Requires `contents: read` permission to retrieve tags, branches and releases.
 
 ### Auto-fix Mode
 Requires `contents: write` permission to push tag/branch updates:
@@ -727,90 +719,6 @@ actions-semver-checker/
         ├── ConvertTagToBranchAction/
         └── ConvertBranchToTagAction/
 ```
-
-### Domain Model
-
-**RepositoryState** (single source of truth):
-- **Tags/Branches**: `VersionRef[]` with semantic parsing
-- **Releases**: `ReleaseInfo[]` with immutability status
-- **Issues**: `ValidationIssue[]` with lifecycle tracking
-- **Configuration**: All action inputs stored as properties
-- **Calculated metrics**: Counts derived from issue statuses
-
-**ValidationIssue statuses**:
-- `pending` → Not yet processed
-- `fixed` → Auto-fix succeeded
-- `failed` → Auto-fix failed (retryable)
-- `unfixable` → Cannot be fixed (e.g., HTTP 422 from deleted immutable release)
-- `manual_fix_required` → Needs human intervention
-
-**ValidationRule structure**:
-- `Name` → Unique identifier
-- `Description` → Human-readable description
-- `Priority` → Execution order (5-40, lower runs first)
-- `Category` → Grouping (ref_type, releases, version_tracking, latest)
-- `Condition` → Filter items to validate
-- `Check` → Determine if item is valid
-- `CreateIssue` → Generate ValidationIssue with RemediationAction
-
-### Design Principles
-
-1. **Rule-Based Validation**: All checks implemented as modular rules that can be independently configured
-2. **Single Source of Truth**: All state tracked in `RepositoryState` domain model
-3. **Status-Based Calculation**: Metrics calculated on-demand (no manual counters)
-4. **Separation of Concerns**: Each module and rule has a single, well-defined responsibility
-5. **Priority-Based Execution**: Rules execute in priority order to handle dependencies correctly
-6. **Action Composition**: Complex fixes composed from simple, reusable actions
-7. **Zero Breaking Changes**: 100% backward compatibility maintained across versions
-
-### Validation Flow
-
-```
-1. Initialize
-   ├── Parse inputs from environment (JSON from action.yaml)
-   ├── Create RepositoryState with configuration
-   └── Load all validation rules from lib/rules/
-
-2. Collect State (GitHub REST API)
-   ├── Get-GitHubTags → VersionRef[] array
-   ├── Get-GitHubBranches → VersionRef[] array
-   └── Get-GitHubReleases → ReleaseInfo[] array (with pagination)
-
-3. Load Rules
-   ├── Scan lib/rules/ recursively for *.ps1 files
-   ├── Load ValidationRule objects from each file
-   └── Sort by Priority, then Name
-
-4. Execute Validation Rules
-   For each rule (in priority order):
-   ├── Evaluate Condition → Get items to validate
-   ├── Execute Check → Test if each item is valid
-   ├── Call CreateIssue → Generate ValidationIssue + RemediationAction
-   └── Add issues to State.Issues[]
-
-5. Remediate (if auto-fix enabled)
-   ├── Group actions by Priority (lower = runs first)
-   ├── Execute each RemediationAction via GitHub API
-   ├── Update issue status (fixed/failed/unfixable)
-   ├── Handle HTTP 422 → Mark as unfixable
-   └── Generate manual commands for failed/unfixable issues
-
-6. Report
-   ├── Display summary with counts by status
-   ├── Show fixed issues (when auto-fix succeeded)
-   ├── Show failed/unfixable issues with manual commands
-   ├── Write GitHub Actions annotations (::error::, ::warning::)
-   └── Exit with code 0 (success) or 1 (errors found)
-```
-
-### Rule and Action Discovery
-
-Rules and actions are automatically discovered at runtime:
-- **Rules**: All `*.ps1` files in `lib/rules/` (excluding `*.Tests.ps1`)
-- **Actions**: Referenced by rules in `ValidationIssue.RemediationAction` property
-- **Execution Order**: Rules sorted by `Priority` property, actions by their own `Priority`
-
-This allows adding new rules without modifying main.ps1 - just create a new rule file in the appropriate category directory.
 
 ### Contributing
 
