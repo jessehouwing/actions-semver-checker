@@ -487,8 +487,7 @@ Describe "Read-ActionInputs" {
             $result.Token | Should -Be "custom-token"
         }
 
-        It "Should use empty string when input token is empty (null coalesce behavior)" {
-            # Note: Empty string '' is not null, so ?? does not trigger
+        It "Should fall back to state token when input token is empty" {
             $env:inputs = @{
                 'token' = ''
             } | ConvertTo-Json
@@ -497,9 +496,7 @@ Describe "Read-ActionInputs" {
             
             $result = Read-ActionInputs -State $state
             
-            # The function uses $inputs.token ?? $State.Token
-            # Empty string '' is not null, so state token is not used
-            $result.Token | Should -Be ""
+            $result.Token | Should -Be "state-token"
         }
 
         It "Should fall back to state token when input token is not specified" {
