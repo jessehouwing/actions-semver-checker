@@ -187,6 +187,7 @@ BeforeAll {
             'ignore-versions' = $IgnoreVersions
         }
         $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
+        $env:GITHUB_REPOSITORY = "test-owner/test-repo"
         $global:returnCode = 0
         
         # Define mock function in global scope before running script (unless caller skipped)
@@ -215,8 +216,9 @@ BeforeAll {
 
 AfterAll {
     Set-Location $script:originalLocation
-    # Clean up environment variable
+    # Clean up environment variables
     Remove-Item Env:GITHUB_API_DISABLE_RETRY -ErrorAction SilentlyContinue
+    Remove-Item Env:GITHUB_REPOSITORY -ErrorAction SilentlyContinue
 }
 
 Describe "SemVer Checker" {
