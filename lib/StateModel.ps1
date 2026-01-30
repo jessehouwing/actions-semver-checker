@@ -35,6 +35,19 @@ class VersionRef {
     hidden [void]ParseVersion() {
         # Parse version string to determine type and parts
         $versionStr = $this.Version -replace '^v', ''
+        
+        # Handle non-semver versions like "latest"
+        if ($versionStr -notmatch '^\d') {
+            $this.IsPatch = $false
+            $this.IsMinor = $false
+            $this.IsMajor = $false
+            $this.IsPrerelease = $false
+            $this.Major = 0
+            $this.Minor = 0
+            $this.Patch = 0
+            return
+        }
+        
         $parts = $versionStr -split '\.'
         
         if ($parts.Count -eq 3) {

@@ -239,6 +239,30 @@ git tag v1.0.0  # Create test tags
 git tag v1
 ```
 
+### Efficient Pester Runs
+- Prefer Pester v5 configuration objects; use `New-PesterConfiguration` or simple `-Path` syntax.
+- Always emit logs to disk on every run so failures are inspectable without re-running:
+    - XML: enable `TestResult` with `OutputFormat = 'NUnitXml'` and `OutputPath = './artifacts/pester/results.xml'` (create the folder if absent).
+    - JSON: write results object using `ConvertTo-Json -Depth 10` to `./artifacts/pester/results.json`.
+    - Example (configuration object):
+        ```powershell
+        $logDir = './artifacts/pester'
+        New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+        $config = New-PesterConfiguration
+        $config.Run.Path = './tests'
+        $config.Output.Verbosity = 'Detailed'
+        $config.TestResult.Enabled = $true
+        $config.TestResult.OutputFormat = 'NUnitXml'
+        $config.TestResult.OutputPath = "$logDir/results.xml"
+        $results = Invoke-Pester -Configuration $config
+        $results | ConvertTo-Json -Depth 10 | Set-Content "$logDir/results.json"
+        ```
+    - Example (simple syntax):
+        ```powershell
+        Invoke-Pester -Path ./tests -Output Detailed
+        ```
+- Reuse the same log paths across runs so Copilot can read previous failures directly.
+
 ## Critical Conventions
 
 1. **No `git` commands for tag/branch fetching** - Use `Get-GitHubTags`/`Get-GitHubBranches` from `lib/GitHubApi.ps1`
