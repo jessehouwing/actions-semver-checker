@@ -80,6 +80,40 @@ function Get-ApiHeaders
     return $headers
 }
 
+function Throw-GitHubApiFailure
+{
+    param(
+        [Parameter(Mandatory)]
+        [string]$Operation,
+        [Parameter(Mandatory)]
+        $ErrorRecord
+    )
+
+    $detailMessage = $null
+    $statusCode = $null
+
+    if ($ErrorRecord -is [System.Management.Automation.ErrorRecord]) {
+        if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
+            $detailMessage = $ErrorRecord.ErrorDetails.Message
+        } elseif ($ErrorRecord.Exception -and $ErrorRecord.Exception.Message) {
+            $detailMessage = $ErrorRecord.Exception.Message
+        }
+
+        if ($ErrorRecord.Exception -and $ErrorRecord.Exception.Response) {
+            $statusCode = $ErrorRecord.Exception.Response.StatusCode.value__
+        }
+    }
+
+    if (-not $detailMessage) {
+        $detailMessage = [string]$ErrorRecord
+    }
+
+    $statusSuffix = if ($statusCode) { " (HTTP $statusCode)" } else { "" }
+    Write-SafeOutput -Message $detailMessage -Prefix "::error::GitHub API request failed during $Operation$statusSuffix. "
+
+    throw "GitHub API request failed during $Operation$statusSuffix"
+}
+
 function Get-GitHubRepoInfo
 {
     param(
@@ -144,7 +178,17 @@ query(`$owner: String!, `$name: String!, `$tag: String!) {
             $graphqlUrl = "https://api.github.com/graphql"
         }
         
-        $response = Invoke-RestMethod -Uri $graphqlUrl -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop
+        $response = Invoke-WithRetry -OperationDescription "Release immutability check for $Tag" -ScriptBlock {
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                Invoke-WebRequestWrapper -Uri $graphqlUrl -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            } else {
+                Invoke-RestMethod -Uri $graphqlUrl -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop
+            }
+        }
+
+        if ($response -is [System.Collections.IDictionary] -and $response.ContainsKey('Content')) {
+            $response = $response.Content | ConvertFrom-Json
+        }
         
         # Check if we got a valid response
         if ($response.data.repository.release) {
@@ -157,9 +201,7 @@ query(`$owner: String!, `$name: String!, `$tag: String!) {
         return $false
     }
     catch {
-        Write-Verbose "Failed to check release immutability: $_"
-        # If API call fails, assume not immutable
-        return $false
+        Throw-GitHubApiFailure -Operation "release immutability check for $Tag" -ErrorRecord $_
     }
 }
 
@@ -177,60 +219,107 @@ function Get-GitHubReleases
             return @()
         }
         
-        # Use GitHub REST API to get releases
+        # Use GitHub GraphQL API to get releases with immutability status
+        # This is more efficient than REST API + separate immutability checks
         $headers = Get-ApiHeaders -Token $State.Token
         $allReleases = @()
-        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases?per_page=100"
+        $cursor = $null
+        
+        # Determine GraphQL endpoint from API URL
+        $graphqlUrl = $State.ApiUrl -replace '/api/v3$', '/api/graphql'
+        if ($graphqlUrl -eq $State.ApiUrl) {
+            # Default to public GitHub GraphQL endpoint
+            $graphqlUrl = "https://api.github.com/graphql"
+        }
+        
+        # Construct the GraphQL query
+        $query = @"
+query(`$owner: String!, `$name: String!, `$first: Int!, `$after: String) {
+  repository(owner: `$owner, name: `$name) {
+    releases(first: `$first, after: `$after, orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        databaseId
+        tagName
+        isPrerelease
+        isDraft
+        immutable
+      }
+    }
+  }
+}
+"@
         
         do {
+            $variables = @{
+                owner = $repoInfo.Owner
+                name = $repoInfo.Repo
+                first = 100
+            }
+            
+            if ($cursor) {
+                $variables['after'] = $cursor
+            }
+            
+            $body = @{
+                query = $query
+                variables = $variables
+            } | ConvertTo-Json -Depth 10
+            
             # Use retry logic for transient failures
             $response = Invoke-WithRetry -OperationDescription "Get releases page" -ScriptBlock {
                 # Use a wrapper to allow for test mocking
                 if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                    Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                    Invoke-WebRequestWrapper -Uri $graphqlUrl -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
                 } else {
-                    Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 5
+                    Invoke-RestMethod -Uri $graphqlUrl -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop
                 }
             }
-            $releases = $response.Content | ConvertFrom-Json
             
-            if ($releases.Count -eq 0) {
+            # Handle response format (may be wrapped in Content property for Invoke-WebRequest)
+            if ($response -is [System.Collections.IDictionary] -and $response.ContainsKey('Content')) {
+                $response = $response.Content | ConvertFrom-Json
+            }
+            
+            # Check for GraphQL errors
+            if ($response.errors) {
+                $errorMessages = ($response.errors | ForEach-Object { $_.message }) -join '; '
+                throw "GraphQL errors: $errorMessages"
+            }
+            
+            $releases = $response.data.repository.releases
+            
+            if (-not $releases -or -not $releases.nodes -or $releases.nodes.Count -eq 0) {
                 break
             }
             
             # Collect releases
-            foreach ($release in $releases) {
+            foreach ($release in $releases.nodes) {
                 $allReleases += @{
-                    id = $release.id
-                    tagName = $release.tag_name
-                    isPrerelease = $release.prerelease
-                    isDraft = $release.draft
+                    id = $release.databaseId
+                    tagName = $release.tagName
+                    isPrerelease = $release.isPrerelease
+                    isDraft = $release.isDraft
+                    immutable = $release.immutable
                 }
             }
             
-            # Check for Link header to get next page
-            $linkHeader = $response.Headers['Link']
-            $url = $null
-            
-            if ($linkHeader) {
-                # Parse Link header: <url>; rel="next", <url>; rel="last"
-                # RFC 8288 allows optional whitespace before semicolon
-                $links = $linkHeader -split ','
-                foreach ($link in $links) {
-                    if ($link -match '<([^>]+)>\s*;\s*rel="next"') {
-                        $url = $matches[1]
-                        break
-                    }
-                }
+            # Check if there are more pages
+            if ($releases.pageInfo.hasNextPage) {
+                $cursor = $releases.pageInfo.endCursor
+            } else {
+                $cursor = $null
             }
             
-        } while ($url)
+        } while ($cursor)
         
         return $allReleases
     }
     catch {
-        # Silently fail if API is not accessible
-        return @()
+        Throw-GitHubApiFailure -Operation "fetching releases" -ErrorRecord $_
     }
 }
 
@@ -318,7 +407,7 @@ function Get-GitHubTags
                         $sha = $tagObj.object.sha
                     }
                     catch {
-                        Write-Host "::debug::Failed to dereference annotated tag $tagName, using tag object SHA"
+                        Throw-GitHubApiFailure -Operation "dereferencing annotated tag $tagName" -ErrorRecord $_
                     }
                 }
                 
@@ -347,8 +436,7 @@ function Get-GitHubTags
         return $allTags
     }
     catch {
-        Write-Host "::debug::Failed to fetch tags via API: $_"
-        return @()
+        Throw-GitHubApiFailure -Operation "fetching tags" -ErrorRecord $_
     }
 }
 
@@ -436,8 +524,7 @@ function Get-GitHubBranches
         return $allBranches
     }
     catch {
-        Write-Host "::debug::Failed to fetch branches via API: $_"
-        return @()
+        Throw-GitHubApiFailure -Operation "fetching branches" -ErrorRecord $_
     }
 }
 
@@ -509,15 +596,24 @@ function Get-GitHubRef
                 $sha = $tagObj.object.sha
             }
             catch {
-                Write-Host "::debug::Failed to dereference annotated tag $RefName"
+                Throw-GitHubApiFailure -Operation "dereferencing annotated ref $RefName" -ErrorRecord $_
             }
         }
         
         return $sha
     }
     catch {
-        Write-Host "::debug::Ref $RefType/$RefName not found: $_"
-        return $null
+        $statusCode = $null
+        if ($_.Exception -and $_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
+
+        if ($statusCode -eq 404) {
+            Write-Host "::debug::Ref $RefType/$RefName not found"
+            return $null
+        }
+
+        Throw-GitHubApiFailure -Operation "fetching ref $RefType/$RefName" -ErrorRecord $_
     }
 }
 

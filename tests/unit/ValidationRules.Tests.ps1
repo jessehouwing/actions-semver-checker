@@ -179,6 +179,7 @@ Describe "Helper functions" {
                 draft = $false
                 prerelease = $true
                 html_url = "https://example.com"
+                immutable = $false
             })
 
             $state.Tags = @($tag100, $pre130)
@@ -227,6 +228,7 @@ Describe "Helper functions" {
                 draft = $false
                 prerelease = $true
                 html_url = "https://example.com"
+                immutable = $false
             })
 
             $state.Tags = @($v210, $v220)

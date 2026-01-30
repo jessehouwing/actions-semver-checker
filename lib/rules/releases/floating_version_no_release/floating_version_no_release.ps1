@@ -58,10 +58,7 @@ $Rule_FloatingVersionNoRelease = [ValidationRule]@{
         $version = $ReleaseInfo.TagName
         
         # Check if release is immutable (cannot be deleted)
-        # Use the IsImmutable property from ReleaseInfo (set based on draft status)
-        # For a more accurate check, we could call Test-ReleaseImmutability, but
-        # that would require a GraphQL API call per release
-        $isImmutable = -not $ReleaseInfo.IsDraft
+        $isImmutable = $ReleaseInfo.IsImmutable
         
         if ($isImmutable) {
             # Immutable releases cannot be deleted - mark as unfixable

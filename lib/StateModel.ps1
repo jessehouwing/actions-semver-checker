@@ -95,6 +95,24 @@ class ReleaseInfo {
     [int]$Id
     [string]$HtmlUrl
     
+    # Constructor with separate isImmutable parameter (legacy, for backwards compatibility)
+    ReleaseInfo([PSCustomObject]$apiResponse, [bool]$isImmutable) {
+        $this.TagName = $apiResponse.tag_name
+        $this.Id = $apiResponse.id
+        $this.IsDraft = $apiResponse.draft
+        $this.IsPrerelease = $apiResponse.prerelease
+        $this.HtmlUrl = $apiResponse.html_url
+        
+        # Extract SHA from target_commitish
+        if ($apiResponse.target_commitish) {
+            $this.Sha = $apiResponse.target_commitish
+        }
+        
+        # Set immutability from explicit input
+        $this.IsImmutable = $isImmutable
+    }
+    
+    # Constructor with immutable property in the response object (GraphQL response)
     ReleaseInfo([PSCustomObject]$apiResponse) {
         $this.TagName = $apiResponse.tag_name
         $this.Id = $apiResponse.id
@@ -107,8 +125,12 @@ class ReleaseInfo {
             $this.Sha = $apiResponse.target_commitish
         }
         
-        # Determine immutability
-        $this.IsImmutable = -not $this.IsDraft
+        # Set immutability from response property (if available)
+        if ($null -ne $apiResponse.immutable) {
+            $this.IsImmutable = $apiResponse.immutable
+        } else {
+            $this.IsImmutable = $false
+        }
     }
     
     [string]ToString() {

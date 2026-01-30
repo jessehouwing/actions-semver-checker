@@ -163,6 +163,7 @@ Describe "latest_branch_tracks_global_highest" {
                 prerelease = $true
                 html_url = "https://github.com/test/test/releases/tag/v2.0.0"
                 target_commitish = "prerel456"
+                immutable = $false
             }
             $state.Releases += [ReleaseInfo]::new($prereleaseData)
             
@@ -192,6 +193,7 @@ Describe "latest_branch_tracks_global_highest" {
                 prerelease = $true
                 html_url = "https://github.com/test/test/releases/tag/v2.0.0"
                 target_commitish = "prerel456"
+                immutable = $false
             }
             $state.Releases += [ReleaseInfo]::new($prereleaseData)
             
@@ -220,6 +222,7 @@ Describe "latest_branch_tracks_global_highest" {
                 prerelease = $true
                 html_url = "https://github.com/test/test/releases/tag/v2.0.0"
                 target_commitish = "prerel789"
+                immutable = $false
             }
             $state.Releases += [ReleaseInfo]::new($prereleaseData)
             
