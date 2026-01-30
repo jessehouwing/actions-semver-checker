@@ -50,7 +50,7 @@ jobs:
           path: unit-test-results.xml
 
       - name: Publish Unit Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: EnricoMi/publish-unit-test-result-action@27d65e188ec43221b20d26de30f4892fad91df2f # v2
         if: always()
         with:
           files: unit-test-results.xml
@@ -91,7 +91,7 @@ jobs:
           path: integration-test-results.xml
 
       - name: Publish Integration Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: EnricoMi/publish-unit-test-result-action@27d65e188ec43221b20d26de30f4892fad91df2f # v2
         if: always()
         with:
           files: integration-test-results.xml
@@ -132,7 +132,7 @@ jobs:
           path: e2e-test-results.xml
 
       - name: Publish E2E Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: EnricoMi/publish-unit-test-result-action@27d65e188ec43221b20d26de30f4892fad91df2f # v2
         if: always()
         with:
           files: e2e-test-results.xml
