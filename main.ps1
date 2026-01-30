@@ -169,11 +169,6 @@ foreach ($tag in $tags) {
     $vr = [VersionRef]::new($tag, "refs/tags/$tag", $tagSha, "tag")
     $vr.IsIgnored = $isIgnored
     
-    # Set prerelease status from release data if available
-    if ($inputConfig.IgnorePreviewReleases -and $releaseMap.ContainsKey($tag)) {
-        $vr.IsPrerelease = $releaseMap[$tag].isPrerelease
-    }
-    
     $script:State.Tags += $vr
     Write-Host "::debug::Added tag $tag to State (ignored=$isIgnored)"
 }
