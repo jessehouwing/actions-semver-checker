@@ -86,6 +86,22 @@ function Invoke-ValidationRules {
     return $addedIssues
 }
 
+# Helper function to check if a version is a prerelease by looking up its Release
+function Test-IsPrerelease {
+    param(
+        [Parameter(Mandatory)][RepositoryState]$State,
+        [Parameter(Mandatory)][VersionRef]$VersionRef
+    )
+    
+    # Look up the release for this version
+    $release = $State.Releases | Where-Object { $_.TagName -eq $VersionRef.Version } | Select-Object -First 1
+    
+    # If no release exists, it's not a prerelease
+    if (-not $release) { return $false }
+    
+    return $release.IsPrerelease
+}
+
 function Get-HighestPatchForMajor {
     param(
         [Parameter(Mandatory)][RepositoryState]$State,
@@ -97,7 +113,7 @@ function Get-HighestPatchForMajor {
         $_.IsPatch -and
         -not $_.IsIgnored -and
         $_.Major -eq $Major -and
-        (-not $ExcludePrereleases -or -not $_.IsPrerelease)
+        (-not $ExcludePrereleases -or -not (Test-IsPrerelease -State $State -VersionRef $_))
     }
 
     return $patches | Sort-Object -Property Major, Minor, Patch -Descending | Select-Object -First 1
@@ -116,7 +132,7 @@ function Get-HighestPatchForMinor {
         -not $_.IsIgnored -and
         $_.Major -eq $Major -and
         $_.Minor -eq $Minor -and
-        (-not $ExcludePrereleases -or -not $_.IsPrerelease)
+        (-not $ExcludePrereleases -or -not (Test-IsPrerelease -State $State -VersionRef $_))
     }
 
     return $patches | Sort-Object -Property Major, Minor, Patch -Descending | Select-Object -First 1
@@ -132,7 +148,7 @@ function Get-HighestMinorForMajor {
     $candidates = ($State.Tags + $State.Branches) | Where-Object {
         -not $_.IsIgnored -and
         $_.Major -eq $Major -and
-        (-not $ExcludePrereleases -or -not $_.IsPrerelease)
+        (-not $ExcludePrereleases -or -not (Test-IsPrerelease -State $State -VersionRef $_))
     }
 
     if (-not $candidates) { return $null }

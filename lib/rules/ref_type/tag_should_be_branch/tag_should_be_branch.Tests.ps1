@@ -94,9 +94,37 @@ Describe "tag_should_be_branch" {
     }
     
     Context "Check" {
-        It "always returns false since tag existence is the issue" {
+        It "returns false when tag exists but branch does not" {
             $state = [RepositoryState]::new()
             $tag = [VersionRef]::new("v1", "refs/tags/v1", "abc123", "tag")
+            $state.Tags += $tag
+            $config = @{}
+            
+            $result = & $Rule_TagShouldBeBranch.Check $tag $state $config
+            
+            $result | Should -Be $false
+        }
+        
+        It "returns true when both tag and branch exist (let duplicate rule handle)" {
+            $state = [RepositoryState]::new()
+            $tag = [VersionRef]::new("v1", "refs/tags/v1", "abc123", "tag")
+            $branch = [VersionRef]::new("v1", "refs/heads/v1", "abc123", "branch")
+            $state.Tags += $tag
+            $state.Branches += $branch
+            $config = @{}
+            
+            $result = & $Rule_TagShouldBeBranch.Check $tag $state $config
+            
+            $result | Should -Be $true
+        }
+        
+        It "returns false when tag exists, branch exists but is ignored" {
+            $state = [RepositoryState]::new()
+            $tag = [VersionRef]::new("v1", "refs/tags/v1", "abc123", "tag")
+            $branch = [VersionRef]::new("v1", "refs/heads/v1", "abc123", "branch")
+            $branch.IsIgnored = $true
+            $state.Tags += $tag
+            $state.Branches += $branch
             $config = @{}
             
             $result = & $Rule_TagShouldBeBranch.Check $tag $state $config

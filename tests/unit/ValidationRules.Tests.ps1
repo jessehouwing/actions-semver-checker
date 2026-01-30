@@ -171,10 +171,19 @@ Describe "Helper functions" {
             $tag100 = [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "sha100", "tag")
             $branch120 = [VersionRef]::new("v1.2.0", "refs/heads/v1.2.0", "sha120", "branch")
             $pre130 = [VersionRef]::new("v1.3.0", "refs/tags/v1.3.0", "sha130", "tag")
-            $pre130.IsPrerelease = $true
+            
+            # Mark v1.3.0 as prerelease via its release
+            $release130 = [ReleaseInfo]::new([PSCustomObject]@{
+                tag_name = "v1.3.0"
+                id = 130
+                draft = $false
+                prerelease = $true
+                html_url = "https://example.com"
+            })
 
             $state.Tags = @($tag100, $pre130)
             $state.Branches = @($branch120)
+            $state.Releases = @($release130)
 
             $result = Get-HighestPatchForMajor -State $state -Major 1 -ExcludePrereleases $true
             $result.Version | Should -Be "v1.2.0"
@@ -209,11 +218,20 @@ Describe "Helper functions" {
             $state = [RepositoryState]::new()
             $v210 = [VersionRef]::new("v2.1.0", "refs/tags/v2.1.0", "sha210", "tag")
             $v230 = [VersionRef]::new("v2.3.0", "refs/heads/v2.3.0", "sha230", "branch")
-            $v230.IsPrerelease = $true
             $v220 = [VersionRef]::new("v2.2.5", "refs/tags/v2.2.5", "sha225", "tag")
+            
+            # Mark v2.3.0 as prerelease via its release
+            $release230 = [ReleaseInfo]::new([PSCustomObject]@{
+                tag_name = "v2.3.0"
+                id = 230
+                draft = $false
+                prerelease = $true
+                html_url = "https://example.com"
+            })
 
             $state.Tags = @($v210, $v220)
             $state.Branches = @($v230)
+            $state.Releases = @($release230)
 
             $result = Get-HighestMinorForMajor -State $state -Major 2 -ExcludePrereleases $true
             $result.Version | Should -Be "v2.2.5"

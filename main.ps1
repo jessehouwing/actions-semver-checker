@@ -493,7 +493,6 @@ foreach ($branch in $branches)
 # Populate StateModel with VersionRef objects for typed access
 foreach ($tv in $tagVersions) {
     $vr = [VersionRef]::new($tv.version, $tv.ref, $tv.sha, "tag")
-    $vr.IsPrerelease = $tv.isPrerelease
     $vr.IsIgnored = $tv.isIgnored
     $script:State.Tags += $vr
 }

@@ -32,8 +32,8 @@ main.ps1 (orchestrator) → lib/*.ps1 (modules) → GitHub REST API
 
 ## Core Domain Model (lib/StateModel.ps1)
 
-- **`VersionRef`**: Tag or branch with parsed semantic version (`Major`, `Minor`, `Patch`, `IsPatch`, `IsPrerelease`)
-- **`ReleaseInfo`**: GitHub release with immutability status
+- **`VersionRef`**: Tag or branch with parsed semantic version (`Major`, `Minor`, `Patch`, `IsPatch`, `IsIgnored`)
+- **`ReleaseInfo`**: GitHub release with immutability and prerelease status (`IsPrerelease` from API)
 - **`ValidationIssue`**: Problem found during validation with status (`pending` → `fixed`/`failed`/`unfixable`)
 - **`RepositoryState`**: Central state container with calculated methods (`GetFixedIssuesCount()`, `GetReturnCode()`)
 - **`RemediationAction`**: Base class for auto-fix actions (see `lib/RemediationActions.ps1` for implementations)
@@ -121,6 +121,8 @@ The default `GITHUB_TOKEN` **cannot** perform certain operations:
 | `lib/RemediationActions.ps1` | Concrete fix implementations |
 | `lib/VersionParser.ps1` | Version string parsing utilities |
 | `lib/Logging.ps1` | GitHub Actions-safe output functions |
+| `lib/ValidationRules.ps1` | Rule engine base classes and helpers |
+| `lib/rules/**/*.ps1` | Individual validation rule implementations |
 
 ## RemediationAction Classes
 

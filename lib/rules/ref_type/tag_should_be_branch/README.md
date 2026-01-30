@@ -6,6 +6,8 @@ This rule validates that floating version references (vX, vX.Y) exist as **branc
 
 **Important:** Patch versions (vX.Y.Z) must always remain as tags regardless of this setting, as they need to be immutable and linked to GitHub Releases.
 
+**Note:** This rule only triggers when a tag exists but the corresponding branch does not. If both a tag and branch exist for the same version, a separate duplicate detection rule will handle that scenario.
+
 ## Why This Is An Issue
 
 - **Impact:** When using branches mode, floating versions need to be branches to allow easy updates without force-pushing tags

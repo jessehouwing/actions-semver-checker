@@ -4,6 +4,8 @@
 
 This rule validates that floating version references (vX, vX.Y) and patch versions (vX.Y.Z) exist as **tags** rather than branches when the action is configured to use tags for floating versions.
 
+**Note:** This rule only triggers when a branch exists but the corresponding tag does not. If both a branch and tag exist for the same version, a separate duplicate detection rule will handle that scenario.
+
 ## Why This Is An Issue
 
 - **Impact:** GitHub Actions users expect floating versions to be tags by default, as this is the standard convention for GitHub Actions versioning

@@ -18,7 +18,6 @@ class VersionRef {
     [bool]$IsPatch
     [bool]$IsMinor
     [bool]$IsMajor
-    [bool]$IsPrerelease
     [bool]$IsIgnored      # Whether this version is in the ignore-versions list
     [int]$Major
     [int]$Minor
@@ -41,7 +40,6 @@ class VersionRef {
             $this.IsPatch = $false
             $this.IsMinor = $false
             $this.IsMajor = $false
-            $this.IsPrerelease = $false
             $this.Major = 0
             $this.Minor = 0
             $this.Patch = 0
@@ -74,9 +72,7 @@ class VersionRef {
             $this.Minor = 0
             $this.Patch = 0
         }
-        
-        # Check for prerelease indicators
-        $this.IsPrerelease = $this.Version -match '-(alpha|beta|rc|preview|pre)'
+        # Note: Prerelease status is determined from the GitHub Release API, not version suffix
     }
     
     [string]ToString() {

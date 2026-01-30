@@ -26,10 +26,15 @@ $Rule_BranchShouldBeTag = [ValidationRule]@{
         }
     }
     
-    # Check: Branch should not exist for this version type
+    # Check: Branch should not exist for this version type AND tag should not already exist
     Check = {
         param([VersionRef]$Branch, [RepositoryState]$State, [hashtable]$Config)
-        # If the branch exists and we got here, it's wrong
+        # If a tag already exists for this version, let duplicate rule handle it
+        $tagExists = $State.Tags | Where-Object { $_.Version -eq $Branch.Version -and -not $_.IsIgnored }
+        if ($tagExists) {
+            return $true  # Pass check - let duplicate rule handle this
+        }
+        # Branch exists but tag doesn't - this is wrong
         return $false
     }
     
