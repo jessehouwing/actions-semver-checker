@@ -32,8 +32,8 @@ main.ps1 (orchestrator) → lib/*.ps1 (modules) → GitHub REST API
 
 ## Core Domain Model (lib/StateModel.ps1)
 
-- **`VersionRef`**: Tag or branch with parsed semantic version (`Major`, `Minor`, `Patch`, `IsPatch`, `IsPrerelease`)
-- **`ReleaseInfo`**: GitHub release with immutability status
+- **`VersionRef`**: Tag or branch with parsed semantic version (`Major`, `Minor`, `Patch`, `IsPatch`, `IsIgnored`)
+- **`ReleaseInfo`**: GitHub release with immutability and prerelease status (`IsPrerelease` from API)
 - **`ValidationIssue`**: Problem found during validation with status (`pending` → `fixed`/`failed`/`unfixable`)
 - **`RepositoryState`**: Central state container with calculated methods (`GetFixedIssuesCount()`, `GetReturnCode()`)
 - **`RemediationAction`**: Base class for auto-fix actions (see `lib/RemediationActions.ps1` for implementations)
@@ -121,6 +121,8 @@ The default `GITHUB_TOKEN` **cannot** perform certain operations:
 | `lib/RemediationActions.ps1` | Concrete fix implementations |
 | `lib/VersionParser.ps1` | Version string parsing utilities |
 | `lib/Logging.ps1` | GitHub Actions-safe output functions |
+| `lib/ValidationRules.ps1` | Rule engine base classes and helpers |
+| `lib/rules/**/*.ps1` | Individual validation rule implementations |
 
 ## RemediationAction Classes
 
@@ -238,6 +240,30 @@ Initialize-TestRepo -Path $script:testRepoPath -WithRemote
 git tag v1.0.0  # Create test tags
 git tag v1
 ```
+
+### Efficient Pester Runs
+- Prefer Pester v5 configuration objects; use `New-PesterConfiguration` or simple `-Path` syntax.
+- Always emit logs to disk on every run so failures are inspectable without re-running:
+    - XML: enable `TestResult` with `OutputFormat = 'NUnitXml'` and `OutputPath = './artifacts/pester/results.xml'` (create the folder if absent).
+    - JSON: write results object using `ConvertTo-Json -Depth 10` to `./artifacts/pester/results.json`.
+    - Example (configuration object):
+        ```powershell
+        $logDir = './artifacts/pester'
+        New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+        $config = New-PesterConfiguration
+        $config.Run.Path = './tests'
+        $config.Output.Verbosity = 'Detailed'
+        $config.TestResult.Enabled = $true
+        $config.TestResult.OutputFormat = 'NUnitXml'
+        $config.TestResult.OutputPath = "$logDir/results.xml"
+        $results = Invoke-Pester -Configuration $config
+        $results | ConvertTo-Json -Depth 10 | Set-Content "$logDir/results.json"
+        ```
+    - Example (simple syntax):
+        ```powershell
+        Invoke-Pester -Path ./tests -Output Detailed
+        ```
+- Reuse the same log paths across runs so Copilot can read previous failures directly.
 
 ## Critical Conventions
 

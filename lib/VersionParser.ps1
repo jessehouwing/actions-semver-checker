@@ -106,3 +106,46 @@ function Test-ValidVersionPattern
     
     return $false
 }
+
+function Test-VersionIgnored {
+    <#
+    .SYNOPSIS
+    Check if a version should be ignored based on the ignore-versions configuration.
+    
+    .PARAMETER Version
+    The version string to check (e.g., "v1.0.0").
+    
+    .PARAMETER IgnoreVersions
+    Array of version patterns to ignore.
+    
+    .OUTPUTS
+    Returns $true if the version should be ignored, $false otherwise.
+    #>
+    param(
+        [string]$Version,
+        [string[]]$IgnoreVersions
+    )
+    
+    if (-not $IgnoreVersions -or $IgnoreVersions.Count -eq 0) {
+        return $false
+    }
+    
+    foreach ($pattern in $IgnoreVersions) {
+        # Exact match
+        if ($Version -eq $pattern) {
+            Write-Host "::debug::Ignoring version $Version (matches ignore pattern: $pattern)"
+            return $true
+        }
+        
+        # Support wildcard patterns (e.g., "v1.*" matches "v1.0.0", "v1.1.0", etc.)
+        if ($pattern -match '\*') {
+            $regexPattern = '^' + [regex]::Escape($pattern).Replace('\*', '.*') + '$'
+            if ($Version -match $regexPattern) {
+                Write-Host "::debug::Ignoring version $Version (matches wildcard pattern: $pattern)"
+                return $true
+            }
+        }
+    }
+    
+    return $false
+}

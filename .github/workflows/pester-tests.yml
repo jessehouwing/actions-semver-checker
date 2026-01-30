@@ -27,7 +27,11 @@ jobs:
 
           # Run unit tests with test result output
           $config = New-PesterConfiguration
-          $config.Run.Path = './tests/unit'
+          $config.Run.Path = @(
+            './tests/unit/**/*.Tests.ps1'
+            './lib/actions/**/*.Tests.ps1'
+            './lib/rules/**/*.Tests.ps1'
+          )
           $config.TestResult.Enabled = $true
           $config.TestResult.OutputPath = 'unit-test-results.xml'
           $config.TestResult.OutputFormat = 'NUnitXml'
@@ -45,13 +49,13 @@ jobs:
           name: unit-test-results
           path: unit-test-results.xml
 
-      - name: Publish Unit Test Report
-        uses: dorny/test-reporter@b082adf0eced0765477756c2a610396589b8c637 # v2.5.0
+      - name: Publish Unit Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
-          name: Unit Tests
-          path: unit-test-results.xml
-          reporter: java-junit
+          files: unit-test-results.xml
+          check_name: Unit Tests
+          comment_mode: off
 
   integration-tests:
     name: Run Integration Tests
@@ -86,13 +90,13 @@ jobs:
           name: integration-test-results
           path: integration-test-results.xml
 
-      - name: Publish Integration Test Report
-        uses: dorny/test-reporter@b082adf0eced0765477756c2a610396589b8c637 # v2.5.0
+      - name: Publish Integration Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
-          name: Integration Tests
-          path: integration-test-results.xml
-          reporter: java-junit
+          files: integration-test-results.xml
+          check_name: Integration Tests
+          comment_mode: off
 
   e2e-tests:
     name: Run E2E Tests
@@ -127,10 +131,10 @@ jobs:
           name: e2e-test-results
           path: e2e-test-results.xml
 
-      - name: Publish E2E Test Report
-        uses: dorny/test-reporter@b082adf0eced0765477756c2a610396589b8c637 # v2.5.0
+      - name: Publish E2E Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
         with:
-          name: E2E Tests
-          path: e2e-test-results.xml
-          reporter: java-junit
+          files: e2e-test-results.xml
+          check_name: E2E Tests
+          comment_mode: off
