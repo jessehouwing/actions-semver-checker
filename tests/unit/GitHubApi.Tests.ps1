@@ -131,3 +131,118 @@ Describe "New-GitHubRef" {
         }
     }
 }
+
+Describe "API failure handling" {
+    BeforeEach {
+        $env:GITHUB_API_DISABLE_RETRY = 'true'
+    }
+
+    AfterEach {
+        if (Test-Path function:global:Invoke-WebRequestWrapper) {
+            Remove-Item function:global:Invoke-WebRequestWrapper
+        }
+        if (Test-Path env:GITHUB_API_DISABLE_RETRY) {
+            Remove-Item env:GITHUB_API_DISABLE_RETRY
+        }
+    }
+
+    It "Should throw when Get-GitHubTags encounters API failure" {
+        $state = [RepositoryState]::new()
+        $state.RepoOwner = "test-owner"
+        $state.RepoName = "test-repo"
+        $state.ApiUrl = "https://api.github.com"
+        $state.ServerUrl = "https://github.com"
+
+        $throw500 = {
+            $mockException = New-Object System.Exception "The remote server returned an error: (500)"
+            $mockException | Add-Member -NotePropertyName "Response" -NotePropertyValue @{ StatusCode = @{ value__ = 500 } }
+            throw $mockException
+        }
+
+        Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $throw500
+
+        { Get-GitHubTags -State $state -Pattern "^v\\d+" } | Should -Throw
+    }
+
+    It "Should throw when Get-GitHubBranches encounters API failure" {
+        $state = [RepositoryState]::new()
+        $state.RepoOwner = "test-owner"
+        $state.RepoName = "test-repo"
+        $state.ApiUrl = "https://api.github.com"
+        $state.ServerUrl = "https://github.com"
+
+        $throw500 = {
+            $mockException = New-Object System.Exception "The remote server returned an error: (500)"
+            $mockException | Add-Member -NotePropertyName "Response" -NotePropertyValue @{ StatusCode = @{ value__ = 500 } }
+            throw $mockException
+        }
+
+        Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $throw500
+
+        { Get-GitHubBranches -State $state -Pattern "^v\\d+" } | Should -Throw
+    }
+
+    It "Should throw when Get-GitHubReleases encounters API failure" {
+        $state = [RepositoryState]::new()
+        $state.RepoOwner = "test-owner"
+        $state.RepoName = "test-repo"
+        $state.ApiUrl = "https://api.github.com"
+        $state.ServerUrl = "https://github.com"
+
+        $throw500 = {
+            $mockException = New-Object System.Exception "The remote server returned an error: (500)"
+            $mockException | Add-Member -NotePropertyName "Response" -NotePropertyValue @{ StatusCode = @{ value__ = 500 } }
+            throw $mockException
+        }
+
+        Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $throw500
+
+        { Get-GitHubReleases -State $state } | Should -Throw
+    }
+
+    It "Should return null when Get-GitHubRef receives 404" {
+        $state = [RepositoryState]::new()
+        $state.RepoOwner = "test-owner"
+        $state.RepoName = "test-repo"
+        $state.ApiUrl = "https://api.github.com"
+        $state.ServerUrl = "https://github.com"
+
+        $throw404 = {
+            $mockException = New-Object System.Exception "The remote server returned an error: (404)"
+            $mockException | Add-Member -NotePropertyName "Response" -NotePropertyValue @{ StatusCode = @{ value__ = 404 } }
+            throw $mockException
+        }
+
+        Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $throw404
+
+        $result = Get-GitHubRef -State $state -RefName "v1.0.0" -RefType "tags"
+        $result | Should -Be $null
+    }
+
+    It "Should throw when Get-GitHubRef encounters non-404 error" {
+        $state = [RepositoryState]::new()
+        $state.RepoOwner = "test-owner"
+        $state.RepoName = "test-repo"
+        $state.ApiUrl = "https://api.github.com"
+        $state.ServerUrl = "https://github.com"
+
+        $throw500 = {
+            $mockException = New-Object System.Exception "The remote server returned an error: (500)"
+            $mockException | Add-Member -NotePropertyName "Response" -NotePropertyValue @{ StatusCode = @{ value__ = 500 } }
+            throw $mockException
+        }
+
+        Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $throw500
+
+        { Get-GitHubRef -State $state -RefName "v1.0.0" -RefType "tags" } | Should -Throw
+    }
+
+    It "Should throw when Test-ReleaseImmutability encounters API failure" {
+        $mockException = New-Object System.Exception "The remote server returned an error: (500)"
+        $mockException | Add-Member -NotePropertyName "Response" -NotePropertyValue @{ StatusCode = @{ value__ = 500 } }
+
+        Mock Invoke-RestMethod { throw $mockException }
+
+        { Test-ReleaseImmutability -Owner "test-owner" -Repo "test-repo" -Tag "v1.0.0" -Token "" -ApiUrl "https://api.github.com" } | Should -Throw
+    }
+}
