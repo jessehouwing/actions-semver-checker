@@ -120,6 +120,52 @@ Describe "minor_tag_missing" {
             $result.Count | Should -Be 0
         }
         
+        It "BUG: should NOT return missing minor when only prerelease patches exist in that series and ignore-preview-releases is true" {
+            # This test demonstrates the bug where Condition returns a missing minor
+            # even though the only patches in that minor series are prereleases.
+            
+            $state = [RepositoryState]::new()
+            # v1.0.0 is stable
+            $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "stable123", "tag")
+            # v1.0 exists
+            $state.Tags += [VersionRef]::new("v1.0", "refs/tags/v1.0", "stable123", "tag")
+            # v1 exists
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "stable123", "tag")
+            # v1.1.0 exists but is a prerelease
+            $state.Tags += [VersionRef]::new("v1.1.0", "refs/tags/v1.1.0", "preview456", "tag")
+            $state.IgnoreVersions = @()
+            
+            # Mark v1.1.0 as prerelease via ReleaseInfo
+            $prereleaseData = [PSCustomObject]@{
+                tag_name = "v1.1.0"
+                id = 2
+                draft = $false
+                prerelease = $true
+                html_url = "https://github.com/test/test/releases/tag/v1.1.0"
+                target_commitish = "preview456"
+                immutable = $false
+            }
+            $state.Releases += [ReleaseInfo]::new($prereleaseData)
+            
+            $config = @{ 
+                'floating-versions-use' = 'tags'
+                'check-minor-version' = 'error'
+                'ignore-preview-releases' = $true
+            }
+            $result = & $Rule_MinorTagMissing.Condition $state $config
+            
+            # BUG: Currently returns 1 (major=1, minor=1) when it should return 0
+            # When fixed, this assertion should pass:
+            # $result.Count | Should -Be 0
+            
+            # Demonstrate the BUG exists:
+            $result.Count | Should -Be 1
+            $result[0].Major | Should -Be 1
+            $result[0].Minor | Should -Be 1
+            
+            Write-Host "BUG CONFIRMED: Condition returns missing v1.1 even though only prerelease v1.1.0 exists" -ForegroundColor Red
+        }
+        
         It "should find patches from both tags and branches" {
             $state = [RepositoryState]::new()
             $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
