@@ -97,6 +97,37 @@ Describe "major_tag_missing" {
             
             $result.Count | Should -Be 2
         }
+        
+        It "should NOT return missing major when only prerelease patches exist and ignore-preview-releases is true" {
+            # Verify that when only prereleases exist and ignore-preview-releases is true,
+            # the Condition correctly returns empty (no missing majors).
+            
+            $state = [RepositoryState]::new()
+            # v2.0.0 exists but is a prerelease
+            $state.Tags += [VersionRef]::new("v2.0.0", "refs/tags/v2.0.0", "preview123", "tag")
+            $state.IgnoreVersions = @()
+            
+            # Mark v2.0.0 as prerelease via ReleaseInfo
+            $prereleaseData = [PSCustomObject]@{
+                tag_name = "v2.0.0"
+                id = 1
+                draft = $false
+                prerelease = $true
+                html_url = "https://github.com/test/test/releases/tag/v2.0.0"
+                target_commitish = "preview123"
+                immutable = $false
+            }
+            $state.Releases += [ReleaseInfo]::new($prereleaseData)
+            
+            $config = @{ 
+                'floating-versions-use' = 'tags'
+                'ignore-preview-releases' = $true
+            }
+            $result = & $Rule_MajorTagMissing.Condition $state $config
+            
+            # Should return 0 because the only patch is a prerelease
+            $result.Count | Should -Be 0
+        }
     }
     
     Context "CreateIssue" {

@@ -18,8 +18,14 @@ $Rule_MajorTagMissing = [ValidationRule]@{
         }
         
         # Get all unique major numbers from patch versions
+        # Filter out prereleases if ignore-preview-releases is enabled
         $allRefs = $State.Tags + $State.Branches
-        $patchVersions = $allRefs | Where-Object { $_.IsPatch -and -not $_.IsIgnored }
+        $ignorePreviewReleases = $Config.'ignore-preview-releases'
+        $patchVersions = $allRefs | Where-Object { 
+            $_.IsPatch -and 
+            -not $_.IsIgnored -and
+            (-not $ignorePreviewReleases -or -not (Test-IsPrerelease -State $State -VersionRef $_))
+        }
         
         if ($patchVersions.Count -eq 0) {
             return @()

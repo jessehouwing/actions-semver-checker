@@ -120,6 +120,44 @@ Describe "minor_tag_missing" {
             $result.Count | Should -Be 0
         }
         
+        It "should NOT return missing minor when only prerelease patches exist in that series and ignore-preview-releases is true" {
+            # Verify that when only prereleases exist in a minor series and ignore-preview-releases is true,
+            # the Condition correctly returns empty (no missing minors).
+            
+            $state = [RepositoryState]::new()
+            # v1.0.0 is stable
+            $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "stable123", "tag")
+            # v1.0 exists
+            $state.Tags += [VersionRef]::new("v1.0", "refs/tags/v1.0", "stable123", "tag")
+            # v1 exists
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "stable123", "tag")
+            # v1.1.0 exists but is a prerelease
+            $state.Tags += [VersionRef]::new("v1.1.0", "refs/tags/v1.1.0", "preview456", "tag")
+            $state.IgnoreVersions = @()
+            
+            # Mark v1.1.0 as prerelease via ReleaseInfo
+            $prereleaseData = [PSCustomObject]@{
+                tag_name = "v1.1.0"
+                id = 2
+                draft = $false
+                prerelease = $true
+                html_url = "https://github.com/test/test/releases/tag/v1.1.0"
+                target_commitish = "preview456"
+                immutable = $false
+            }
+            $state.Releases += [ReleaseInfo]::new($prereleaseData)
+            
+            $config = @{ 
+                'floating-versions-use' = 'tags'
+                'check-minor-version' = 'error'
+                'ignore-preview-releases' = $true
+            }
+            $result = & $Rule_MinorTagMissing.Condition $state $config
+            
+            # Should return 0 because v1.1.0 is the only patch in v1.1.x and it's a prerelease
+            $result.Count | Should -Be 0
+        }
+        
         It "should find patches from both tags and branches" {
             $state = [RepositoryState]::new()
             $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
