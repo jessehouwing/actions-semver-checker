@@ -43,7 +43,7 @@ jobs:
           Write-Output "::$stopMarker::"
       
       - name: Upload Unit Test Results
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: unit-test-results
@@ -84,7 +84,7 @@ jobs:
           Write-Output "::$stopMarker::"
       
       - name: Upload Integration Test Results
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: integration-test-results
@@ -125,7 +125,7 @@ jobs:
           Write-Output "::$stopMarker::"
       
       - name: Upload E2E Test Results
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: e2e-test-results
