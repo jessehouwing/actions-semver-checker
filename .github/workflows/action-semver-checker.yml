@@ -26,3 +26,4 @@ jobs:
       - uses: ./
         with:
           check-minor-version: true
+          token: ${{ secrets.GITHUB_TOKEN }}
