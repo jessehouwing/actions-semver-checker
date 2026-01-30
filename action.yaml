@@ -8,7 +8,7 @@ inputs:
     description: "GitHub token for API access. If not provided, falls back to GITHUB_TOKEN environment variable."
     required: false
     default: ""
-  check-minor-version: 
+  check-minor-version:
     description: "Configures warnings for minor versions (options: [error, warning, none, true, false], default: true maps to error)."
     required: false
     default: "error"
@@ -40,9 +40,9 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: "Checking versions..."
-      run: |
-        & $env:GITHUB_ACTION_PATH/main.ps1
-      shell: pwsh
-      env:
-        inputs: ${{ tojson(inputs) }}
+  - name: "Checking versions..."
+    run: |
+      & $env:GITHUB_ACTION_PATH/main.ps1
+    shell: pwsh
+    env:
+      inputs: ${{ tojson(inputs) }}
