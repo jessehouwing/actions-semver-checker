@@ -40,6 +40,7 @@ Describe "PublishReleaseAction" {
             
             $commands.Count | Should -Be 1
             $commands[0] | Should -Be "gh release edit v1.0.0 --draft=false"
+            $commands[0] | Should -Match "--draft=false"
             $commands[0] | Should -Not -Match "^#"
             $commands[0] | Should -Not -Match "# Or edit at"
         }
