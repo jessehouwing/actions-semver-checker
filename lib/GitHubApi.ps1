@@ -954,6 +954,20 @@ function New-GitHubRef
         
         # Check for permission errors (403 Forbidden)
         if ($statusCode -eq 403) {
+            $gitRoot = Join-Path (Get-Location) ".git"
+            $gitAvailable = (Get-Command git -ErrorAction SilentlyContinue) -ne $null
+            $hasGitRepo = Test-Path $gitRoot
+
+            if ($env:GITHUB_API_ALLOW_GIT_FALLBACK -ne 'true') {
+                Write-Host "::debug::REST API returned 403 for $RefName, git fallback disabled"
+                return @{ Success = $false; RequiresManualFix = $true; ErrorOutput = "REST API returned 403 for $RefName and git fallback is disabled." }
+            }
+
+            if (-not $gitAvailable -or -not $hasGitRepo) {
+                Write-Host "::debug::REST API returned 403 for $RefName, git fallback unavailable"
+                return @{ Success = $false; RequiresManualFix = $true; ErrorOutput = "REST API returned 403 for $RefName and git fallback is unavailable." }
+            }
+
             Write-Host "::debug::REST API returned 403 for $RefName, falling back to git push"
             
             # Fall back to using git push since REST API doesn't have permission

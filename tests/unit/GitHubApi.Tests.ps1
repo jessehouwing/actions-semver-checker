@@ -97,3 +97,35 @@ Describe "Test-ImmutableReleaseError" {
         }
     }
 }
+
+Describe "New-GitHubRef" {
+    It "Should return manual fix required when REST API 403 and no git repo" {
+        $state = [RepositoryState]::new()
+        $state.RepoOwner = "test-owner"
+        $state.RepoName = "test-repo"
+        $state.ApiUrl = "https://api.github.com"
+        $state.ServerUrl = "https://github.com"
+        $state.Token = "test-token"
+
+        Push-Location $TestDrive
+        try {
+            $throw403 = {
+                $mockException = New-Object System.Exception "The remote server returned an error: (403)"
+                $mockException | Add-Member -NotePropertyName "Response" -NotePropertyValue @{ StatusCode = @{ value__ = 403 } }
+                throw $mockException
+            }
+
+            Mock Invoke-WebRequestWrapper $throw403
+            Mock Invoke-RestMethod $throw403
+
+            $result = New-GitHubRef -State $state -RefName "refs/tags/v1.0.0" -Sha "abc123" -Force $false
+
+            $result.Success | Should -Be $false
+            $result.RequiresManualFix | Should -Be $true
+            $result.ErrorOutput | Should -Match "git fallback is disabled"
+        }
+        finally {
+            Pop-Location
+        }
+    }
+}
