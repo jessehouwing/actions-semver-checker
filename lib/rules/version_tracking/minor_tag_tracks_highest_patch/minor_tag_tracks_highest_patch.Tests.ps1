@@ -186,6 +186,43 @@ Describe "minor_tag_tracks_highest_patch" {
     }
     
     Context "Prerelease Filtering" {
+        It "should pass Check when minor tag exists but only prerelease patches exist in series and ignore-preview-releases is true" {
+            # Edge case: v1.1 tag exists, but only v1.1.0-preview exists (no stable patches in v1.1.x)
+            # When ignore-preview-releases is true, Get-HighestPatchForMinor returns null
+            # The Check should return true (pass) because there's nothing to track
+            
+            $state = [RepositoryState]::new()
+            # v1.1 exists
+            $minorTag = [VersionRef]::new("v1.1", "refs/tags/v1.1", "preview456", "tag")
+            $state.Tags += $minorTag
+            # v1.1.0 is prerelease (only patch in v1.1.x)
+            $state.Tags += [VersionRef]::new("v1.1.0", "refs/tags/v1.1.0", "preview456", "tag")
+            # Also have stable v1.0.0 for context
+            $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "stable123", "tag")
+            $state.IgnoreVersions = @()
+            
+            # Mark v1.1.0 as prerelease via ReleaseInfo
+            $prereleaseData = [PSCustomObject]@{
+                tag_name = "v1.1.0"
+                id = 2
+                draft = $false
+                prerelease = $true
+                html_url = "https://github.com/test/test/releases/tag/v1.1.0"
+                target_commitish = "preview456"
+                immutable = $false
+            }
+            $state.Releases += [ReleaseInfo]::new($prereleaseData)
+            
+            $config = @{ 
+                'ignore-preview-releases' = $true
+                'check-minor-version' = 'error'
+            }
+            $result = & $Rule_MinorTagTracksHighestPatch.Check $minorTag $state $config
+            
+            # Should pass because there are no non-prerelease patches in v1.1.x to track
+            $result | Should -Be $true
+        }
+        
         It "should exclude prerelease patch when calculating highest (ignore-preview-releases=true)" {
             $state = [RepositoryState]::new()
             # v1.0 points to old stable release

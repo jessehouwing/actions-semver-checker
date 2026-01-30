@@ -158,8 +158,43 @@ Describe "major_branch_tracks_highest_patch" {
             $issue.RemediationAction.Sha | Should -Be "new789"
         }
     }
-    
+
     Context "Prerelease Filtering" {
+        It "should pass Check when major branch exists but only prerelease patches exist and ignore-preview-releases is true" {
+            # Edge case: v2 branch exists, but only v2.0.0-preview exists (no stable patches)
+            # When ignore-preview-releases is true, Get-HighestPatchForMajor returns null
+            # The Check should return true (pass) because there's nothing to track
+            
+            $state = [RepositoryState]::new()
+            # v2 exists as branch
+            $majorBranch = [VersionRef]::new("v2", "refs/heads/v2", "preview123", "branch")
+            $state.Branches += $majorBranch
+            # v2.0.0 is prerelease (only patch in v2.x)
+            $state.Tags += [VersionRef]::new("v2.0.0", "refs/tags/v2.0.0", "preview123", "tag")
+            $state.IgnoreVersions = @()
+            
+            # Mark v2.0.0 as prerelease via ReleaseInfo
+            $prereleaseData = [PSCustomObject]@{
+                tag_name = "v2.0.0"
+                id = 1
+                draft = $false
+                prerelease = $true
+                html_url = "https://github.com/test/test/releases/tag/v2.0.0"
+                target_commitish = "preview123"
+                immutable = $false
+            }
+            $state.Releases += [ReleaseInfo]::new($prereleaseData)
+            
+            $config = @{ 
+                'floating-versions-use' = 'branches'
+                'ignore-preview-releases' = $true
+            }
+            $result = & $Rule_MajorBranchTracksHighestPatch.Check $majorBranch $state $config
+            
+            # Should pass because there are no non-prerelease patches to track
+            $result | Should -Be $true
+        }
+        
         It "should exclude prerelease patch when calculating highest (ignore-preview-releases=true)" {
             $state = [RepositoryState]::new()
             # v1 branch points to old stable release
