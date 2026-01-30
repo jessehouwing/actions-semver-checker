@@ -6,6 +6,8 @@ Unfortunately, GitHub's creative use of tags doesn't do this automatically and m
 
 You can run this action for your GitHub Action's repository to ensure the correct tags have been created and point to the correct commits.
 
+**NEW:** Now available as a [PowerShell module](module/README.md) for running from the command line!
+
 ## GitHub's Immutable Release Strategy
 
 This action implements [GitHub's recommended approach](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/using-immutable-releases-and-tags-to-manage-your-actions-releases) for versioning actions:
@@ -30,6 +32,7 @@ This strategy balances **stability** (pinned versions never change) with **conve
 - ✅ **NEW:** Ignore specific versions from validation (useful for legacy versions)
 - ✅ **NEW:** Auto-fix automatically republishes non-immutable releases to make them immutable (when `check-release-immutability` is enabled)
 - ✅ **NEW:** Retry logic with exponential backoff for better reliability
+- ✅ **NEW:** PowerShell module for CLI usage on Windows and Linux - see [module/README.md](module/README.md)
 
 Example output:
 
