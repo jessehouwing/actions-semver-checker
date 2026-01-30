@@ -46,7 +46,7 @@ jobs:
           path: unit-test-results.xml
 
       - name: Publish Unit Test Report
-        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
+        uses: dorny/test-reporter@b082adf0eced0765477756c2a610396589b8c637 # v2.5.0
         if: always()
         with:
           name: Unit Tests
@@ -87,7 +87,7 @@ jobs:
           path: integration-test-results.xml
 
       - name: Publish Integration Test Report
-        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
+        uses: dorny/test-reporter@b082adf0eced0765477756c2a610396589b8c637 # v2.5.0
         if: always()
         with:
           name: Integration Tests
@@ -128,7 +128,7 @@ jobs:
           path: e2e-test-results.xml
 
       - name: Publish E2E Test Report
-        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
+        uses: dorny/test-reporter@b082adf0eced0765477756c2a610396589b8c637 # v2.5.0
         if: always()
         with:
           name: E2E Tests
