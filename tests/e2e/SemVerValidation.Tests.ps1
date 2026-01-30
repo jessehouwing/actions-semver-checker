@@ -1429,7 +1429,37 @@ exit 0
                     }
                 }
                 
-                # Releases endpoint - return a draft release for v1.0.0
+                # GraphQL endpoint - return draft release with immutability data
+                if ($Uri -match '/graphql') {
+                    $mockResponse = @{
+                        data = @{
+                            repository = @{
+                                releases = @{
+                                    pageInfo = @{
+                                        hasNextPage = $false
+                                        endCursor = $null
+                                    }
+                                    nodes = @(
+                                        @{
+                                            databaseId = 123
+                                            tagName = "v1.0.0"
+                                            isDraft = $true
+                                            isPrerelease = $false
+                                            immutable = $false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } | ConvertTo-Json -Depth 10
+                    
+                    return @{
+                        Content = $mockResponse
+                        Headers = @{}
+                    }
+                }
+                
+                # Releases endpoint (legacy REST - kept for compatibility)
                 if ($Uri -match '/releases(\?|$)') {
                     return @{
                         Content = '[{"tag_name":"v1.0.0","draft":true,"prerelease":false,"id":123}]'

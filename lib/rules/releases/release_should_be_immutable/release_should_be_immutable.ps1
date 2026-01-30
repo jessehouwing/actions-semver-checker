@@ -36,17 +36,7 @@ $Rule_ReleaseShouldBeImmutable = [ValidationRule]@{
     }
     
     Check = { param([ReleaseInfo]$ReleaseInfo, [RepositoryState]$State, [hashtable]$Config)
-        # Check via GraphQL API if the release is truly immutable
-        # Note: This requires the Test-ReleaseImmutability function from GitHubApi.ps1
-        
-        # Check if Test-ReleaseImmutability function is available
-        if (Get-Command Test-ReleaseImmutability -ErrorAction SilentlyContinue) {
-            $isImmutable = Test-ReleaseImmutability -Owner $State.RepoOwner -Repo $State.RepoName -Tag $ReleaseInfo.TagName -Token $State.Token -ApiUrl $State.ApiUrl
-            return $isImmutable
-        }
-        
-        # Fallback: if function not available, assume immutable if published
-        return -not $ReleaseInfo.IsDraft
+        return $ReleaseInfo.IsImmutable
     }
     
     CreateIssue = { param([ReleaseInfo]$ReleaseInfo, [RepositoryState]$State, [hashtable]$Config)

@@ -72,6 +72,7 @@ Describe "patch_release_required" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -134,6 +135,7 @@ Describe "patch_release_required" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()

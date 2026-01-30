@@ -205,6 +205,7 @@ Describe "minor_tag_tracks_highest_patch" {
                 prerelease = $true
                 html_url = "https://github.com/test/test/releases/tag/v1.0.1"
                 target_commitish = "prerel456"
+                immutable = $false
             }
             $state.Releases += [ReleaseInfo]::new($prereleaseData)
             
@@ -237,6 +238,7 @@ Describe "minor_tag_tracks_highest_patch" {
                 prerelease = $true
                 html_url = "https://github.com/test/test/releases/tag/v1.0.1"
                 target_commitish = "prerel456"
+                immutable = $false
             }
             $state.Releases += [ReleaseInfo]::new($prereleaseData)
             
@@ -268,6 +270,7 @@ Describe "minor_tag_tracks_highest_patch" {
                 prerelease = $true
                 html_url = "https://github.com/test/test/releases/tag/v1.0.1"
                 target_commitish = "prerel789"
+                immutable = $false
             }
             $state.Releases += [ReleaseInfo]::new($prereleaseData)
             
