@@ -183,6 +183,9 @@ Describe "Test-GitHubActionVersioning" {
 
 Describe "CliLogging functions" {
     BeforeAll {
+        # Test CliLogging functions directly since they are internal helper functions
+        # not exported from the module. These functions are used internally by
+        # Test-GitHubActionVersioning but are tested separately here.
         . "$PSScriptRoot/../../module/CliLogging.ps1"
         . "$PSScriptRoot/../../lib/StateModel.ps1"
     }

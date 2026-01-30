@@ -37,7 +37,7 @@ function Write-ActionsError
     )
 
     # Write to error stream with color if supported
-    if ($Host.UI.SupportsVirtualTerminal) {
+    if ($Host.UI -and $Host.UI.SupportsVirtualTerminal) {
         Write-Host "ERROR: $Message" -ForegroundColor Red
     }
     else {
@@ -65,7 +65,7 @@ function Write-ActionsWarning
     )
 
     # Write to warning stream with color if supported
-    if ($Host.UI.SupportsVirtualTerminal) {
+    if ($Host.UI -and $Host.UI.SupportsVirtualTerminal) {
         Write-Host "WARNING: $Message" -ForegroundColor Yellow
     }
     else {

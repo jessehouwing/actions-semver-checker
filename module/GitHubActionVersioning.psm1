@@ -402,6 +402,21 @@ Export-ModuleMember -Function Test-GitHubActionVersioning
 
 # Helper function for creating error result
 function New-ErrorResult {
+    <#
+    .SYNOPSIS
+    Creates a standardized error result hashtable for PassThru output.
+    
+    .DESCRIPTION
+    Helper function that generates a consistent error result structure
+    containing the current issues and zero counts for fixes. Used when
+    early validation fails before processing can begin.
+    
+    .PARAMETER State
+    The RepositoryState object containing accumulated issues.
+    
+    .OUTPUTS
+    Hashtable with Issues, FixedCount, FailedCount, UnfixableCount, and ReturnCode.
+    #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State
