@@ -6,6 +6,51 @@ Unfortunately, GitHub's creative use of tags doesn't do this automatically and m
 
 You can run this action for your GitHub Action's repository to ensure the correct tags have been created and point to the correct commits.
 
+## Quick Start
+
+```yaml
+- uses: jessehouwing/actions-semver-checker@v2
+  with:
+    # GitHub token for API access. Falls back to GITHUB_TOKEN if not provided.
+    # Required for auto-fix mode
+    token: ${{ secrets.GITHUB_TOKEN }}
+    
+    # Check minor version tags (v1.0) in addition to major tags (v1)
+    # Options: error, warning, none, true, false
+    # Default: error
+    check-minor-version: 'error'
+    
+    # Require GitHub Releases for every patch version (v1.0.0)
+    # Options: error, warning, none, true, false  
+    # Default: error
+    check-releases: 'error'
+    
+    # Ensure releases are published (immutable), not drafts
+    # Options: error, warning, none, true, false
+    # Default: error
+    check-release-immutability: 'error'
+    
+    # Exclude preview/pre-release versions from floating version calculations
+    # Options: true, false
+    # Default: true
+    ignore-preview-releases: 'true'
+    
+    # Use tags or branches for floating versions (v1, v1.0, latest)
+    # Options: tags, branches
+    # Default: tags
+    floating-versions-use: 'tags'
+    
+    # Automatically fix detected issues. Requires contents: write permission
+    # Options: true, false
+    # Default: false
+    auto-fix: 'false'
+    
+    # Comma-separated list of versions to skip during validation
+    # Supports wildcards (e.g., 'v1.*')
+    # Default: "" (empty)
+    ignore-versions: ''
+```
+
 ## GitHub's Immutable Release Strategy
 
 This action implements [GitHub's recommended approach](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/using-immutable-releases-and-tags-to-manage-your-actions-releases) for versioning actions:
@@ -57,6 +102,86 @@ And a set of suggested Git commands to fix this:
 > git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:refs/tags/v1.0 --force
 > git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:latest --force
 > ```
+
+## Supported Validation Rules
+
+The action uses a modular rule-based validation system. Each rule can be configured independently via action inputs.
+
+### Reference Type Rules
+
+| Rule | Description | Documentation |
+|------|-------------|---------------|
+| `tag_should_be_branch` | Validates that floating versions use branches when configured for branches mode | [📖 Details](lib/rules/ref_type/tag_should_be_branch/README.md) |
+| `branch_should_be_tag` | Validates that floating versions use tags when configured for tags mode | [📖 Details](lib/rules/ref_type/branch_should_be_tag/README.md) |
+| `duplicate_floating_version_ref` | Detects when a floating version exists as both tag and branch | [📖 Details](lib/rules/ref_type/duplicate_floating_version_ref/README.md) |
+| `duplicate_latest_ref` | Detects when 'latest' exists as both tag and branch | [📖 Details](lib/rules/ref_type/duplicate_latest_ref/README.md) |
+| `duplicate_patch_version_ref` | Detects when a patch version exists as both tag and branch | [📖 Details](lib/rules/ref_type/duplicate_patch_version_ref/README.md) |
+
+### Release Rules
+
+| Rule | Description | Documentation |
+|------|-------------|---------------|
+| `patch_release_required` | Ensures every patch version has a GitHub Release | [📖 Details](lib/rules/releases/patch_release_required/README.md) |
+| `release_should_be_published` | Validates that releases are published, not drafts | [📖 Details](lib/rules/releases/release_should_be_published/README.md) |
+| `release_should_be_immutable` | Ensures releases are truly immutable | [📖 Details](lib/rules/releases/release_should_be_immutable/README.md) |
+| `floating_version_no_release` | Warns when floating versions point to commits without releases | [📖 Details](lib/rules/releases/floating_version_no_release/README.md) |
+
+### Version Tracking Rules
+
+| Rule | Description | Documentation |
+|------|-------------|---------------|
+| `major_tag_missing` | Detects missing major version tags (v1, v2) | [📖 Details](lib/rules/version_tracking/major_tag_missing/README.md) |
+| `major_tag_tracks_highest_patch` | Ensures major tags point to latest patch | [📖 Details](lib/rules/version_tracking/major_tag_tracks_highest_patch/README.md) |
+| `major_branch_missing` | Detects missing major version branches | [📖 Details](lib/rules/version_tracking/major_branch_missing/README.md) |
+| `major_branch_tracks_highest_patch` | Ensures major branches point to latest patch | [📖 Details](lib/rules/version_tracking/major_branch_tracks_highest_patch/README.md) |
+| `minor_tag_missing` | Detects missing minor version tags (v1.0, v1.1) | [📖 Details](lib/rules/version_tracking/minor_tag_missing/README.md) |
+| `minor_tag_tracks_highest_patch` | Ensures minor tags point to latest patch | [📖 Details](lib/rules/version_tracking/minor_tag_tracks_highest_patch/README.md) |
+| `minor_branch_missing` | Detects missing minor version branches | [📖 Details](lib/rules/version_tracking/minor_branch_missing/README.md) |
+| `minor_branch_tracks_highest_patch` | Ensures minor branches point to latest patch | [📖 Details](lib/rules/version_tracking/minor_branch_tracks_highest_patch/README.md) |
+| `patch_tag_missing` | Detects missing patch version tags (v1.0.0) | [📖 Details](lib/rules/version_tracking/patch_tag_missing/README.md) |
+
+### Latest Version Rules
+
+| Rule | Description | Documentation |
+|------|-------------|---------------|
+| `latest_tag_tracks_global_highest` | Ensures 'latest' tag points to the globally highest patch | [📖 Details](lib/rules/latest/latest_tag_tracks_global_highest/README.md) |
+| `latest_branch_tracks_global_highest` | Ensures 'latest' branch points to the globally highest patch | [📖 Details](lib/rules/latest/latest_branch_tracks_global_highest/README.md) |
+
+## Supported Auto-Fix Actions
+
+When `auto-fix: true` is enabled, the action can automatically remediate issues using these actions:
+
+### Tag Actions
+
+| Action | Description | Documentation |
+|--------|-------------|---------------|
+| `CreateTagAction` | Creates a new Git tag at a specified commit | [📖 Details](lib/actions/tags/CreateTagAction/README.md) |
+| `UpdateTagAction` | Updates an existing tag to point to a different commit | [📖 Details](lib/actions/tags/UpdateTagAction/README.md) |
+| `DeleteTagAction` | Deletes an existing tag | [📖 Details](lib/actions/tags/DeleteTagAction/README.md) |
+
+### Branch Actions
+
+| Action | Description | Documentation |
+|--------|-------------|---------------|
+| `CreateBranchAction` | Creates a new branch at a specified commit | [📖 Details](lib/actions/branches/CreateBranchAction/README.md) |
+| `UpdateBranchAction` | Updates an existing branch to point to a different commit | [📖 Details](lib/actions/branches/UpdateBranchAction/README.md) |
+| `DeleteBranchAction` | Deletes an existing branch | [📖 Details](lib/actions/branches/DeleteBranchAction/README.md) |
+
+### Release Actions
+
+| Action | Description | Documentation |
+|--------|-------------|---------------|
+| `CreateReleaseAction` | Creates a new GitHub Release for a tag | [📖 Details](lib/actions/releases/CreateReleaseAction/README.md) |
+| `PublishReleaseAction` | Publishes a draft release | [📖 Details](lib/actions/releases/PublishReleaseAction/README.md) |
+| `RepublishReleaseAction` | Republishes a release to make it immutable | [📖 Details](lib/actions/releases/RepublishReleaseAction/README.md) |
+| `DeleteReleaseAction` | Deletes an existing release | [📖 Details](lib/actions/releases/DeleteReleaseAction/README.md) |
+
+### Conversion Actions
+
+| Action | Description | Documentation |
+|--------|-------------|---------------|
+| `ConvertTagToBranchAction` | Converts a tag to a branch | [📖 Details](lib/actions/conversions/ConvertTagToBranchAction/README.md) |
+| `ConvertBranchToTagAction` | Converts a branch to a tag | [📖 Details](lib/actions/conversions/ConvertBranchToTagAction/README.md) |
 
 # Prerequisites
 
@@ -496,46 +621,111 @@ jobs:
 
 ## Architecture
 
-This action uses a modular architecture with a domain model at its core, making it maintainable, testable, and extensible.
+This action uses a modular architecture with a rule-based validation system, making it maintainable, testable, and extensible.
 
 ### Module Structure
 
 ```
 actions-semver-checker/
-├── main.ps1              # Orchestrator (1,407 lines)
+├── main.ps1              # Orchestrator (~350 lines)
 │   ├── Initialize State
-│   ├── Collect tags, branches, releases
-│   ├── Run validations
-│   ├── Execute remediation (auto-fix)
+│   ├── Collect tags, branches, releases via GitHub API
+│   ├── Load and execute validation rules
+│   ├── Execute remediation actions (auto-fix)
 │   └── Report results
 │
-├── lib/                  # Reusable modules (1,114 lines)
-│   ├── StateModel.ps1    # Domain model (420 lines)
-│   │   ├── VersionRef class
-│   │   ├── ReleaseInfo class
-│   │   ├── ValidationIssue class (with status tracking)
-│   │   ├── RepositoryState class (single source of truth)
-│   │   └── RemediationPlan class (dependency ordering)
+├── lib/                  # Core modules (~3,246 lines total)
+│   ├── StateModel.ps1    # Domain model (~639 lines)
+│   │   ├── VersionRef class - Represents version tags/branches
+│   │   ├── ReleaseInfo class - GitHub release metadata
+│   │   ├── ValidationIssue class - Tracks issues with status
+│   │   ├── RepositoryState class - Single source of truth
+│   │   └── RemediationPlan class - Dependency ordering
 │   │
-│   ├── GitHubApi.ps1     # GitHub REST API (432 lines)
+│   ├── GitHubApi.ps1     # GitHub REST API client (~1,165 lines)
 │   │   ├── Get releases with pagination
-│   │   ├── Create/delete tags and branches
-│   │   ├── Manage releases and attestations
-│   │   └── Handle rate limiting
+│   │   ├── Create/update/delete tags and branches
+│   │   ├── Manage releases (create, publish, delete)
+│   │   ├── Retry logic with exponential backoff
+│   │   └── Handle rate limiting and errors
 │   │
-│   ├── Remediation.ps1   # Auto-fix strategies (144 lines)
+│   ├── ValidationRules.ps1  # Rule engine (~163 lines)
+│   │   ├── ValidationRule base class
+│   │   ├── Get-AllValidationRules - Auto-discovery
+│   │   ├── Invoke-ValidationRules - Execute rules
+│   │   └── Helper functions for rule execution
+│   │
+│   ├── RemediationActions.ps1  # Action base (~48 lines)
+│   │   └── RemediationAction base class
+│   │
+│   ├── Remediation.ps1   # Auto-fix coordination (~301 lines)
 │   │   ├── Execute fixes via REST API
-│   │   ├── Calculate next available version
+│   │   ├── Handle HTTP 422 (unfixable) errors
+│   │   ├── Calculate next available versions
 │   │   └── Generate manual fix commands
 │   │
-│   ├── Logging.ps1       # Safe output (75 lines)
-│   │   ├── Workflow command injection protection
-│   │   └── GitHub Actions formatting
+│   ├── InputValidation.ps1  # Input parsing (~325 lines)
+│   │   ├── Read-ActionInputs - Parse from environment
+│   │   ├── Test-ActionInputs - Validate configuration
+│   │   └── Write-InputDebugInfo - Debug output
 │   │
-│   └── VersionParser.ps1 # Version parsing (43 lines)
-│       └── Semantic version validation
+│   ├── Logging.ps1       # Safe output (~105 lines)
+│   │   ├── Workflow command injection protection
+│   │   └── GitHub Actions formatting helpers
+│   │
+│   └── VersionParser.ps1 # Version parsing (~150 lines)
+│       └── ConvertTo-Version - Semantic version parsing
 │
-└── main.Tests.ps1        # Comprehensive test suite (81 tests)
+├── lib/rules/            # Validation rules (20 rules organized by category)
+│   ├── ref_type/         # Reference type validation (5 rules)
+│   │   ├── tag_should_be_branch/
+│   │   ├── branch_should_be_tag/
+│   │   ├── duplicate_floating_version_ref/
+│   │   ├── duplicate_latest_ref/
+│   │   └── duplicate_patch_version_ref/
+│   │
+│   ├── releases/         # Release validation (4 rules)
+│   │   ├── patch_release_required/
+│   │   ├── release_should_be_published/
+│   │   ├── release_should_be_immutable/
+│   │   └── floating_version_no_release/
+│   │
+│   ├── version_tracking/ # Version tracking (9 rules)
+│   │   ├── major_tag_missing/
+│   │   ├── major_tag_tracks_highest_patch/
+│   │   ├── major_branch_missing/
+│   │   ├── major_branch_tracks_highest_patch/
+│   │   ├── minor_tag_missing/
+│   │   ├── minor_tag_tracks_highest_patch/
+│   │   ├── minor_branch_missing/
+│   │   ├── minor_branch_tracks_highest_patch/
+│   │   └── patch_tag_missing/
+│   │
+│   └── latest/           # Latest version tracking (2 rules)
+│       ├── latest_tag_tracks_global_highest/
+│       └── latest_branch_tracks_global_highest/
+│
+└── lib/actions/          # Remediation actions (13 actions organized by type)
+    ├── base/             # Base class and documentation
+    ├── tags/             # Tag operations (3 actions)
+    │   ├── CreateTagAction/
+    │   ├── UpdateTagAction/
+    │   └── DeleteTagAction/
+    │
+    ├── branches/         # Branch operations (3 actions)
+    │   ├── CreateBranchAction/
+    │   ├── UpdateBranchAction/
+    │   └── DeleteBranchAction/
+    │
+    ├── releases/         # Release operations (4 actions)
+    │   ├── CreateReleaseAction/
+    │   ├── PublishReleaseAction/
+    │   ├── RepublishReleaseAction/
+    │   └── DeleteReleaseAction/
+    │
+    └── conversions/      # Type conversions (2 actions)
+        ├── ConvertTagToBranchAction/
+        └── ConvertBranchToTagAction/
 ```
 
 ### Domain Model
@@ -544,50 +734,83 @@ actions-semver-checker/
 - **Tags/Branches**: `VersionRef[]` with semantic parsing
 - **Releases**: `ReleaseInfo[]` with immutability status
 - **Issues**: `ValidationIssue[]` with lifecycle tracking
+- **Configuration**: All action inputs stored as properties
 - **Calculated metrics**: Counts derived from issue statuses
 
 **ValidationIssue statuses**:
 - `pending` → Not yet processed
 - `fixed` → Auto-fix succeeded
-- `failed` → Auto-fix failed
-- `unfixable` → Requires manual intervention
+- `failed` → Auto-fix failed (retryable)
+- `unfixable` → Cannot be fixed (e.g., HTTP 422 from deleted immutable release)
+- `manual_fix_required` → Needs human intervention
+
+**ValidationRule structure**:
+- `Name` → Unique identifier
+- `Description` → Human-readable description
+- `Priority` → Execution order (5-40, lower runs first)
+- `Category` → Grouping (ref_type, releases, version_tracking, latest)
+- `Condition` → Filter items to validate
+- `Check` → Determine if item is valid
+- `CreateIssue` → Generate ValidationIssue with RemediationAction
 
 ### Design Principles
 
-1. **Single Source of Truth**: All state tracked in `RepositoryState` domain model
-2. **Status-Based Calculation**: Metrics calculated on-demand (no manual counters)
-3. **Separation of Concerns**: Each module has a single responsibility
-4. **Zero Breaking Changes**: 100% backward compatibility maintained
+1. **Rule-Based Validation**: All checks implemented as modular rules that can be independently configured
+2. **Single Source of Truth**: All state tracked in `RepositoryState` domain model
+3. **Status-Based Calculation**: Metrics calculated on-demand (no manual counters)
+4. **Separation of Concerns**: Each module and rule has a single, well-defined responsibility
+5. **Priority-Based Execution**: Rules execute in priority order to handle dependencies correctly
+6. **Action Composition**: Complex fixes composed from simple, reusable actions
+7. **Zero Breaking Changes**: 100% backward compatibility maintained across versions
 
 ### Validation Flow
 
 ```
 1. Initialize
-   └── Create RepositoryState with configuration
+   ├── Parse inputs from environment (JSON from action.yaml)
+   ├── Create RepositoryState with configuration
+   └── Load all validation rules from lib/rules/
 
-2. Collect
-   ├── Git tags (git tag -l v*)
-   ├── Git branches (git branch --remotes)
-   └── GitHub releases (REST API with pagination)
+2. Collect State (GitHub REST API)
+   ├── Get-GitHubTags → VersionRef[] array
+   ├── Get-GitHubBranches → VersionRef[] array
+   └── Get-GitHubReleases → ReleaseInfo[] array (with pagination)
 
-3. Validate
-   ├── Check floating versions point to correct patches
-   ├── Verify releases exist for patch versions
-   ├── Ensure releases are immutable (not drafts)
-   └── Detect ambiguous refs (tag + branch conflicts)
+3. Load Rules
+   ├── Scan lib/rules/ recursively for *.ps1 files
+   ├── Load ValidationRule objects from each file
+   └── Sort by Priority, then Name
 
-4. Remediate (if auto-fix enabled)
-   ├── Create/update tags via REST API
-   ├── Create/update branches via REST API
-   ├── Create draft releases via REST API
-   └── Track status: fixed/failed/unfixable
+4. Execute Validation Rules
+   For each rule (in priority order):
+   ├── Evaluate Condition → Get items to validate
+   ├── Execute Check → Test if each item is valid
+   ├── Call CreateIssue → Generate ValidationIssue + RemediationAction
+   └── Add issues to State.Issues[]
 
-5. Report
-   ├── Display state summary
-   ├── Show fixed/failed/unfixable counts
-   ├── Provide manual fix commands
-   └── Exit with appropriate code
+5. Remediate (if auto-fix enabled)
+   ├── Group actions by Priority (lower = runs first)
+   ├── Execute each RemediationAction via GitHub API
+   ├── Update issue status (fixed/failed/unfixable)
+   ├── Handle HTTP 422 → Mark as unfixable
+   └── Generate manual commands for failed/unfixable issues
+
+6. Report
+   ├── Display summary with counts by status
+   ├── Show fixed issues (when auto-fix succeeded)
+   ├── Show failed/unfixable issues with manual commands
+   ├── Write GitHub Actions annotations (::error::, ::warning::)
+   └── Exit with code 0 (success) or 1 (errors found)
 ```
+
+### Rule and Action Discovery
+
+Rules and actions are automatically discovered at runtime:
+- **Rules**: All `*.ps1` files in `lib/rules/` (excluding `*.Tests.ps1`)
+- **Actions**: Referenced by rules in `ValidationIssue.RemediationAction` property
+- **Execution Order**: Rules sorted by `Priority` property, actions by their own `Priority`
+
+This allows adding new rules without modifying main.ps1 - just create a new rule file in the appropriate category directory.
 
 ### Contributing
 

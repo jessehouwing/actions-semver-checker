@@ -55,17 +55,72 @@ Invoke-Pester -Path ./tests/e2e
 
 ## Architecture Overview
 
-The codebase follows a modular architecture with a domain model at its core:
+The codebase follows a modular architecture with a rule-based validation system:
 
 ```
 actions-semver-checker/
-├── main.ps1              # Orchestrator script
-├── lib/                  # Reusable modules
-│   ├── StateModel.ps1    # Domain model classes
-│   ├── GitHubApi.ps1     # GitHub REST API functions
-│   ├── Remediation.ps1   # Auto-fix strategies
-│   ├── Logging.ps1       # Safe output utilities
-│   └── VersionParser.ps1 # Version parsing logic
+├── main.ps1              # Orchestrator script (~350 lines)
+├── lib/                  # Core modules (~3,246 lines total)
+│   ├── StateModel.ps1    # Domain model classes (~639 lines)
+│   ├── GitHubApi.ps1     # GitHub REST API functions (~1,165 lines)
+│   ├── ValidationRules.ps1  # Rule engine (~163 lines)
+│   ├── RemediationActions.ps1  # Action base class (~48 lines)
+│   ├── Remediation.ps1   # Auto-fix coordination (~301 lines)
+│   ├── InputValidation.ps1  # Input parsing (~325 lines)
+│   ├── Logging.ps1       # Safe output utilities (~105 lines)
+│   └── VersionParser.ps1 # Version parsing logic (~150 lines)
+│
+├── lib/rules/            # Validation rules (20 rules organized by category)
+│   ├── ref_type/         # Reference type validation (5 rules)
+│   │   ├── tag_should_be_branch/
+│   │   ├── branch_should_be_tag/
+│   │   ├── duplicate_floating_version_ref/
+│   │   ├── duplicate_latest_ref/
+│   │   └── duplicate_patch_version_ref/
+│   │
+│   ├── releases/         # Release validation (4 rules)
+│   │   ├── patch_release_required/
+│   │   ├── release_should_be_published/
+│   │   ├── release_should_be_immutable/
+│   │   └── floating_version_no_release/
+│   │
+│   ├── version_tracking/ # Version tracking (9 rules)
+│   │   ├── major_tag_missing/
+│   │   ├── major_tag_tracks_highest_patch/
+│   │   ├── major_branch_missing/
+│   │   ├── major_branch_tracks_highest_patch/
+│   │   ├── minor_tag_missing/
+│   │   ├── minor_tag_tracks_highest_patch/
+│   │   ├── minor_branch_missing/
+│   │   ├── minor_branch_tracks_highest_patch/
+│   │   └── patch_tag_missing/
+│   │
+│   └── latest/           # Latest version tracking (2 rules)
+│       ├── latest_tag_tracks_global_highest/
+│       └── latest_branch_tracks_global_highest/
+│
+├── lib/actions/          # Remediation actions (13 actions organized by type)
+│   ├── base/             # Base class and documentation
+│   ├── tags/             # Tag operations (3 actions)
+│   │   ├── CreateTagAction/
+│   │   ├── UpdateTagAction/
+│   │   └── DeleteTagAction/
+│   │
+│   ├── branches/         # Branch operations (3 actions)
+│   │   ├── CreateBranchAction/
+│   │   ├── UpdateBranchAction/
+│   │   └── DeleteBranchAction/
+│   │
+│   ├── releases/         # Release operations (4 actions)
+│   │   ├── CreateReleaseAction/
+│   │   ├── PublishReleaseAction/
+│   │   ├── RepublishReleaseAction/
+│   │   └── DeleteReleaseAction/
+│   │
+│   └── conversions/      # Type conversions (2 actions)
+│       ├── ConvertTagToBranchAction/
+│       └── ConvertBranchToTagAction/
+│
 ├── tests/                # Test suite
 │   ├── TestHelpers.psm1  # Shared test utilities
 │   ├── unit/             # Unit tests for modules
@@ -77,16 +132,20 @@ actions-semver-checker/
 │   │   └── SemVerChecker.Tests.ps1
 │   └── e2e/              # End-to-end validation tests
 │       └── SemVerValidation.Tests.ps1
+│
 └── action.yaml           # GitHub Action definition
 ```
 
 ### Design Principles
 
-1. **Single Source of Truth**: All state tracked in `RepositoryState` domain model
-2. **Status-Based Calculation**: Metrics calculated on-demand from issue statuses
-3. **Separation of Concerns**: Each module has a single, well-defined responsibility
-4. **Testability**: Modules can be tested independently
-5. **Zero Breaking Changes**: Backward compatibility is paramount
+1. **Rule-Based Validation**: All checks implemented as modular rules that can be independently configured
+2. **Single Source of Truth**: All state tracked in `RepositoryState` domain model
+3. **Status-Based Calculation**: Metrics calculated on-demand from issue statuses
+4. **Separation of Concerns**: Each module and rule has a single, well-defined responsibility
+5. **Priority-Based Execution**: Rules execute in priority order to handle dependencies correctly
+6. **Action Composition**: Complex fixes composed from simple, reusable actions
+7. **Testability**: Modules and rules can be tested independently
+8. **Zero Breaking Changes**: Backward compatibility is paramount
 
 ## Module Guide
 
@@ -96,16 +155,18 @@ The main script coordinates the validation workflow:
 
 1. **Initialize State**: Create `RepositoryState` object
 2. **Load Modules**: Dot-source all lib/*.ps1 files
-3. **Collect State**: Gather tags, branches, releases from repository
-4. **Run Validations**: Execute validation logic and collect issues
-5. **Execute Remediation**: Apply auto-fixes if enabled
-6. **Report Results**: Display summary and exit with appropriate code
+3. **Parse Inputs**: Read and validate action inputs from environment
+4. **Collect State**: Gather tags, branches, releases from GitHub API
+5. **Load Rules**: Auto-discover validation rules from lib/rules/
+6. **Execute Rules**: Run validation rules in priority order
+7. **Execute Remediation**: Apply auto-fixes if enabled
+8. **Report Results**: Display summary and exit with appropriate code
 
 **Key responsibilities:**
 - Workflow orchestration
 - Input parsing and validation
-- State collection from git/GitHub
-- Validation logic execution
+- State collection from GitHub API
+- Rule loading and execution
 - Result reporting
 
 ### lib/StateModel.ps1 (Domain Model)
@@ -115,7 +176,7 @@ Core domain classes representing the problem space:
 **Classes:**
 - `VersionRef`: Represents a version tag or branch with semantic parsing
 - `ReleaseInfo`: Represents a GitHub release with immutability status
-- `ValidationIssue`: Tracks a validation issue with status ("pending", "fixed", "failed", "unfixable")
+- `ValidationIssue`: Tracks a validation issue with status ("pending", "fixed", "failed", "unfixable", "manual_fix_required")
 - `RepositoryState`: Central state object containing all data and configuration
 - `RemediationPlan`: Handles issue dependencies and execution ordering
 
@@ -138,26 +199,158 @@ All GitHub REST API interactions:
 - `Get-ApiHeaders`: Build authorization headers
 - `Get-GitHubRepoInfo`: Retrieve repository information
 - `Get-GitHubReleases`: Fetch releases with pagination
+- `Get-GitHubTags`: Fetch tags via REST API
+- `Get-GitHubBranches`: Fetch branches via REST API
 - `Test-ReleaseImmutability`: Check if release has attestations
 - `New-GitHubRef`: Create new tag/branch reference
+- `Update-GitHubRef`: Update existing tag/branch reference
 - `Remove-GitHubRef`: Delete tag/branch reference
 - `New-GitHubRelease`: Create GitHub release (draft or published)
 - `New-GitHubDraftRelease`: Alias for `New-GitHubRelease` (backward compatibility)
 - `Remove-GitHubRelease`: Delete release
 - `Publish-GitHubRelease`: Publish draft release
+- `Invoke-WithRetry`: Retry wrapper with exponential backoff
 
 **When to modify:**
 - Adding new API endpoints
 - Changing API call patterns
 - Implementing rate limiting/retry logic
 
-### lib/Remediation.ps1 (Auto-fix Logic)
+### lib/ValidationRules.ps1 (Rule Engine)
 
-Strategies for fixing validation issues:
+Rule discovery and execution engine:
+
+**Classes:**
+- `ValidationRule`: Base class for all validation rules with Priority, Category, Condition, Check, CreateIssue
+
+**Functions:**
+- `Get-AllValidationRules`: Auto-discover rules from lib/rules/ directory
+- `Get-ValidationRules`: Get rules with optional filtering
+- `Invoke-ValidationRules`: Execute rules in priority order
+- `Test-IsPrerelease`: Helper to check if a version is a prerelease
+
+**When to modify:**
+- Changing rule discovery logic
+- Adding new rule execution patterns
+- Implementing rule filtering
+
+### lib/RemediationActions.ps1 (Action Base)
+
+Base class for all remediation actions:
+
+**Classes:**
+- `RemediationAction`: Abstract base class with Execute() and GetManualCommands() methods
+
+**When to modify:**
+- Extending base action functionality
+- Adding common action behaviors
+
+### lib/Remediation.ps1 (Auto-fix Coordination)
+
+Strategies for coordinating and executing fixes:
 
 **Functions:**
 - `Invoke-AutoFix`: Execute a single auto-fix action
 - `Get-ImmutableReleaseRemediationCommands`: Generate commands for release conflicts
+- `New-RemediationPlan`: Create execution plan with priority ordering
+
+**When to modify:**
+- Adding new auto-fix strategies
+- Changing remediation coordination logic
+- Implementing new fix patterns
+
+### lib/InputValidation.ps1 (Input Parsing)
+
+Action input parsing and validation:
+
+**Functions:**
+- `Read-ActionInputs`: Parse inputs from environment JSON
+- `Test-ActionInputs`: Validate input configuration
+- `Write-InputDebugInfo`: Output debug information
+
+**When to modify:**
+- Adding new input parameters
+- Changing input validation logic
+- Implementing input normalization
+
+### lib/Logging.ps1 (Safe Output)
+
+Workflow command injection protection:
+
+**Functions:**
+- `Write-SafeOutput`: Safely output untrusted data
+- `Write-ActionsError`: Log error with optional State tracking
+- `Write-ActionsWarning`: Log warning
+- `Write-ActionsMessage`: Log message with severity
+
+**When to modify:**
+- Adding new output patterns
+- Changing error handling
+- Implementing new logging levels
+
+### lib/VersionParser.ps1 (Parsing)
+
+Version string parsing and validation:
+
+**Functions:**
+- `ConvertTo-Version`: Parse semantic version strings
+
+**When to modify:**
+- Changing version parsing logic
+- Supporting new version formats
+- Adding validation rules
+
+### lib/rules/ (Validation Rules)
+
+Individual validation rule implementations. Each rule is a self-contained PowerShell script that exports a `ValidationRule` object.
+
+**Rule Structure:**
+- `Name`: Unique identifier (e.g., "patch_release_required")
+- `Description`: Human-readable description
+- `Priority`: Execution order (5-40, lower runs first)
+- `Category`: Grouping (ref_type, releases, version_tracking, latest)
+- `Condition`: ScriptBlock that filters items to validate
+- `Check`: ScriptBlock that returns $true if item is valid
+- `CreateIssue`: ScriptBlock that creates ValidationIssue + RemediationAction
+
+**Adding New Rules:**
+1. Create a new directory in the appropriate category (ref_type, releases, version_tracking, latest)
+2. Add a `.ps1` file with the rule implementation
+3. Add a `README.md` documenting the rule
+4. Export the ValidationRule object at the end of the file
+5. The rule will be automatically discovered and loaded
+
+**When to modify:**
+- Adding new validation checks
+- Changing existing rule behavior
+- Updating rule priorities
+
+### lib/actions/ (Remediation Actions)
+
+Individual remediation action implementations. Each action is a PowerShell class that extends `RemediationAction`.
+
+**Action Structure:**
+- Inherits from `RemediationAction` base class
+- Implements `Execute([RepositoryState]$state)` method
+- Implements `GetManualCommands([RepositoryState]$state)` method
+- Has a `Priority` property for execution ordering
+
+**Action Categories:**
+- **tags/**: CreateTagAction, UpdateTagAction, DeleteTagAction
+- **branches/**: CreateBranchAction, UpdateBranchAction, DeleteBranchAction
+- **releases/**: CreateReleaseAction, PublishReleaseAction, RepublishReleaseAction, DeleteReleaseAction
+- **conversions/**: ConvertTagToBranchAction, ConvertBranchToTagAction
+
+**Adding New Actions:**
+1. Create a new directory in the appropriate category
+2. Add a `.ps1` file with the action class implementation
+3. Add a `README.md` documenting the action
+4. The action is referenced by rules via ValidationIssue.RemediationAction
+
+**When to modify:**
+- Adding new types of fixes
+- Changing existing action behavior
+- Updating action priorities
 
 **When to modify:**
 - Adding new auto-fix strategies
@@ -232,6 +425,89 @@ tests/
 - **Edge case tests**: Handle unusual scenarios (e2e)
 - **API tests**: GitHub API interaction (unit/integration)
 - **Parsing tests**: Version string parsing (unit)
+- **Rule tests**: Individual validation rule behavior (unit)
+
+### Testing Rules
+
+Each validation rule should have a corresponding test file (e.g., `patch_release_required.Tests.ps1`) that tests:
+
+1. **Condition Block**: Verify the rule applies only when expected
+2. **Check Block**: Test the validation logic
+3. **CreateIssue Block**: Ensure issues are created correctly with proper RemediationAction
+
+**Example Rule Test Structure:**
+
+```powershell
+BeforeAll {
+    . "$PSScriptRoot/../../../StateModel.ps1"
+    . "$PSScriptRoot/../../../ValidationRules.ps1"
+    . "$PSScriptRoot/../../../RemediationActions.ps1"
+    . "$PSScriptRoot/patch_release_required.ps1"
+}
+
+Describe "patch_release_required" {
+    Context "Condition" {
+        It "should return items when rule applies" {
+            $state = [RepositoryState]::new()
+            $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
+            $config = @{ 'check-releases' = 'error' }
+            
+            $result = & $Rule_PatchReleaseRequired.Condition $state $config
+            
+            $result.Count | Should -Be 1
+        }
+    }
+    
+    Context "CreateIssue" {
+        It "should create issue with CreateReleaseAction" {
+            $versionRef = [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
+            $state = [RepositoryState]::new()
+            $config = @{ 'check-releases' = 'error' }
+            
+            $issue = & $Rule_PatchReleaseRequired.CreateIssue $versionRef $state $config
+            
+            $issue.Type | Should -Be "missing_release"
+            $issue.RemediationAction.GetType().Name | Should -Be "CreateReleaseAction"
+        }
+    }
+}
+```
+
+### Testing Actions
+
+Each remediation action should have tests that verify:
+
+1. **Execute Method**: Test successful execution and error handling
+2. **GetManualCommands Method**: Verify manual fix commands are correct
+3. **Priority**: Ensure priority is set correctly for execution ordering
+
+**Example Action Test Structure:**
+
+```powershell
+Describe "CreateTagAction" {
+    It "should execute successfully" {
+        $state = [RepositoryState]::new()
+        $action = [CreateTagAction]::new("v1.0.0", "abc123")
+        
+        # Mock the API call
+        Mock New-GitHubRef { return $true }
+        
+        $result = $action.Execute($state)
+        
+        $result | Should -Be $true
+        Should -Invoke New-GitHubRef -Times 1
+    }
+    
+    It "should generate correct manual commands" {
+        $state = [RepositoryState]::new()
+        $action = [CreateTagAction]::new("v1.0.0", "abc123")
+        
+        $commands = $action.GetManualCommands($state)
+        
+        $commands | Should -Contain "git push origin abc123:refs/tags/v1.0.0"
+    }
+}
+```
 
 ### Adding New Tests
 
