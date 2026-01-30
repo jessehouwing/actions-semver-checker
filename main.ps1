@@ -204,6 +204,7 @@ if ($apiLatestBranch -and $apiLatestBranch.Count -gt 0) {
 # Populate State.Releases from API response
 foreach ($release in $releases) {
     # Convert the release hashtable to PSCustomObject format expected by ReleaseInfo constructor
+    # The immutable property is now included directly from the GraphQL response
     $releaseData = [PSCustomObject]@{
         tag_name = $release.tagName
         id = $release.id
@@ -211,7 +212,9 @@ foreach ($release in $releases) {
         prerelease = $release.isPrerelease
         html_url = $release.htmlUrl
         target_commitish = $release.targetCommitish
+        immutable = $release.immutable
     }
+
     $ri = [ReleaseInfo]::new($releaseData)
     $ri.IsIgnored = $release.isIgnored
     $script:State.Releases += $ri

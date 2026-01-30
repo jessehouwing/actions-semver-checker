@@ -151,6 +151,7 @@ Describe "major_tag_missing" {
                 prerelease = $true
                 html_url = "https://github.com/test/test/releases/tag/v1.1.0"
                 target_commitish = "prerel456"
+                immutable = $false
             }
             $state.Releases += [ReleaseInfo]::new($prereleaseData)
             
@@ -179,6 +180,7 @@ Describe "major_tag_missing" {
                 prerelease = $true
                 html_url = "https://github.com/test/test/releases/tag/v1.1.0"
                 target_commitish = "prerel456"
+                immutable = $false
             }
             $state.Releases += [ReleaseInfo]::new($prereleaseData)
             

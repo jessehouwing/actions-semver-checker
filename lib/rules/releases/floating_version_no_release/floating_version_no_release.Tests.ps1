@@ -6,6 +6,7 @@ BeforeAll {
     . "$PSScriptRoot/../../../StateModel.ps1"
     . "$PSScriptRoot/../../../ValidationRules.ps1"
     . "$PSScriptRoot/../../../RemediationActions.ps1"
+    . "$PSScriptRoot/../../../GitHubApi.ps1"
     . "$PSScriptRoot/floating_version_no_release.ps1"
 }
 
@@ -20,6 +21,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -42,6 +44,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -64,6 +67,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -88,6 +92,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -111,6 +116,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -134,6 +140,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/latest"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -157,6 +164,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -179,6 +187,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $ignored = [ReleaseInfo]::new($releaseData)
             $ignored.IsIgnored = $true
@@ -204,6 +213,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()
@@ -230,6 +240,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v2"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()
@@ -254,6 +265,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1"
                 target_commitish = "abc123"
+                immutable = $true
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()
@@ -279,6 +291,7 @@ Describe "floating_version_no_release" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/latest"
                 target_commitish = "abc123"
+                immutable = $true
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()

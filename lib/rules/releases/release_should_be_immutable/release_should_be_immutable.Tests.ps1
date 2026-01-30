@@ -21,6 +21,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -40,6 +41,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -59,6 +61,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -80,6 +83,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -100,6 +104,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -119,6 +124,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $ignored = [ReleaseInfo]::new($releaseData)
             $ignored.IsIgnored = $true
@@ -140,6 +146,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -159,6 +166,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $state.Releases = @([ReleaseInfo]::new($releaseData))
             $state.IgnoreVersions = @()
@@ -172,9 +180,6 @@ Describe "release_should_be_immutable" {
     
     Context "Check - Immutability verification" {
         It "should return true when release is immutable" {
-            # Mock Test-ReleaseImmutability to return true
-            Mock Test-ReleaseImmutability { return $true }
-            
             $releaseData = [PSCustomObject]@{
                 tag_name = "v1.0.0"
                 id = 123
@@ -182,6 +187,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $true
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()
@@ -197,9 +203,6 @@ Describe "release_should_be_immutable" {
         }
         
         It "should return false when release is not immutable" {
-            # Mock Test-ReleaseImmutability to return false
-            Mock Test-ReleaseImmutability { return $false }
-            
             $releaseData = [PSCustomObject]@{
                 tag_name = "v1.0.0"
                 id = 123
@@ -207,6 +210,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()
@@ -231,6 +235,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.0"
                 target_commitish = "abc123"
+                immutable = $false
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()
@@ -253,6 +258,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v1.0.1"
                 target_commitish = "abc124"
+                immutable = $false
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()
@@ -272,6 +278,7 @@ Describe "release_should_be_immutable" {
                 prerelease = $false
                 html_url = "https://github.com/repo/releases/tag/v2.5.3"
                 target_commitish = "def789"
+                immutable = $false
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()

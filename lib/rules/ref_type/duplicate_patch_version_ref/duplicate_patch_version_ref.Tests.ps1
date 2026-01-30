@@ -5,7 +5,7 @@
 BeforeAll {
     $global:ProgressPreference = 'SilentlyContinue'
     
-    . "$PSScriptRoot/../../../../lib/StateModel.ps1"
+    # Note: StateModel.ps1 is loaded by ValidationRules.ps1, no need to load it separately
     . "$PSScriptRoot/../../../../lib/ValidationRules.ps1"
     . "$PSScriptRoot/../../../../lib/RemediationActions.ps1"
     . "$PSScriptRoot/duplicate_patch_version_ref.ps1"
