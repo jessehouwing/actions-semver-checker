@@ -245,6 +245,7 @@ query(`$owner: String!, `$name: String!, `$first: Int!, `$after: String) {
         isPrerelease
         isDraft
         immutable
+        isLatest
       }
     }
   }
@@ -302,6 +303,7 @@ query(`$owner: String!, `$name: String!, `$first: Int!, `$after: String) {
                     isPrerelease = $release.isPrerelease
                     isDraft = $release.isDraft
                     immutable = $release.immutable
+                    isLatest = $release.isLatest
                 }
             }
             

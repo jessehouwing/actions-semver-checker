@@ -132,6 +132,65 @@ Describe "New-GitHubRef" {
     }
 }
 
+Describe "Get-GitHubRelease GraphQL query validation" {
+    It "Should include all required fields in GraphQL query" {
+        # Read the GitHubApi.ps1 file to extract the GraphQL query
+        $gitHubApiPath = "$PSScriptRoot/../../lib/GitHubApi.ps1"
+        $gitHubApiContent = Get-Content -Path $gitHubApiPath -Raw
+        
+        # Extract the GraphQL query from the Get-GitHubRelease function
+        # The query is between @" and "@ markers
+        if ($gitHubApiContent -match 'query\(`\$owner[^@]*nodes\s*\{([^}]+)\}') {
+            $queryFields = $Matches[1]
+            
+            # Required fields that must be present in the query
+            $requiredFields = @(
+                'databaseId',
+                'tagName',
+                'isPrerelease',
+                'isDraft',
+                'immutable',
+                'isLatest'
+            )
+            
+            # Check each required field is present
+            foreach ($field in $requiredFields) {
+                $queryFields | Should -Match $field -Because "GraphQL query must include '$field' field to populate ReleaseInfo correctly"
+            }
+        } else {
+            throw "Could not find GraphQL query in Get-GitHubRelease function"
+        }
+    }
+    
+    It "Should map GraphQL response fields to hashtable correctly" {
+        # Read the GitHubApi.ps1 file to find the response mapping code
+        $gitHubApiPath = "$PSScriptRoot/../../lib/GitHubApi.ps1"
+        $gitHubApiContent = Get-Content -Path $gitHubApiPath -Raw
+        
+        # Extract the hashtable creation code that maps GraphQL response to output
+        if ($gitHubApiContent -match 'foreach\s*\(\$release in \$releases\.nodes\)[^{]*\{[^@]*@\{([^}]+)\}') {
+            $mappingCode = $Matches[1]
+            
+            # Required mappings that must be present
+            $requiredMappings = @(
+                'id\s*=',
+                'tagName\s*=',
+                'isPrerelease\s*=',
+                'isDraft\s*=',
+                'immutable\s*=',
+                'isLatest\s*='
+            )
+            
+            # Check each required mapping is present
+            foreach ($mapping in $requiredMappings) {
+                $mappingCode | Should -Match $mapping -Because "Response mapping must include all fields returned by GraphQL query"
+            }
+        } else {
+            throw "Could not find response mapping code in Get-GitHubRelease function"
+        }
+    }
+}
+
 Describe "API failure handling" {
     BeforeEach {
         $env:GITHUB_API_DISABLE_RETRY = 'true'
