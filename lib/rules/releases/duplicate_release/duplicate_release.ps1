@@ -73,7 +73,7 @@ $Rule_DuplicateRelease = [ValidationRule]@{
         )
         $issue.Version = $version
         
-        # DeleteReleaseAction constructor: tagName, releaseId
+        # DeleteReleaseAction constructor parameters are (tagName, releaseId)
         $issue.RemediationAction = [DeleteReleaseAction]::new($version, $ReleaseInfo.Id)
         
         return $issue
