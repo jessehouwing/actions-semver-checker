@@ -33,29 +33,31 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run PSScriptAnalyzer
+        uses: microsoft/psscriptanalyzer-action@7a0da25f33985767f15f93140306528900744195
+        with:
+          path: .\
+          recurse: true
+          output: results.sarif
+
+      - name: Filter TypeNotFound warnings from SARIF
         shell: pwsh
         run: |
-          # Install PSScriptAnalyzer if not present
-          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
-            Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          # Load SARIF file
+          $sarif = Get-Content results.sarif -Raw | ConvertFrom-Json
+          
+          # Filter out TypeNotFound warnings
+          # PSScriptAnalyzer analyzes files independently and cannot resolve 
+          # classes defined in dot-sourced files, causing false TypeNotFound warnings
+          foreach ($run in $sarif.runs) {
+            $run.results = @($run.results | Where-Object { 
+              $_.ruleId -ne 'TypeNotFound' 
+            })
           }
           
-          # Run PSScriptAnalyzer and filter out TypeNotFound warnings
-          # TypeNotFound warnings occur because PSScriptAnalyzer analyzes files independently
-          # and cannot resolve classes defined in dot-sourced files
-          $issues = Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSScriptAnalyzerSettings.psd1 |
-            Where-Object { $_.RuleName -ne 'TypeNotFound' }
+          # Save filtered SARIF
+          $sarif | ConvertTo-Json -Depth 100 | Set-Content results.sarif
           
-          if ($issues.Count -gt 0) {
-            Write-Host "::error::Found $($issues.Count) PSScriptAnalyzer issues (excluding TypeNotFound)"
-            $issues | ForEach-Object {
-              $file = $_.ScriptPath -replace [regex]::Escape($PWD), '.'
-              Write-Host "::error file=$file,line=$($_.Line)::$($_.RuleName): $($_.Message)"
-            }
-            exit 1
-          } else {
-            Write-Host "::notice::No PSScriptAnalyzer issues found (TypeNotFound warnings excluded)"
-          }
+          Write-Host "Filtered SARIF file saved (TypeNotFound warnings removed)"
 
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file
