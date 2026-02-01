@@ -5,6 +5,7 @@
 class CreateReleaseAction : ReleaseRemediationAction {
     [bool]$AutoPublish = $false  # If true, create directly as published (non-draft)
     [Nullable[bool]]$MakeLatest = $null  # Controls whether release should become latest ($true, $false, or $null to let GitHub decide)
+    [string]$TargetSha = ""  # SHA where the release should be created
     
     CreateReleaseAction([string]$tagName, [bool]$isDraft) : base("Create release", $tagName) {
         # If isDraft is false, it means we want to publish, so set AutoPublish to true
@@ -14,6 +15,12 @@ class CreateReleaseAction : ReleaseRemediationAction {
     
     CreateReleaseAction([string]$tagName, [bool]$isDraft, [bool]$autoPublish) : base("Create release", $tagName) {
         $this.AutoPublish = $autoPublish
+        $this.Priority = 30  # Create after tags
+    }
+    
+    CreateReleaseAction([string]$tagName, [bool]$isDraft, [bool]$autoPublish, [string]$targetSha) : base("Create release", $tagName) {
+        $this.AutoPublish = $autoPublish
+        $this.TargetSha = $targetSha
         $this.Priority = 30  # Create after tags
     }
     
@@ -47,20 +54,28 @@ class CreateReleaseAction : ReleaseRemediationAction {
             return @()
         }
         
+        $repoArg = ""
+        if ($state.RepoOwner -and $state.RepoName) {
+            $repoArg = " --repo $($state.RepoOwner)/$($state.RepoName)"
+        }
+        
         $latestArg = ""
         if ($null -ne $this.MakeLatest) {
             $latestArg = if ($this.MakeLatest) { " --latest" } else { " --latest=false" }
         }
         
+        # Use the target SHA that was set by the rule
+        $targetArg = if ($this.TargetSha) { " --target $($this.TargetSha)" } else { "" }
+        
         if ($this.AutoPublish) {
             # Create and immediately publish
             return @(
-                "gh release create $($this.TagName) --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`"$latestArg"
+                "gh release create $($this.TagName)$repoArg --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`"$targetArg$latestArg"
             )
         } else {
             # Create as draft
             return @(
-                "gh release create $($this.TagName) --draft --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`"$latestArg"
+                "gh release create $($this.TagName)$repoArg --draft --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`"$targetArg$latestArg"
             )
         }
     }

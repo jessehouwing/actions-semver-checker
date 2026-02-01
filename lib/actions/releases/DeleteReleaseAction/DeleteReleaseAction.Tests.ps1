@@ -39,7 +39,9 @@ Describe "DeleteReleaseAction" {
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 1
-            $commands[0] | Should -Be "gh release delete v1.0.0 --yes"
+            $commands[0] | Should -Match "gh release delete v1.0.0"
+            $commands[0] | Should -Match "--repo test-owner/test-repo"
+            $commands[0] | Should -Match "--yes"
         }
     }
     

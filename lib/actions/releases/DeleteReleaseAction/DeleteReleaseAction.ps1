@@ -24,6 +24,10 @@ class DeleteReleaseAction : ReleaseRemediationAction {
     }
     
     [string[]] GetManualCommands([RepositoryState]$state) {
-        return @("gh release delete $($this.TagName) --yes")
+        $repoArg = ""
+        if ($state.RepoOwner -and $state.RepoName) {
+            $repoArg = " --repo $($state.RepoOwner)/$($state.RepoName)"
+        }
+        return @("gh release delete $($this.TagName)$repoArg --yes")
     }
 }

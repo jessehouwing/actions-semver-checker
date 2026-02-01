@@ -47,7 +47,9 @@ Describe "CreateReleaseAction" {
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 1
-            $commands[0] | Should -Match "gh release create v1.0.0 --draft"
+            $commands[0] | Should -Match "gh release create v1.0.0"
+            $commands[0] | Should -Match "--repo test-owner/test-repo"
+            $commands[0] | Should -Match "--draft"
             $commands[0] | Should -Not -Match "^#"
         }
         
@@ -57,6 +59,7 @@ Describe "CreateReleaseAction" {
             
             $commands.Count | Should -Be 1
             $commands[0] | Should -Match "gh release create v1.0.0"
+            $commands[0] | Should -Match "--repo test-owner/test-repo"
             $commands[0] | Should -Not -Match "--draft"
             $commands[0] | Should -Not -Match "^#"
         }

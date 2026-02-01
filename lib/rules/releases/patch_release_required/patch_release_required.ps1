@@ -125,10 +125,10 @@ $Rule_PatchReleaseRequired = [ValidationRule]@{
         )
         $issue.Version = $version
         
-        # CreateReleaseAction constructor: tagName, isDraft, autoPublish
+        # CreateReleaseAction constructor: tagName, isDraft, autoPublish, targetSha
         # isDraft should be opposite of shouldAutoPublish
         $isDraft = -not $shouldAutoPublish
-        $action = [CreateReleaseAction]::new($version, $isDraft, $shouldAutoPublish)
+        $action = [CreateReleaseAction]::new($version, $isDraft, $shouldAutoPublish, $VersionRef.Sha)
         
         # Determine if this release should become "latest"
         # Only set MakeLatest=false explicitly if it should NOT be latest
