@@ -393,6 +393,8 @@ Check that every build version (e.g., `v1.0.0`) has a corresponding GitHub Relea
 - `warning`: Report as warning but don't fail
 - `none` or `false`: Skip this check entirely
 
+> **⚠️ Permission Note:** Draft releases are NOT visible with `contents: read` permission. If you have draft releases and this check is enabled, you must use `contents: write` permission or the action will incorrectly report them as missing.
+
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
   with:
@@ -626,11 +628,13 @@ git push origin <sha>:refs/heads/latest --force
 
 ### Read-only Mode (Default)
 
-Requires `contents: read` permission to retrieve tags, branches and releases.
+Requires `contents: read` permission to retrieve tags, branches and published releases.
+
+> **Note:** Draft releases are NOT visible with `contents: read` permission. If you have draft releases and `check-releases` is enabled, the action will incorrectly report them as missing. Use `contents: write` to see draft releases.
 
 ### Auto-fix Mode
 
-Requires `contents: write` permission to push tag/branch updates:
+Requires `contents: write` permission to push tag/branch updates and see draft releases:
 
 ```yaml
 jobs:

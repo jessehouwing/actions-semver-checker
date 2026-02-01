@@ -116,6 +116,7 @@ Write-Host "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
 Write-Host "::debug::Fetching branches from GitHub API..."
 $apiBranches = Get-GitHubBranch -State $script:State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
 $branches = $apiBranches | ForEach-Object { $_.name }
+Write-Host "::debug::Found $($branches.Count) version branches: $($branches -join ', ')"
 
 # Also fetch latest tag and branch via API (for 'latest' alias validation)
 $apiLatestTag = Get-GitHubTag -State $script:State -Pattern "^latest$"
@@ -147,6 +148,8 @@ $releases = @()
 $releaseMap = @{}
 if ($repoInfo) {
     $releases = Get-GitHubRelease -State $script:State
+    Write-Host "::debug::Found $($releases.Count) releases: $(($releases | ForEach-Object { $_.tagName + $(if ($_.isDraft) { ' (draft)' } else { '' }) }) -join ', ')"
+    
     # Create a map for quick lookup and set isIgnored property
     foreach ($release in $releases) {
         $release.isIgnored = Test-VersionIgnored -Version $release.tagName -IgnoreVersions $inputConfig.IgnoreVersions
@@ -219,6 +222,12 @@ foreach ($release in $releases) {
     $ri = [ReleaseInfo]::new($releaseData)
     $ri.IsIgnored = $release.isIgnored
     $script:State.Releases += $ri
+}
+
+Write-Host "::debug::State.Releases contains $($script:State.Releases.Count) releases"
+if ($script:State.Releases.Count -gt 0) {
+    $draftReleases = $script:State.Releases | Where-Object { $_.IsDraft }
+    Write-Host "::debug::Draft releases in State: $(($draftReleases | ForEach-Object { $_.TagName }) -join ', ')"
 }
 
 #############################################################################
