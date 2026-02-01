@@ -38,6 +38,7 @@ jobs:
           path: .\
           recurse: true
           output: results.sarif
+          settings: PSScriptAnalyzerSettings.psd1
 
       - name: Filter TypeNotFound warnings from SARIF
         shell: pwsh
