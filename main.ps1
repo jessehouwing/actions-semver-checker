@@ -108,14 +108,15 @@ if (-not (Test-AutoFixRequirement -State $script:State -AutoFix $inputConfig.Aut
 }
 
 # Fetch tags and branches via GitHub API (no checkout required)
+# These now return VersionRef[] objects directly with IsIgnored set
 Write-Host "::debug::Fetching tags from GitHub API..."
-$apiTags = Get-GitHubTag -State $script:State -Pattern "^v\d+(\.\d+){0,2}$"
-$tags = $apiTags | ForEach-Object { $_.name }
+$apiTags = Get-GitHubTag -State $script:State -Pattern "^v\d+(\.\d+){0,2}$" -IgnoreVersions $inputConfig.IgnoreVersions
+$tags = $apiTags | ForEach-Object { $_.Version }
 Write-Host "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
 
 Write-Host "::debug::Fetching branches from GitHub API..."
-$apiBranches = Get-GitHubBranch -State $script:State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
-$branches = $apiBranches | ForEach-Object { $_.name }
+$apiBranches = Get-GitHubBranch -State $script:State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$" -IgnoreVersions $inputConfig.IgnoreVersions
+$branches = $apiBranches | ForEach-Object { $_.Version }
 Write-Host "::debug::Found $($branches.Count) version branches: $($branches -join ', ')"
 
 # Also fetch latest tag and branch via API (for 'latest' alias validation)
@@ -143,87 +144,45 @@ if ($inputConfig.AutoFix -and $repoInfo) {
     Write-Host "::debug::    contents: write"
 }
 
-# Get GitHub releases - always fetch to detect prerelease versions
+# Get GitHub releases - returns ReleaseInfo[] directly with IsIgnored set
 $releases = @()
 $releaseMap = @{}
 if ($repoInfo) {
-    $releases = Get-GitHubRelease -State $script:State
-    Write-Host "::debug::Found $($releases.Count) releases: $(($releases | ForEach-Object { $_.tagName + $(if ($_.isDraft) { ' (draft)' } else { '' }) }) -join ', ')"
+    $releases = Get-GitHubRelease -State $script:State -IgnoreVersions $inputConfig.IgnoreVersions
+    Write-Host "::debug::Found $($releases.Count) releases: $(($releases | ForEach-Object { $_.TagName + $(if ($_.IsDraft) { ' (draft)' } else { '' }) }) -join ', ')"
     
-    # Create a map for quick lookup and set isIgnored property
+    # Create a map for quick lookup
     foreach ($release in $releases) {
-        $release.isIgnored = Test-VersionIgnored -Version $release.tagName -IgnoreVersions $inputConfig.IgnoreVersions
-        $releaseMap[$release.tagName] = $release
+        $releaseMap[$release.TagName] = $release
     }
 }
 
 #############################################################################
 # POPULATE STATE MODEL
+# API functions now return VersionRef[] and ReleaseInfo[] directly
 #############################################################################
 
-# Populate State.Tags from API response
-foreach ($tag in $tags) {
-    # Check if this version should be ignored
-    $isIgnored = Test-VersionIgnored -Version $tag -IgnoreVersions $inputConfig.IgnoreVersions
-    
-    # Get SHA from API response
-    $tagInfo = $apiTags | Where-Object { $_.name -eq $tag } | Select-Object -First 1
-    $tagSha = if ($tagInfo) { $tagInfo.sha } else { $null }
-    
-    $vr = [VersionRef]::new($tag, "refs/tags/$tag", $tagSha, "tag")
-    $vr.IsIgnored = $isIgnored
-    
-    $script:State.Tags += $vr
-    Write-Host "::debug::Added tag $tag to State (ignored=$isIgnored)"
+# Populate State.Tags from API response (already VersionRef objects)
+$script:State.Tags = $apiTags
+foreach ($tag in $script:State.Tags) {
+    Write-Host "::debug::Added tag $($tag.Version) to State (ignored=$($tag.IsIgnored))"
 }
 
 # Add 'latest' tag to State if it exists
 if ($apiLatestTag -and $apiLatestTag.Count -gt 0) {
-    $latestTagInfo = $apiLatestTag | Select-Object -First 1
-    $latestVr = [VersionRef]::new("latest", "refs/tags/latest", $latestTagInfo.sha, "tag")
-    $script:State.Tags += $latestVr
+    $script:State.Tags += $apiLatestTag | Select-Object -First 1
 }
 
-# Populate State.Branches from API response
-foreach ($branch in $branches) {
-    # Check if this version should be ignored
-    $isIgnored = Test-VersionIgnored -Version $branch -IgnoreVersions $inputConfig.IgnoreVersions
-    
-    # Get SHA from API response
-    $branchInfo = $apiBranches | Where-Object { $_.name -eq $branch } | Select-Object -First 1
-    $branchSha = if ($branchInfo) { $branchInfo.sha } else { $null }
-    
-    $vr = [VersionRef]::new($branch, "refs/heads/$branch", $branchSha, "branch")
-    $vr.IsIgnored = $isIgnored
-    $script:State.Branches += $vr
-}
+# Populate State.Branches from API response (already VersionRef objects)
+$script:State.Branches = $apiBranches
 
 # Add 'latest' branch to State if it exists
 if ($apiLatestBranch -and $apiLatestBranch.Count -gt 0) {
-    $latestBranchInfo = $apiLatestBranch | Select-Object -First 1
-    $latestVr = [VersionRef]::new("latest", "refs/heads/latest", $latestBranchInfo.sha, "branch")
-    $script:State.Branches += $latestVr
+    $script:State.Branches += $apiLatestBranch | Select-Object -First 1
 }
 
-# Populate State.Releases from API response
-foreach ($release in $releases) {
-    # Convert the release hashtable to PSCustomObject format expected by ReleaseInfo constructor
-    # The immutable and isLatest properties are now included directly from the GraphQL response
-    $releaseData = [PSCustomObject]@{
-        tag_name = $release.tagName
-        id = $release.id
-        draft = $release.isDraft
-        prerelease = $release.isPrerelease
-        html_url = $release.htmlUrl
-        target_commitish = $release.targetCommitish
-        immutable = $release.immutable
-        isLatest = $release.isLatest
-    }
-
-    $ri = [ReleaseInfo]::new($releaseData)
-    $ri.IsIgnored = $release.isIgnored
-    $script:State.Releases += $ri
-}
+# Populate State.Releases from API response (already ReleaseInfo objects)
+$script:State.Releases = $releases
 
 Write-Host "::debug::State.Releases contains $($script:State.Releases.Count) releases"
 if ($script:State.Releases.Count -gt 0) {

@@ -113,6 +113,50 @@ function Throw-GitHubApiFailure
     throw "GitHub API request failed during $Operation$statusSuffix"
 }
 
+function Test-VersionShouldBeIgnored {
+    <#
+    .SYNOPSIS
+    Tests if a version should be ignored based on the ignore-versions patterns.
+    
+    .DESCRIPTION
+    Checks if a version matches any of the ignore patterns. Supports both exact
+    matches and wildcard patterns (using PowerShell's -like operator).
+    
+    .PARAMETER Version
+    The version string to check (e.g., "v1.0.0", "v2.1")
+    
+    .PARAMETER IgnoreVersions
+    Array of patterns to match against. Supports wildcards like "v1.*"
+    
+    .EXAMPLE
+    Test-VersionShouldBeIgnored -Version "v1.0.0" -IgnoreVersions @("v1.*")
+    # Returns $true
+    
+    .EXAMPLE
+    Test-VersionShouldBeIgnored -Version "v2.0.0" -IgnoreVersions @("v1.0.0", "v1.1.0")
+    # Returns $false
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Version,
+        
+        [string[]]$IgnoreVersions = @()
+    )
+    
+    if (-not $IgnoreVersions -or $IgnoreVersions.Count -eq 0) {
+        return $false
+    }
+    
+    foreach ($pattern in $IgnoreVersions) {
+        # Use -like for wildcard pattern matching (supports *, ?)
+        if ($Version -like $pattern) {
+            return $true
+        }
+    }
+    
+    return $false
+}
+
 function Get-GitHubRepoInfo
 {
     param(
@@ -205,9 +249,28 @@ query(`$owner: String!, `$name: String!, `$tag: String!) {
 }
 
 function Get-GitHubRelease {
+    <#
+    .SYNOPSIS
+    Fetches all releases from a GitHub repository via the GraphQL API.
+    
+    .DESCRIPTION
+    Uses the GitHub GraphQL API to fetch all releases with immutability and latest status.
+    Returns ReleaseInfo objects directly, ready to add to RepositoryState.
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER IgnoreVersions
+    Optional array of version strings to mark as ignored.
+    
+    .OUTPUTS
+    Returns an array of ReleaseInfo objects.
+    #>
     param(
         [Parameter(Mandatory)]
-        [RepositoryState]$State
+        [RepositoryState]$State,
+        
+        [string[]]$IgnoreVersions = @()
     )
     
     try {
@@ -220,7 +283,7 @@ function Get-GitHubRelease {
         # Use GitHub GraphQL API to get releases with immutability status
         # This is more efficient than REST API + separate immutability checks
         $headers = Get-ApiHeader -Token $State.Token
-        $allReleases = @()
+        [ReleaseInfo[]]$allReleases = @()
         $cursor = $null
         
         # Determine GraphQL endpoint from API URL
@@ -295,16 +358,26 @@ query(`$owner: String!, `$name: String!, `$first: Int!, `$after: String) {
                 break
             }
             
-            # Collect releases
+            # Collect releases - create ReleaseInfo objects directly
             foreach ($release in $releases.nodes) {
-                $allReleases += @{
+                # Build PSCustomObject in the format ReleaseInfo constructor expects
+                $releaseData = [PSCustomObject]@{
+                    tag_name = $release.tagName
                     id = $release.databaseId
-                    tagName = $release.tagName
-                    isPrerelease = $release.isPrerelease
-                    isDraft = $release.isDraft
+                    draft = $release.isDraft
+                    prerelease = $release.isPrerelease
+                    html_url = $null  # Not available in GraphQL query
+                    target_commitish = $null  # Not available in GraphQL query
                     immutable = $release.immutable
                     isLatest = $release.isLatest
                 }
+                
+                $ri = [ReleaseInfo]::new($releaseData)
+                
+                # Check if this release's tag should be ignored (supports wildcards)
+                $ri.IsIgnored = Test-VersionShouldBeIgnored -Version $ri.TagName -IgnoreVersions $IgnoreVersions
+                
+                $allReleases += $ri
             }
             
             # Check if there are more pages
@@ -331,6 +404,7 @@ function Get-GitHubTag {
     .DESCRIPTION
     Uses the GitHub REST API to fetch all tags from the repository.
     This eliminates the need for a full clone with fetch-depth: 0 and fetch-tags: true.
+    Returns VersionRef objects directly, ready to add to RepositoryState.
     
     .PARAMETER State
     The RepositoryState object containing API configuration.
@@ -338,14 +412,19 @@ function Get-GitHubTag {
     .PARAMETER Pattern
     Optional regex pattern to filter tags. If not specified, all tags are returned.
     
+    .PARAMETER IgnoreVersions
+    Optional array of version strings to mark as ignored.
+    
     .OUTPUTS
-    Returns an array of hashtables with 'name' and 'sha' properties for each tag.
+    Returns an array of VersionRef objects.
     #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         
-        [string]$Pattern = $null
+        [string]$Pattern = $null,
+        
+        [string[]]$IgnoreVersions = @()
     )
     
     try {
@@ -357,7 +436,7 @@ function Get-GitHubTag {
         }
         
         $headers = Get-ApiHeader -Token $State.Token
-        $allTags = @()
+        $allTags = @()  # Untyped array for accumulating hashtables
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/refs/tags?per_page=100"
         
         do {
@@ -432,7 +511,18 @@ function Get-GitHubTag {
             
         } while ($url)
         
-        return $allTags
+        # Convert hashtables to VersionRef objects
+        [VersionRef[]]$result = @()
+        foreach ($tag in $allTags) {
+            $vr = [VersionRef]::new($tag.name, "refs/tags/$($tag.name)", $tag.sha, "tag")
+            
+            # Check if this version should be ignored (supports wildcards)
+            $vr.IsIgnored = Test-VersionShouldBeIgnored -Version $tag.name -IgnoreVersions $IgnoreVersions
+            
+            $result += $vr
+        }
+        
+        return $result
     }
     catch {
         Throw-GitHubApiFailure -Operation "fetching tags" -ErrorRecord $_
@@ -447,6 +537,7 @@ function Get-GitHubBranch {
     .DESCRIPTION
     Uses the GitHub REST API to fetch all branches from the repository.
     This eliminates the need for a full clone.
+    Returns VersionRef objects directly, ready to add to RepositoryState.
     
     .PARAMETER State
     The RepositoryState object containing API configuration.
@@ -454,14 +545,19 @@ function Get-GitHubBranch {
     .PARAMETER Pattern
     Optional regex pattern to filter branches. If not specified, all branches are returned.
     
+    .PARAMETER IgnoreVersions
+    Optional array of version strings to mark as ignored.
+    
     .OUTPUTS
-    Returns an array of hashtables with 'name' and 'sha' properties for each branch.
+    Returns an array of VersionRef objects.
     #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         
-        [string]$Pattern = $null
+        [string]$Pattern = $null,
+        
+        [string[]]$IgnoreVersions = @()
     )
     
     try {
@@ -519,7 +615,18 @@ function Get-GitHubBranch {
             
         } while ($url)
         
-        return $allBranches
+        # Convert hashtables to VersionRef objects
+        [VersionRef[]]$result = @()
+        foreach ($branch in $allBranches) {
+            $vr = [VersionRef]::new($branch.name, "refs/heads/$($branch.name)", $branch.sha, "branch")
+            
+            # Check if this version should be ignored (supports wildcards)
+            $vr.IsIgnored = Test-VersionShouldBeIgnored -Version $branch.name -IgnoreVersions $IgnoreVersions
+            
+            $result += $vr
+        }
+        
+        return $result
     }
     catch {
         Throw-GitHubApiFailure -Operation "fetching branches" -ErrorRecord $_
