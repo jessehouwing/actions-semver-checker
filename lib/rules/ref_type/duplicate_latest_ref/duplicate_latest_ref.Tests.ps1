@@ -22,9 +22,9 @@ Describe "duplicate_latest_ref" {
             $result = & $Rule_DuplicateLatestRef.Condition $state $config
             
             @($result).Count | Should -Be 1
-            $result[0].Version | Should -Be "latest"
-            $result[0].Tag.Version | Should -Be "latest"
-            $result[0].Branch.Version | Should -Be "latest"
+            @($result)[0].Version | Should -Be "latest"
+            @($result)[0].Tag.Version | Should -Be "latest"
+            @($result)[0].Branch.Version | Should -Be "latest"
         }
         
         It "returns empty when only tag exists" {

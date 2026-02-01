@@ -39,6 +39,7 @@ $script:ActionsRoot = Join-Path $PSScriptRoot "actions"
 . (Join-Path $script:ActionsRoot "releases/PublishReleaseAction/PublishReleaseAction.ps1")
 . (Join-Path $script:ActionsRoot "releases/RepublishReleaseAction/RepublishReleaseAction.ps1")
 . (Join-Path $script:ActionsRoot "releases/DeleteReleaseAction/DeleteReleaseAction.ps1")
+. (Join-Path $script:ActionsRoot "releases/SetLatestReleaseAction/SetLatestReleaseAction.ps1")
 
 #############################################################################
 # Load Conversion Actions

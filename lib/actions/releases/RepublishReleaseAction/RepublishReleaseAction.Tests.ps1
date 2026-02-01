@@ -1,6 +1,7 @@
 BeforeAll {
     . "$PSScriptRoot/../../../StateModel.ps1"
     . "$PSScriptRoot/../../../Logging.ps1"
+    . "$PSScriptRoot/../../../rules/releases/ReleaseRulesHelper.ps1"
     . "$PSScriptRoot/../../../GitHubApi.ps1"
     . "$PSScriptRoot/../../base/RemediationAction.ps1"
     . "$PSScriptRoot/../../base/ReleaseRemediationAction.ps1"
@@ -28,13 +29,15 @@ Describe "RepublishReleaseAction" {
     }
     
     Context "GetManualCommands" {
-        It "Should generate manual commands without comments" {
+        It "Should generate manual commands with comments about preserving latest status" {
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 2
-            $commands[0] | Should -Be "gh release edit v1.0.0 --draft=true"
-            $commands[1] | Should -Be "gh release edit v1.0.0 --draft=false"
+            $commands.Count | Should -Be 4
+            $commands[0] | Should -Match "check if this release is currently 'latest'"
+            $commands[1] | Should -Match "If it is the latest release"
+            $commands[2] | Should -Be "gh release edit v1.0.0 --draft=true"
+            $commands[3] | Should -Match "gh release edit v1.0.0 --draft=false"
         }
         
         It "Should return empty array when issue is unfixable" {

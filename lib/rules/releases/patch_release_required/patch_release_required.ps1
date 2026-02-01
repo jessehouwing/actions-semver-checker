@@ -4,6 +4,9 @@
 # Priority: 10
 #############################################################################
 
+# Load shared release helpers
+. "$PSScriptRoot/../ReleaseRulesHelper.ps1"
+
 $Rule_PatchReleaseRequired = [ValidationRule]@{
     Name = "patch_release_required"
     Description = "Patch versions must have GitHub Releases when check-releases is enabled"
@@ -125,7 +128,17 @@ $Rule_PatchReleaseRequired = [ValidationRule]@{
         # CreateReleaseAction constructor: tagName, isDraft, autoPublish
         # isDraft should be opposite of shouldAutoPublish
         $isDraft = -not $shouldAutoPublish
-        $issue.RemediationAction = [CreateReleaseAction]::new($version, $isDraft, $shouldAutoPublish)
+        $action = [CreateReleaseAction]::new($version, $isDraft, $shouldAutoPublish)
+        
+        # Determine if this release should become "latest"
+        # Only set MakeLatest=false explicitly if it should NOT be latest
+        # to prevent overwriting a correct latest release
+        $shouldBeLatest = Test-ShouldBeLatestRelease -State $State -Version $version
+        if (-not $shouldBeLatest) {
+            $action.MakeLatest = $false
+        }
+        
+        $issue.RemediationAction = $action
         
         return $issue
     }

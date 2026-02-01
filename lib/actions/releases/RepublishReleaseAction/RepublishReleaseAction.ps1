@@ -48,8 +48,10 @@ class RepublishReleaseAction : ReleaseRemediationAction {
             return @("# Enable 'Release immutability' in repository settings: $settingsUrl")
         }
         return @(
+            "# Note: First check if this release is currently 'latest' using: gh release view $($this.TagName) --json isLatest",
+            "# If it is the latest release, add --latest to the second command to preserve that status",
             "gh release edit $($this.TagName) --draft=true",
-            "gh release edit $($this.TagName) --draft=false"
+            "gh release edit $($this.TagName) --draft=false  # Add --latest if this was the latest release"
         )
     }
 }

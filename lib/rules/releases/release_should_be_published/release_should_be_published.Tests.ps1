@@ -395,4 +395,247 @@ Describe "release_should_be_published" {
             $issue.RemediationAction.TagName | Should -Be "v1.0.0"
         }
     }
+    
+    Context "CreateIssue - MakeLatest integration with Test-ShouldBeLatestRelease" {
+        It "should set MakeLatest=false when higher version release exists" {
+            $state = [RepositoryState]::new()
+            
+            # v2.0.0 already exists and is latest
+            $existingRelease = [PSCustomObject]@{
+                tag_name = "v2.0.0"
+                id = 200
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v2.0.0"
+                target_commitish = "def456"
+                immutable = $false
+            }
+            $latestRelease = [ReleaseInfo]::new($existingRelease)
+            $latestRelease.IsLatest = $true
+            $state.Releases = @($latestRelease)
+            
+            # Publishing draft for v1.0.0 (lower version)
+            $draftRelease = [PSCustomObject]@{
+                tag_name = "v1.0.0"
+                id = 100
+                draft = $true
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.0"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($draftRelease)
+            
+            $config = @{ 'check-releases' = 'error' }
+            $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
+            
+            # MakeLatest should be false to prevent overwriting v2.0.0 as latest
+            $issue.RemediationAction.MakeLatest | Should -Be $false
+        }
+        
+        It "should NOT set MakeLatest (let GitHub decide) when publishing highest version" {
+            $state = [RepositoryState]::new()
+            
+            # v1.0.0 already exists
+            $existingRelease = [PSCustomObject]@{
+                tag_name = "v1.0.0"
+                id = 100
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.0"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $latestRelease = [ReleaseInfo]::new($existingRelease)
+            $latestRelease.IsLatest = $true
+            $state.Releases = @($latestRelease)
+            
+            # Publishing draft for v2.0.0 (higher version - should become latest)
+            $draftRelease = [PSCustomObject]@{
+                tag_name = "v2.0.0"
+                id = 200
+                draft = $true
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v2.0.0"
+                target_commitish = "def456"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($draftRelease)
+            
+            $config = @{ 'check-releases' = 'error' }
+            $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
+            
+            # MakeLatest should be null (not explicitly set) to let GitHub make it latest
+            $issue.RemediationAction.MakeLatest | Should -BeNullOrEmpty
+        }
+        
+        It "should NOT set MakeLatest when no other releases exist (first publish)" {
+            $state = [RepositoryState]::new()
+            
+            # Only the draft release exists
+            $draftRelease = [PSCustomObject]@{
+                tag_name = "v1.0.0"
+                id = 100
+                draft = $true
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.0"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($draftRelease)
+            $state.Releases = @($releaseInfo)
+            
+            $config = @{ 'check-releases' = 'error' }
+            $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
+            
+            # MakeLatest should be null to let GitHub make it latest
+            $issue.RemediationAction.MakeLatest | Should -BeNullOrEmpty
+        }
+        
+        It "should set MakeLatest=false when publishing prerelease" {
+            $state = [RepositoryState]::new()
+            
+            # v1.0.0 exists and is latest
+            $existingRelease = [PSCustomObject]@{
+                tag_name = "v1.0.0"
+                id = 100
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.0"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $latestRelease = [ReleaseInfo]::new($existingRelease)
+            $latestRelease.IsLatest = $true
+            $state.Releases = @($latestRelease)
+            
+            # Publishing draft for v2.0.0 that's marked as prerelease
+            $draftRelease = [PSCustomObject]@{
+                tag_name = "v2.0.0"
+                id = 200
+                draft = $true
+                prerelease = $true  # This is a prerelease!
+                html_url = "https://github.com/repo/releases/tag/v2.0.0"
+                target_commitish = "def456"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($draftRelease)
+            
+            $config = @{ 'check-releases' = 'error' }
+            $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
+            
+            # MakeLatest should be false - prereleases should NOT become latest
+            $issue.RemediationAction.MakeLatest | Should -Be $false
+        }
+        
+        It "should set MakeLatest=false when publishing backport release" {
+            $state = [RepositoryState]::new()
+            
+            # v2.5.0 is the current latest
+            $existingRelease = [PSCustomObject]@{
+                tag_name = "v2.5.0"
+                id = 250
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v2.5.0"
+                target_commitish = "sha250"
+                immutable = $false
+            }
+            $latestRelease = [ReleaseInfo]::new($existingRelease)
+            $latestRelease.IsLatest = $true
+            $state.Releases = @($latestRelease)
+            
+            # Publishing backport draft for v1.5.1
+            $draftRelease = [PSCustomObject]@{
+                tag_name = "v1.5.1"
+                id = 151
+                draft = $true
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.5.1"
+                target_commitish = "backport123"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($draftRelease)
+            
+            $config = @{ 'check-releases' = 'error' }
+            $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
+            
+            # MakeLatest should be false to prevent overwriting v2.5.0
+            $issue.RemediationAction.MakeLatest | Should -Be $false
+        }
+        
+        It "should NOT set MakeLatest when only prereleases exist at higher versions" {
+            $state = [RepositoryState]::new()
+            
+            # v2.0.0 exists but is a prerelease (so v1.0.0 should become latest)
+            $existingRelease = [PSCustomObject]@{
+                tag_name = "v2.0.0"
+                id = 200
+                draft = $false
+                prerelease = $true  # This is a prerelease
+                html_url = "https://github.com/repo/releases/tag/v2.0.0"
+                target_commitish = "def456"
+                immutable = $false
+            }
+            $state.Releases = @([ReleaseInfo]::new($existingRelease))
+            
+            # Publishing draft for v1.0.0 (lower version but should be latest since v2.0.0 is prerelease)
+            $draftRelease = [PSCustomObject]@{
+                tag_name = "v1.0.0"
+                id = 100
+                draft = $true
+                prerelease = $false  # Not a prerelease
+                html_url = "https://github.com/repo/releases/tag/v1.0.0"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($draftRelease)
+            
+            $config = @{ 'check-releases' = 'error' }
+            $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
+            
+            # MakeLatest should be null - v1.0.0 IS the highest non-prerelease
+            $issue.RemediationAction.MakeLatest | Should -BeNullOrEmpty
+        }
+        
+        It "should handle multiple existing releases correctly" {
+            $state = [RepositoryState]::new()
+            
+            # Multiple releases exist: v1.0.0, v1.5.0, v2.0.0
+            $releases = @()
+            foreach ($v in @("v1.0.0", "v1.5.0", "v2.0.0")) {
+                $release = [PSCustomObject]@{
+                    tag_name = $v
+                    id = [int]($v -replace '\D', '')
+                    draft = $false
+                    prerelease = $false
+                    html_url = "https://github.com/repo/releases/tag/$v"
+                    target_commitish = "sha$v"
+                    immutable = $false
+                }
+                $ri = [ReleaseInfo]::new($release)
+                $ri.IsLatest = ($v -eq "v2.0.0")
+                $releases += $ri
+            }
+            $state.Releases = $releases
+            
+            # Publishing draft for v1.2.0 (between v1.0.0 and v1.5.0 - NOT highest)
+            $draftRelease = [PSCustomObject]@{
+                tag_name = "v1.2.0"
+                id = 120
+                draft = $true
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.2.0"
+                target_commitish = "sha120"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($draftRelease)
+            
+            $config = @{ 'check-releases' = 'error' }
+            $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
+            
+            # Should be false - v2.0.0 is still highest
+            $issue.RemediationAction.MakeLatest | Should -Be $false
+        }
+    }
 }
