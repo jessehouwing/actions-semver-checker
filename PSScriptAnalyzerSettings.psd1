@@ -1,4 +1,4 @@
-# PSScriptAnalyzer Settings for Actions SemVer Checker
+﻿# PSScriptAnalyzer Settings for Actions SemVer Checker
 # https://github.com/PowerShell/PSScriptAnalyzer
 
 @{
@@ -120,7 +120,7 @@
         PSUseCorrectCasing = @{
             Enable = $true
         }
-
+        
         # Avoid aliases
         PSAvoidUsingCmdletAliases = @{
             Enable = $true

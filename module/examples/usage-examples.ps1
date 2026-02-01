@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 #############################################################################
 # Example: Using the GitHubActionVersioning PowerShell Module
 #############################################################################

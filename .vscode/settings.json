@@ -1,4 +1,6 @@
 {
+    "powershell.scriptAnalysis.settingsPath": "${workspaceFolder}/PSScriptAnalyzerSettings.psd1",
+
     "chat.tools.terminal.autoApprove": {
         "/^cd /workspaces/actions-semver-checker && pwsh -Command \"Invoke-Pester -Path '\\./tests/integration' -Output Normal\" 2>&1 \\| head -30$/": {
             "approve": true,

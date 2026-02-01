@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $global:ProgressPreference = 'SilentlyContinue'
     . "$PSScriptRoot/../../lib/StateModel.ps1"
 }
@@ -831,33 +831,33 @@ Describe "RepositoryState" {
             $state = [RepositoryState]::new()
             $state.Releases = @(
                 [ReleaseInfo]::new([PSCustomObject]@{
-                    tag_name = "v1.0.0"
-                    id = 100
-                    draft = $false
-                    prerelease = $false
-                    html_url = "https://example.com"
-                }),
+                        tag_name   = "v1.0.0"
+                        id         = 100
+                        draft      = $false
+                        prerelease = $false
+                        html_url   = "https://example.com"
+                    }),
                 [ReleaseInfo]::new([PSCustomObject]@{
-                    tag_name = "v2.0.0"
-                    id = 200
-                    draft = $false
-                    prerelease = $false
-                    html_url = "https://example.com"
-                })
+                        tag_name   = "v2.0.0"
+                        id         = 200
+                        draft      = $false
+                        prerelease = $false
+                        html_url   = "https://example.com"
+                    })
             )
-            
+
             $found = $state.FindRelease("v2.0.0")
-            
+
             $found | Should -Not -BeNullOrEmpty
             $found.Id | Should -Be 200
         }
-        
+
         It "returns null when release not found" {
             $state = [RepositoryState]::new()
             $state.Releases = @()
-            
+
             $found = $state.FindRelease("v1.0.0")
-            
+
             $found | Should -BeNullOrEmpty
         }
     }

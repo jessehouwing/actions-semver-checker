@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     . "$PSScriptRoot/../../StateModel.ps1"
     . "$PSScriptRoot/RemediationAction.ps1"
 }

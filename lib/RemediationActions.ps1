@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # RemediationActions.ps1 - Remediation Action Classes Loader
 #############################################################################
 # This module loads all remediation action classes from their individual files.

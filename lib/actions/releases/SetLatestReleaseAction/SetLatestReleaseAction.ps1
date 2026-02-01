@@ -1,4 +1,4 @@
-#############################################################################
+﻿##############################################################################
 # SetLatestReleaseAction.ps1 - Set a release as the "latest" release
 #############################################################################
 # This action updates a release to be marked as the "latest" release in GitHub.

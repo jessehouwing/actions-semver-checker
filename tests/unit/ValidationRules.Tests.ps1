@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     $global:ProgressPreference = 'SilentlyContinue'
 
     . "$PSScriptRoot/../../lib/StateModel.ps1"
