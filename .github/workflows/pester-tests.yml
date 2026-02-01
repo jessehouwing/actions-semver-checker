@@ -29,6 +29,7 @@ jobs:
           $config = New-PesterConfiguration
           $config.Run.Path = @(
             './tests/unit/**/*.Tests.ps1'
+            './tests/cli/**/*.Tests.ps1'
             './lib/actions/**/*.Tests.ps1'
             './lib/rules/**/*.Tests.ps1'
           )
