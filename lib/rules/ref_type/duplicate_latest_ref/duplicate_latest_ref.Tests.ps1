@@ -156,14 +156,14 @@ Describe "duplicate_latest_ref" {
         }
     }
     
-    Context "Integration with Invoke-ValidationRules" {
+    Context "Integration with Invoke-ValidationRule" {
         It "creates issue when latest exists as both tag and branch in tags mode" {
             $state = [RepositoryState]::new()
             $state.Tags += [VersionRef]::new("latest", "refs/tags/latest", "abc123", "tag")
             $state.Branches += [VersionRef]::new("latest", "refs/heads/latest", "abc123", "branch")
             $config = @{ 'floating-versions-use' = "tags" }
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_DuplicateLatestRef)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_DuplicateLatestRef)
             
             $issues.Count | Should -Be 1
             $issues[0].Version | Should -Be "latest"
@@ -176,7 +176,7 @@ Describe "duplicate_latest_ref" {
             $state.Branches += [VersionRef]::new("latest", "refs/heads/latest", "abc123", "branch")
             $config = @{ 'floating-versions-use' = "branches" }
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_DuplicateLatestRef)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_DuplicateLatestRef)
             
             $issues.Count | Should -Be 1
             $issues[0].Version | Should -Be "latest"
@@ -188,7 +188,7 @@ Describe "duplicate_latest_ref" {
             $state.Tags += [VersionRef]::new("latest", "refs/tags/latest", "abc123", "tag")
             $config = @{}
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_DuplicateLatestRef)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_DuplicateLatestRef)
             
             $issues.Count | Should -Be 0
         }

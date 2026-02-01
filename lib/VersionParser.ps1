@@ -31,9 +31,9 @@ function ConvertTo-Version
     ConvertTo-Version "3"      # Returns [Version]3.0.0
     #>
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [ValidateNotNullOrEmpty()]
-        [string] $Value
+        [string]$Value
     )
 
     # Handle invalid input
@@ -89,7 +89,7 @@ function Test-ValidVersionPattern
     Test-ValidVersionPattern "v1.*.0"   # Returns $false (invalid)
     #>
     param(
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Pattern
     )
     

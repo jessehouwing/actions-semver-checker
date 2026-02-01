@@ -326,7 +326,7 @@ Describe "SemVer Checker Integration Tests" {
             git tag "$NotIgnoredVersion.0.0" $commitSha
             
             # Act
-            $result = Invoke-MainScript -IgnoreVersions $IgnoreVersions
+            $null = Invoke-MainScript -IgnoreVersions $IgnoreVersions
             
             # Assert - Issues should only exist for non-ignored version
             $issues = $global:State.Issues
@@ -466,7 +466,7 @@ Describe "SemVer Checker Integration Tests" {
             Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
             
             # Act - use SkipMockSetup since we set up our own mock
-            $result = Invoke-MainScript -CheckReleases "error" -SkipMockSetup
+            $null = Invoke-MainScript -CheckReleases "error" -SkipMockSetup
             
             # Clean up
             if (Test-Path function:global:Invoke-WebRequestWrapper) {

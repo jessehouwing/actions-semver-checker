@@ -83,6 +83,27 @@ Describe "patch_release_required" {
             $result.Count | Should -Be 0
         }
         
+        It "should not return patch tag with draft release" {
+            $state = [RepositoryState]::new()
+            $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
+            $releaseData = [PSCustomObject]@{
+                tag_name = "v1.0.0"
+                id = 123
+                draft = $true  # Draft release
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.0"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $state.Releases = @([ReleaseInfo]::new($releaseData))
+            $state.IgnoreVersions = @()
+            
+            $config = @{ 'check-releases' = 'error' }
+            $result = & $Rule_PatchReleaseRequired.Condition $state $config
+            
+            $result.Count | Should -Be 0  # Should skip because draft release exists
+        }
+        
         It "should skip ignored versions" {
             $state = [RepositoryState]::new()
             $ignored = [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
@@ -144,6 +165,56 @@ Describe "patch_release_required" {
             $result = & $Rule_PatchReleaseRequired.Condition $state $config
             
             $result.Count | Should -Be 0  # Should skip because draft exists
+        }
+        
+        It "should not return duplicate results when both vX and vX.Y exist for same patch" {
+            $state = [RepositoryState]::new()
+            # Both v1 and v1.0 exist pointing to same commit
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "abc123", "tag")
+            $state.Tags += [VersionRef]::new("v1.0", "refs/tags/v1.0", "abc123", "tag")
+            $state.Releases = @()  # No releases
+            $state.IgnoreVersions = @()
+            
+            $config = @{ 'check-releases' = 'error' }
+            $result = & $Rule_PatchReleaseRequired.Condition $state $config
+            
+            # Should only return ONE entry for v1.0.0, not duplicates
+            $result.Count | Should -Be 1
+            $result[0].Version | Should -Be "v1.0.0"
+        }
+        
+        It "should not return duplicate results when vX.Y.Z tag and vX floating both exist" {
+            $state = [RepositoryState]::new()
+            # v1.0.0 patch tag exists without release
+            $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
+            # v1 floating tag also exists
+            $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "abc123", "tag")
+            $state.Releases = @()  # No releases
+            $state.IgnoreVersions = @()
+            
+            $config = @{ 'check-releases' = 'error' }
+            $result = & $Rule_PatchReleaseRequired.Condition $state $config
+            
+            # Should only return ONE entry for v1.0.0 (from existing tag), not from synthetic
+            $result.Count | Should -Be 1
+            $result[0].Version | Should -Be "v1.0.0"
+        }
+        
+        It "should not return duplicate results when all v0, v0.0, v0.0.0 exist without releases" {
+            $state = [RepositoryState]::new()
+            # Simulate the actual scenario from the bug report
+            $state.Tags += [VersionRef]::new("v0", "refs/tags/v0", "sha0", "tag")
+            $state.Tags += [VersionRef]::new("v0.0", "refs/tags/v0.0", "sha0", "tag")
+            $state.Tags += [VersionRef]::new("v0.0.0", "refs/tags/v0.0.0", "sha0", "tag")
+            $state.Releases = @()  # No releases
+            $state.IgnoreVersions = @()
+            
+            $config = @{ 'check-releases' = 'error' }
+            $result = & $Rule_PatchReleaseRequired.Condition $state $config
+            
+            # Should only return ONE entry for v0.0.0
+            $result.Count | Should -Be 1
+            $result[0].Version | Should -Be "v0.0.0"
         }
     }
     

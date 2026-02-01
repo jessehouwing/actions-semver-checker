@@ -146,7 +146,7 @@ Describe "API failure handling" {
         }
     }
 
-    It "Should throw when Get-GitHubTags encounters API failure" {
+    It "Should throw when Get-GitHubTag encounters API failure" {
         $state = [RepositoryState]::new()
         $state.RepoOwner = "test-owner"
         $state.RepoName = "test-repo"
@@ -161,10 +161,10 @@ Describe "API failure handling" {
 
         Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $throw500
 
-        { Get-GitHubTags -State $state -Pattern "^v\\d+" } | Should -Throw
+        { Get-GitHubTag -State $state -Pattern "^v\\d+" } | Should -Throw
     }
 
-    It "Should throw when Get-GitHubBranches encounters API failure" {
+    It "Should throw when Get-GitHubBranch encounters API failure" {
         $state = [RepositoryState]::new()
         $state.RepoOwner = "test-owner"
         $state.RepoName = "test-repo"
@@ -179,10 +179,10 @@ Describe "API failure handling" {
 
         Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $throw500
 
-        { Get-GitHubBranches -State $state -Pattern "^v\\d+" } | Should -Throw
+        { Get-GitHubBranch -State $state -Pattern "^v\\d+" } | Should -Throw
     }
 
-    It "Should throw when Get-GitHubReleases encounters API failure" {
+    It "Should throw when Get-GitHubRelease encounters API failure" {
         $state = [RepositoryState]::new()
         $state.RepoOwner = "test-owner"
         $state.RepoName = "test-repo"
@@ -197,7 +197,7 @@ Describe "API failure handling" {
 
         Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $throw500
 
-        { Get-GitHubReleases -State $state } | Should -Throw
+        { Get-GitHubRelease -State $state } | Should -Throw
     }
 
     It "Should return null when Get-GitHubRef receives 404" {

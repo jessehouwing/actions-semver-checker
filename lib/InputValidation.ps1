@@ -131,9 +131,9 @@ The RepositoryState object to update with configuration values.
 Hashtable with all parsed and validated input values.
 
 .EXAMPLE
-$config = Read-ActionInputs -State $script:State
+$config = Read-ActionInput -State $script:State
 #>
-function Read-ActionInputs {
+function Read-ActionInput {
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State
@@ -207,12 +207,12 @@ Checks that all input values are within their allowed ranges/values.
 Returns an array of error messages, or empty array if all valid.
 
 .PARAMETER Config
-Hashtable of parsed input values from Read-ActionInputs.
+Hashtable of parsed input values from Read-ActionInput.
 
 .OUTPUTS
 Array of error message strings. Empty if all inputs are valid.
 #>
-function Test-ActionInputs {
+function Test-ActionInput {
     param(
         [Parameter(Mandatory)]
         [hashtable]$Config
@@ -303,7 +303,7 @@ Whether auto-fix mode is enabled.
 .OUTPUTS
 Boolean - True if valid, False if auto-fix enabled without token.
 #>
-function Test-AutoFixRequirements {
+function Test-AutoFixRequirement {
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,

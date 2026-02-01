@@ -39,7 +39,6 @@
         'PSProvideCommentHelp',
         'PSReservedCmdletChar',
         'PSReservedParams',
-        'PSShouldProcess',
         'PSUseApprovedVerbs',
         'PSUseBOMForUnicodeEncodedFile',
         'PSUseCmdletCorrectly',
@@ -52,7 +51,6 @@
         'PSUseLiteralInitializerForHashtable',
         'PSUseOutputTypeCorrectly',
         'PSUsePSCredentialType',
-        'PSUseShouldProcessForStateChangingFunctions',
         'PSUseSingularNouns',
         'PSUseToExportFieldsInManifest',
         'PSUseUTF8EncodingForHelpFile'
@@ -78,6 +76,10 @@
         
         # Some functions are script-scoped for module access
         'PSAvoidGlobalFunctions'
+        
+        # Note: TypeNotFound parse errors cannot be excluded via this settings file.
+        # They must be filtered at invocation time. See .github/workflows/powershell.yml
+        # for the SARIF filtering implementation used in CI.
     )
 
     # Rule-specific settings

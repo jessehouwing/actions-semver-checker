@@ -165,7 +165,7 @@ Describe "tag_should_be_branch" {
         }
     }
     
-    Context "Integration with Invoke-ValidationRules" {
+    Context "Integration with Invoke-ValidationRule" {
         It "creates issues for floating version tags only" {
             $state = [RepositoryState]::new()
             $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "abc123", "tag")
@@ -173,7 +173,7 @@ Describe "tag_should_be_branch" {
             $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")  # Patch - should NOT trigger
             $config = @{ 'floating-versions-use' = "branches" }
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_TagShouldBeBranch)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_TagShouldBeBranch)
             
             $issues.Count | Should -Be 2
             $issues[0].Version | Should -Be "v1"
@@ -186,7 +186,7 @@ Describe "tag_should_be_branch" {
             $state.Tags += [VersionRef]::new("v1.0", "refs/tags/v1.0", "abc123", "tag")
             $config = @{ 'floating-versions-use' = "tags" }
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_TagShouldBeBranch)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_TagShouldBeBranch)
             
             $issues.Count | Should -Be 0
         }

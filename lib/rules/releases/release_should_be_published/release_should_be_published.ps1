@@ -4,16 +4,26 @@
 # Priority: 11
 #############################################################################
 
+# Load shared release helpers
+. "$PSScriptRoot/../ReleaseRulesHelper.ps1"
+
 $Rule_ReleaseShouldBePublished = [ValidationRule]@{
     Name = "release_should_be_published"
-    Description = "Draft releases for patch versions should be published when check-release-immutability is enabled"
+    Description = "Draft releases for patch versions should be published when check-releases or check-release-immutability is enabled"
     Priority = 11
     Category = "releases"
     
     Condition = { param([RepositoryState]$State, [hashtable]$Config)
-        # Only apply when check-release-immutability is enabled
+        # Apply when either check-releases OR check-release-immutability is enabled
+        # When check-releases is enabled, draft releases should be published to complete the release
+        # When check-release-immutability is enabled, draft releases should be published to become immutable
+        $checkReleases = $Config.'check-releases'
         $checkImmutability = $Config.'check-release-immutability'
-        if ($checkImmutability -ne 'error' -and $checkImmutability -ne 'warning') {
+        
+        $releasesEnabled = ($checkReleases -eq 'error' -or $checkReleases -eq 'warning')
+        $immutabilityEnabled = ($checkImmutability -eq 'error' -or $checkImmutability -eq 'warning')
+        
+        if (-not $releasesEnabled -and -not $immutabilityEnabled) {
             return @()
         }
         
@@ -32,6 +42,15 @@ $Rule_ReleaseShouldBePublished = [ValidationRule]@{
             return $false
         }
         
+        # Exclude draft releases that are duplicates and will be deleted by duplicate_release rule
+        $duplicateDrafts = Get-DuplicateDraftRelease -State $State
+        $duplicateReleaseIds = $duplicateDrafts.Id
+        
+        # Filter out duplicates that will be deleted
+        $patchDraftReleases = $patchDraftReleases | Where-Object {
+            $_.Id -notin $duplicateReleaseIds
+        }
+        
         return $patchDraftReleases
     }
     
@@ -42,7 +61,15 @@ $Rule_ReleaseShouldBePublished = [ValidationRule]@{
     
     CreateIssue = { param([ReleaseInfo]$ReleaseInfo, [RepositoryState]$State, [hashtable]$Config)
         $version = $ReleaseInfo.TagName
-        $severity = if ($Config.'check-release-immutability' -eq 'warning') { 'warning' } else { 'error' }
+        
+        # Determine severity based on which check is enabled (prioritize immutability check level)
+        $checkReleases = $Config.'check-releases'
+        $checkImmutability = $Config.'check-release-immutability'
+        
+        $severity = 'error'
+        if ($checkImmutability -eq 'warning' -or $checkReleases -eq 'warning') {
+            $severity = 'warning'
+        }
         
         $issue = [ValidationIssue]::new(
             "draft_release",

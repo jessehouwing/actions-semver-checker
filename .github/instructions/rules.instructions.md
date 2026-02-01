@@ -421,7 +421,7 @@ Document these relationships in the rule's README.md under "Related Rules".
 
 ## Rule Loading
 
-Rules are automatically loaded by `Get-AllValidationRules` which:
+Rules are automatically loaded by `Get-ValidationRule` which:
 1. Recursively scans `lib/rules/` for `*.ps1` files
 2. Excludes `*.Tests.ps1` files
 3. Dot-sources each file and collects ValidationRule objects

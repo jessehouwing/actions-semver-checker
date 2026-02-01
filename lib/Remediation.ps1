@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # Remediation.ps1 - Auto-fix and Remediation Functions
 #############################################################################
 # This module provides functions for auto-fixing validation issues and
@@ -8,8 +8,7 @@
 # NOTE: Get-ImmutableReleaseRemediationCommands was removed as it was unused.
 # The functionality is now handled by RemediationAction classes in RemediationActions.ps1
 
-function Get-ManualInstructions
-{
+function Get-ManualInstruction {
     <#
     .SYNOPSIS
     Prints manual remediation instructions for all issues that need manual intervention
@@ -169,8 +168,7 @@ function Write-ManualInstructionsToStepSummary
     }
 }
 
-function Invoke-AllAutoFixes
-{
+function Invoke-AutoFix {
     <#
     .SYNOPSIS
     Executes all auto-fix actions for pending issues in the State
@@ -259,8 +257,7 @@ function Invoke-AllAutoFixes
     }
 }
 
-function Write-UnresolvedIssues
-{
+function Write-UnresolvedIssue {
     <#
     .SYNOPSIS
     Logs all unresolved issues (failed or unfixable) as errors or warnings

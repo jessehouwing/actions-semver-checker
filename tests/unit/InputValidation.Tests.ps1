@@ -231,7 +231,7 @@ Describe "ConvertTo-IgnoreVersionsList" {
     }
 }
 
-Describe "Test-ActionInputs" {
+Describe "Test-ActionInput" {
     Context "Valid configurations" {
         It "Should return no errors for valid configuration" {
             $config = @{
@@ -241,7 +241,7 @@ Describe "Test-ActionInputs" {
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
-            $errors = @(Test-ActionInputs -Config $config)
+            $errors = @(Test-ActionInput -Config $config)
             $errors.Count | Should -Be 0
         }
 
@@ -258,7 +258,7 @@ Describe "Test-ActionInputs" {
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
-            $errors = @(Test-ActionInputs -Config $config)
+            $errors = @(Test-ActionInput -Config $config)
             $errors.Count | Should -Be 0
         }
 
@@ -270,7 +270,7 @@ Describe "Test-ActionInputs" {
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
-            $errors = @(Test-ActionInputs -Config $config)
+            $errors = @(Test-ActionInput -Config $config)
             $errors.Count | Should -Be 0
         }
 
@@ -282,7 +282,7 @@ Describe "Test-ActionInputs" {
                 FloatingVersionsUse      = "branches"
             }
             # Force array context to handle PowerShell's scalar unboxing
-            $errors = @(Test-ActionInputs -Config $config)
+            $errors = @(Test-ActionInput -Config $config)
             $errors.Count | Should -Be 0
         }
     }
@@ -296,7 +296,7 @@ Describe "Test-ActionInputs" {
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
-            $errors = @(Test-ActionInputs -Config $config)
+            $errors = @(Test-ActionInput -Config $config)
             $errors.Count | Should -Be 1
             $errors[0] | Should -BeLike "*check-minor-version*"
         }
@@ -311,7 +311,7 @@ Describe "Test-ActionInputs" {
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
-            $errors = @(Test-ActionInputs -Config $config)
+            $errors = @(Test-ActionInput -Config $config)
             $errors.Count | Should -Be 1
             $errors[0] | Should -BeLike "*check-releases*"
         }
@@ -326,7 +326,7 @@ Describe "Test-ActionInputs" {
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
-            $errors = @(Test-ActionInputs -Config $config)
+            $errors = @(Test-ActionInput -Config $config)
             $errors.Count | Should -Be 1
             $errors[0] | Should -BeLike "*check-release-immutability*"
         }
@@ -341,7 +341,7 @@ Describe "Test-ActionInputs" {
                 FloatingVersionsUse      = "invalid"
             }
             # Force array context to handle PowerShell's scalar unboxing
-            $errors = @(Test-ActionInputs -Config $config)
+            $errors = @(Test-ActionInput -Config $config)
             $errors.Count | Should -Be 1
             $errors[0] | Should -BeLike "*floating-versions-use*"
         }
@@ -356,13 +356,13 @@ Describe "Test-ActionInputs" {
                 FloatingVersionsUse      = "bad4"
             }
             # Force array context to handle PowerShell's scalar unboxing
-            $errors = @(Test-ActionInputs -Config $config)
+            $errors = @(Test-ActionInput -Config $config)
             $errors.Count | Should -Be 4
         }
     }
 }
 
-Describe "Read-ActionInputs" {
+Describe "Read-ActionInput" {
     BeforeEach {
         # Save original environment variables
         $script:originalInputs = $env:inputs
@@ -380,7 +380,7 @@ Describe "Read-ActionInputs" {
             $env:inputs = $null
             $state = [RepositoryState]::new()
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result | Should -BeNullOrEmpty
         }
@@ -391,7 +391,7 @@ Describe "Read-ActionInputs" {
             $env:inputs = "not valid json"
             $state = [RepositoryState]::new()
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result | Should -BeNullOrEmpty
         }
@@ -404,7 +404,7 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "test-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result | Should -Not -BeNullOrEmpty
             $result.CheckMinorVersion | Should -Be "error"  # default from "true"
@@ -427,7 +427,7 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "test-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result.CheckMinorVersion | Should -Be "warning"
             $result.CheckReleases | Should -Be "none"
@@ -442,7 +442,7 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "test-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result.IgnorePreviewReleases | Should -Be $false
             $result.AutoFix | Should -Be $true
@@ -455,7 +455,7 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "test-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result.FloatingVersionsUse | Should -Be "branches"
         }
@@ -467,7 +467,7 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "test-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result.IgnoreVersions.Count | Should -Be 2
             $result.IgnoreVersions | Should -Contain "v1.0.0"
@@ -482,7 +482,7 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "state-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result.Token | Should -Be "custom-token"
         }
@@ -494,7 +494,7 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "state-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result.Token | Should -Be "state-token"
         }
@@ -504,7 +504,7 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "state-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result.Token | Should -Be "state-token"
         }
@@ -518,7 +518,7 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "test-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result.CheckMinorVersion | Should -Be "error"
         }
@@ -530,20 +530,20 @@ Describe "Read-ActionInputs" {
             $state = [RepositoryState]::new()
             $state.Token = "test-token"
             
-            $result = Read-ActionInputs -State $state
+            $result = Read-ActionInput -State $state
             
             $result.CheckMinorVersion | Should -Be "none"
         }
     }
 }
 
-Describe "Test-AutoFixRequirements" {
+Describe "Test-AutoFixRequirement" {
     Context "Auto-fix disabled" {
         It "Should return true when auto-fix is disabled" {
             $state = [RepositoryState]::new()
             $state.Token = $null
             
-            $result = Test-AutoFixRequirements -State $state -AutoFix $false
+            $result = Test-AutoFixRequirement -State $state -AutoFix $false
             
             $result | Should -Be $true
         }
@@ -552,7 +552,7 @@ Describe "Test-AutoFixRequirements" {
             $state = [RepositoryState]::new()
             $state.Token = "some-token"
             
-            $result = Test-AutoFixRequirements -State $state -AutoFix $false
+            $result = Test-AutoFixRequirement -State $state -AutoFix $false
             
             $result | Should -Be $true
         }
@@ -563,7 +563,7 @@ Describe "Test-AutoFixRequirements" {
             $state = [RepositoryState]::new()
             $state.Token = "valid-token"
             
-            $result = Test-AutoFixRequirements -State $state -AutoFix $true
+            $result = Test-AutoFixRequirement -State $state -AutoFix $true
             
             $result | Should -Be $true
         }
@@ -573,7 +573,7 @@ Describe "Test-AutoFixRequirements" {
             $state.Token = $null
             
             # Function returns $false directly (error message goes to Write-Host)
-            $result = Test-AutoFixRequirements -State $state -AutoFix $true
+            $result = Test-AutoFixRequirement -State $state -AutoFix $true
             
             $result | Should -Be $false
         }
@@ -583,7 +583,7 @@ Describe "Test-AutoFixRequirements" {
             $state.Token = ""
             
             # Function returns $false directly (error message goes to Write-Host)
-            $result = Test-AutoFixRequirements -State $state -AutoFix $true
+            $result = Test-AutoFixRequirement -State $state -AutoFix $true
             
             $result | Should -Be $false
         }

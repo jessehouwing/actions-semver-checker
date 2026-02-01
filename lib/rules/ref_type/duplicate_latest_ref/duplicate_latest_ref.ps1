@@ -28,8 +28,7 @@ $Rule_DuplicateLatestRef = [ValidationRule]@{
                 Tag = $latestTag
                 Branch = $latestBranch
             }
-            Write-Output -NoEnumerate @($item)
-            return
+            return @($item)
         }
         
         return @()
