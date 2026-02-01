@@ -661,10 +661,10 @@ function Test-ImmutableReleaseError
                 return $false
             }
         }
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidEmptyCatchBlock', '')]
         catch {
             # If JSON parsing fails, fall back to string matching
             # This is intentional - we continue to the fallback check below
-            $null = $null  # Suppress PSSA warning for empty catch
         }
     }
     
