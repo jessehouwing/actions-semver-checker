@@ -41,25 +41,36 @@ $Rule_ReleaseShouldBePublished = [ValidationRule]@{
         
         # Exclude draft releases that are duplicates and will be deleted by duplicate_release rule
         # A duplicate is a draft release where another release exists for the same tag
-        $duplicateReleaseIds = @()
+        function Get-ReleaseDuplicateDraftIds {
+            param(
+                [System.Collections.IEnumerable]$ReleasesByTag
+            )
+            
+            $duplicateReleaseIds = @()
+            
+            foreach ($group in $ReleasesByTag) {
+                if ($group.Count -gt 1) {
+                    $releases = $group.Group
+                    # Sort to find which release to keep (same logic as duplicate_release rule)
+                    $sortedReleases = $releases | Sort-Object -Property @(
+                        @{ Expression = { -not $_.IsDraft }; Descending = $true }
+                        @{ Expression = { $_.IsImmutable }; Descending = $true }
+                        @{ Expression = { $_.Id }; Ascending = $true }
+                    )
+                    # Mark all but the first as duplicates
+                    $duplicates = $sortedReleases | Select-Object -Skip 1 | Where-Object { $_.IsDraft }
+                    $duplicateReleaseIds += $duplicates.Id
+                }
+            }
+            
+            return $duplicateReleaseIds
+        }
+        
         $patchReleases = $State.Releases | Where-Object {
             -not $_.IsIgnored -and $_.TagName -match '^v\d+\.\d+\.\d+$'
         }
         $releasesByTag = $patchReleases | Group-Object -Property TagName
-        foreach ($group in $releasesByTag) {
-            if ($group.Count -gt 1) {
-                $releases = $group.Group
-                # Sort to find which release to keep (same logic as duplicate_release rule)
-                $sortedReleases = $releases | Sort-Object -Property @(
-                    @{ Expression = { -not $_.IsDraft }; Descending = $true }
-                    @{ Expression = { $_.IsImmutable }; Descending = $true }
-                    @{ Expression = { $_.Id }; Ascending = $true }
-                )
-                # Mark all but the first as duplicates
-                $duplicates = $sortedReleases | Select-Object -Skip 1 | Where-Object { $_.IsDraft }
-                $duplicateReleaseIds += $duplicates.Id
-            }
-        }
+        $duplicateReleaseIds = Get-ReleaseDuplicateDraftIds -ReleasesByTag $releasesByTag
         
         # Filter out duplicates that will be deleted
         $patchDraftReleases = $patchDraftReleases | Where-Object {

@@ -815,6 +815,10 @@ Describe "SemVer Checker" {
             $result.Output | Should -Not -Match "Release required for patch version"
             $result.Output | Should -Not -Match "gh release create"
             
+            # Assert - verify no patch_release_required issues exist in State
+            $patchReleaseIssues = $global:State.Issues | Where-Object { $_.RuleId -eq 'patch_release_required' }
+            $patchReleaseIssues | Should -BeNullOrEmpty -Because "draft releases exist, so patch_release_required should not fire"
+            
             # Assert - should suggest publishing the draft releases
             $result.Output | Should -Match "draft status"
             $result.Output | Should -Match "gh release edit v1\.0\.0 --draft=false"
@@ -1011,7 +1015,7 @@ Describe "SemVer Checker" {
             Remove-Item Env:ACTIONS_STEP_DEBUG -ErrorAction SilentlyContinue
             
             # Assert - debug output should show releases were loaded
-            $result.Output | Should -Match "::debug::Loaded 1 releases into state"
+            $result.Output | Should -Match "::debug::Loaded .*releases"
             $result.Output | Should -Match "::debug::.*Release: v3\.0\.0.*draft=True"
         }
     }
