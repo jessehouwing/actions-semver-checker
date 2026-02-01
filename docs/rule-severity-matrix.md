@@ -43,15 +43,15 @@ These rules enforce GitHub Release requirements and properties.
 | **release_should_be_immutable** (P12) | `check-release-immutability` in (`"error"`, `"warning"`) | Config-based | `"warning"` if `check-release-immutability` == `"warning"`, else `"error"` |
 | **highest_patch_release_should_be_latest** (P13) | `check-releases` in (`"error"`, `"warning"`) | Config-based | `"warning"` if `check-releases` == `"warning"`, else `"error"` |
 | **duplicate_release** (P14) | `check-releases` in (`"error"`, `"warning"`) | Config-based | `"warning"` if `check-releases` == `"warning"`, else `"error"` |
-| **floating_version_no_release** (P15) | `check-releases` OR `check-release-immutability` enabled | Release-type based | `"error"` if immutable (unfixable), `"warning"` if mutable (can delete) |
+| **floating_version_no_release** (P15) | `check-releases` OR `check-release-immutability` enabled | Config-based (mutable) / Always error (immutable) | `"error"` if immutable (unfixable), config-based (most-severe-wins) if mutable |
 
 **Special Case: floating_version_no_release**
 
 This rule has unique severity logic:
 - **Immutable floating releases**: Always `"error"` + `Status = "unfixable"` (cannot be deleted)
-- **Mutable floating releases**: Always `"warning"` (can be deleted)
+- **Mutable floating releases**: Config-based severity (most-severe-wins from `check-releases` and `check-release-immutability`)
 
-The severity is determined by the release's immutability status, not by configuration.
+For mutable releases, severity follows the most-severe-wins pattern like other release rules.
 
 ---
 

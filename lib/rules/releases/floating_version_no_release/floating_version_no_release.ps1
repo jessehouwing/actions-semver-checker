@@ -71,9 +71,18 @@ $Rule_FloatingVersionNoRelease = [ValidationRule]@{
             $issue.Status = "unfixable"
         } else {
             # Mutable (draft) releases can be deleted
+            # Determine severity based on config (most severe wins)
+            $checkReleases = $Config.'check-releases'
+            $checkImmutability = $Config.'check-release-immutability'
+            
+            $severity = 'warning'
+            if ($checkImmutability -eq 'error' -or $checkReleases -eq 'error') {
+                $severity = 'error'
+            }
+            
             $issue = [ValidationIssue]::new(
                 "mutable_floating_release",
-                "warning",
+                $severity,
                 "Floating version $version has a mutable release that should be removed"
             )
             $issue.Version = $version

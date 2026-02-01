@@ -207,11 +207,11 @@ Describe "Rule Severity Level Validation" {
             $items.Count | Should -Be 0
         }
         
-        It "floating_version_no_release uses immutability for severity" {
+        It "floating_version_no_release uses config-based severity for mutable releases" {
             # Load the rule
             . "$PSScriptRoot/../../lib/rules/releases/floating_version_no_release/floating_version_no_release.ps1"
             
-            # Test immutable floating release → error
+            # Test immutable floating release → always error (unfixable)
             $state = New-TestState -WithFloatingRelease
             $config = @{ 'check-releases' = 'error' }
             $items = & $Rule_FloatingVersionNoRelease.Condition $state $config
@@ -221,7 +221,7 @@ Describe "Rule Severity Level Validation" {
                 $issue.Status | Should -Be 'unfixable'
             }
             
-            # Test mutable floating release → warning
+            # Test mutable floating release with error config → error
             $state = [RepositoryState]::new()
             $releaseData = [PSCustomObject]@{
                 tag_name = "v2"
@@ -234,11 +234,27 @@ Describe "Rule Severity Level Validation" {
             }
             $state.Releases += [ReleaseInfo]::new($releaseData)
             
-            $config = @{ 'check-releases' = 'error' }
+            $config = @{ 'check-releases' = 'error'; 'check-release-immutability' = 'none' }
+            $items = & $Rule_FloatingVersionNoRelease.Condition $state $config
+            if ($items.Count -gt 0) {
+                $issue = & $Rule_FloatingVersionNoRelease.CreateIssue $items[0] $state $config
+                $issue.Severity | Should -Be 'error'
+            }
+            
+            # Test mutable floating release with warning config → warning
+            $config = @{ 'check-releases' = 'warning'; 'check-release-immutability' = 'none' }
             $items = & $Rule_FloatingVersionNoRelease.Condition $state $config
             if ($items.Count -gt 0) {
                 $issue = & $Rule_FloatingVersionNoRelease.CreateIssue $items[0] $state $config
                 $issue.Severity | Should -Be 'warning'
+            }
+            
+            # Test mutable floating release with most-severe-wins (error + warning → error)
+            $config = @{ 'check-releases' = 'error'; 'check-release-immutability' = 'warning' }
+            $items = & $Rule_FloatingVersionNoRelease.Condition $state $config
+            if ($items.Count -gt 0) {
+                $issue = & $Rule_FloatingVersionNoRelease.CreateIssue $items[0] $state $config
+                $issue.Severity | Should -Be 'error'
             }
         }
     }

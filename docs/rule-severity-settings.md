@@ -137,12 +137,17 @@ The following rules **always** report as **ERROR** regardless of configuration:
 
 ## Special Case: floating_version_no_release
 
-This rule has **context-based severity** determined by the release's immutability:
+This rule has **hybrid severity logic** based on release immutability and configuration:
 
-| Release Type | Severity | Status | Reason |
-|-------------|----------|--------|--------|
-| **Immutable** (published) | **ERROR** | `unfixable` | Cannot delete immutable releases |
-| **Mutable** (draft) | **WARNING** | `pending` | Can be auto-fixed by deleting |
+| Release Type | Severity | Status | Logic |
+|-------------|----------|--------|-------|
+| **Immutable** (published) | **ERROR** | `unfixable` | Always error - cannot delete immutable releases |
+| **Mutable** (draft) | **Config-based** | `pending` | Follows most-severe-wins from `check-releases` and `check-release-immutability` |
+
+**For mutable floating releases:**
+- If either `check-releases` or `check-release-immutability` is `error` → **ERROR**
+- If both are `warning` → **WARNING**
+- Can be auto-fixed by deleting the release
 
 **Example:** User has a published release for `v1` tag
 - Result: **ERROR** with status `unfixable`

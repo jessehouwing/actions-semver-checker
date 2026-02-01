@@ -69,11 +69,11 @@ All 26 validation rules have been analyzed, documented, and validated. The imple
 
 **Rationale:** These rules enforce structural requirements that are fundamental to GitHub Actions versioning. They must always be errors.
 
-### Context-Based Severity (1 rule)
+### Hybrid Severity (1 rule)
 
 **`floating_version_no_release`**:
-- **Immutable** floating releases → `error` with status `unfixable` (cannot delete)
-- **Mutable** floating releases → `warning` (can be auto-fixed by deleting)
+- **Immutable** floating releases → Always `error` with status `unfixable` (cannot delete)
+- **Mutable** floating releases → Config-based severity using most-severe-wins from `check-releases` and `check-release-immutability`
 
 ## Changes Made
 
