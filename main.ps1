@@ -272,16 +272,8 @@ if ($allRules.Count -gt 0) {
 Write-Host "##[endgroup]"
 
 #############################################################################
-# DIFF VISUALIZATION AND AUTO-FIX EXECUTION
+# AUTO-FIX EXECUTION
 #############################################################################
-
-# Display planned changes BEFORE executing any fixes
-if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {
-    $diffs = Get-StateDiff -State $State
-    if ($diffs.Count -gt 0) {
-        Write-StateDiff -Diffs $diffs
-    }
-}
 
 # Now execute all auto-fixes (or mark as unfixable when auto-fix is disabled)
 if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {

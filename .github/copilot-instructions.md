@@ -211,9 +211,12 @@ if ($this.IsUnfixableError($result)) {
 | `PATCH /repos/{owner}/{repo}/releases/{id}` | `Publish-GitHubRelease` | Publish draft release |
 
 ### GraphQL API (Used)
-| Query | Function | Purpose |
-|-------|----------|---------|
-| `repository.release.immutable` | `Test-ReleaseImmutability` | Check if release is immutable |
+| Query | Function | Purpose | Queried Fields |
+|-------|----------|---------|----------------|
+| `repository.release` (single) | `Test-ReleaseImmutability` | Check if release is immutable | `tagName`, `isDraft`, `immutable` |
+| `repository.releases` (list) | `Get-GitHubRelease` | List all releases with metadata | `databaseId`, `tagName`, `isPrerelease`, `isDraft`, `immutable`, `isLatest` |
+
+**CRITICAL:** When code uses properties from GraphQL responses (e.g., `IsLatest`, `immutable`), a unit test in `tests/unit/GitHubApi.Tests.ps1` MUST verify that the GraphQL query includes those fields. See "Get-GitHubRelease GraphQL query validation" test for the pattern. This prevents runtime errors from missing fields in queries.
 
 ### Missing APIs (Not Available from GitHub)
 | Feature | Status | Workaround |
@@ -299,6 +302,7 @@ git tag v1
 5. **Token masking** - Always call `::add-mask::` when handling tokens
 6. **PowerShell class reloading** - After editing any PowerShell class (`VersionRef`, `ReleaseInfo`, `ValidationIssue`, `RepositoryState`, `RemediationAction`, `ValidationRule`), **ALWAYS** start a fresh PowerShell terminal before running tests or validation. PowerShell creates new class definitions with different assembly versions when classes are reloaded in the same session, causing type comparison failures (`-is [ClassName]` returns false). Close the existing terminal and open a new one to ensure clean class loading.
 7. **PSScriptAnalyzer TypeNotFound warnings** - TypeNotFound warnings are expected and should be ignored. PSScriptAnalyzer is a static analyzer that examines each file independently and cannot follow dot-sourcing paths or resolve classes defined in other files. When running PSScriptAnalyzer, always filter out TypeNotFound warnings: `Invoke-ScriptAnalyzer ... | Where-Object { $_.RuleName -ne 'TypeNotFound' }`. These warnings don't indicate actual problems - the test suite validates that types are correctly defined and used.
+8. **GraphQL query field validation** - When adding new GraphQL queries or modifying existing ones, **ALWAYS** add or update a unit test in `tests/unit/GitHubApi.Tests.ps1` that validates all required fields are present in the query. This prevents runtime errors from missing fields. See the "Get-GitHubRelease GraphQL query validation" test as an example. When code relies on a GraphQL property (e.g., `IsLatest`, `immutable`), the corresponding test must verify that property is queried.
 
 ## Adding New Validation Rules
 
