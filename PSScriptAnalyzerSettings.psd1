@@ -3,12 +3,10 @@
 
 @{
     # Severity levels to include
-    # Note: TypeNotFound parse errors appear as Information level and cannot be individually excluded
-    # These occur because PSScriptAnalyzer analyzes files independently without following dot-source paths
     Severity = @(
         'Error',
-        'Warning'
-        # 'Information' excluded to suppress TypeNotFound warnings from class dependencies
+        'Warning',
+        'Information'
     )
 
     # Rules to include
@@ -77,11 +75,11 @@
         'PSAvoidGlobalVars',
         
         # Some functions are script-scoped for module access
-        'PSAvoidGlobalFunctions',
+        'PSAvoidGlobalFunctions'
         
-        # TypeNotFound warnings occur because PSScriptAnalyzer analyzes files independently
-        # and cannot resolve types from dot-sourced dependencies. These are false positives.
-        'TypeNotFound'
+        # Note: TypeNotFound parse errors cannot be excluded via this settings file.
+        # They must be filtered at invocation time. See .github/workflows/powershell.yml
+        # for the SARIF filtering implementation used in CI.
     )
 
     # Rule-specific settings
