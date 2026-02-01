@@ -14,7 +14,7 @@ class ValidationRule {
     [scriptblock]$CreateIssue # Creates a ValidationIssue when the item is invalid
 }
 
-function Get-AllValidationRules {
+function Get-ValidationRule {
     param(
         [string]$RulesPath = (Join-Path -Path $PSScriptRoot -ChildPath "rules")
     )
@@ -37,17 +37,9 @@ function Get-AllValidationRules {
     return $rules | Sort-Object -Property Priority, Name
 }
 
-function Get-ValidationRules {
-    param(
-        [hashtable]$Config = @{},
-        [string]$RulesPath
-    )
 
-    $pathToUse = if ($RulesPath) { $RulesPath } else { Join-Path -Path $PSScriptRoot -ChildPath "rules" }
-    return Get-AllValidationRules -RulesPath $pathToUse
-}
 
-function Invoke-ValidationRules {
+function Invoke-ValidationRule {
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
@@ -55,7 +47,8 @@ function Invoke-ValidationRules {
         [ValidationRule[]]$Rules
     )
 
-    $rulesToRun = if ($Rules) { $Rules } else { Get-ValidationRules -Config $Config }
+    $pathToUse = if ($Rules) { $null } else { Join-Path -Path $PSScriptRoot -ChildPath "rules" }
+    $rulesToRun = if ($Rules) { $Rules } else { Get-ValidationRule -RulesPath $pathToUse }
     if (-not $rulesToRun -or $rulesToRun.Count -eq 0) {
         return @()
     }

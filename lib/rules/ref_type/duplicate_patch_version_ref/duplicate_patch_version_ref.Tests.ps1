@@ -154,7 +154,7 @@ Describe "duplicate_patch_version_ref" {
         }
     }
     
-    Context "Integration with Invoke-ValidationRules" {
+    Context "Integration with Invoke-ValidationRule" {
         It "creates issues for all duplicate patches" {
             $state = [RepositoryState]::new()
             $state.Tags += [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
@@ -163,7 +163,7 @@ Describe "duplicate_patch_version_ref" {
             $state.Branches += [VersionRef]::new("v2.0.0", "refs/heads/v2.0.0", "def456", "branch")
             $config = @{ 'floating-versions-use' = "tags" }
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_DuplicatePatchVersionRef)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_DuplicatePatchVersionRef)
             
             $issues.Count | Should -Be 2
             $issues[0].Version | Should -Be "v1.0.0"
@@ -176,7 +176,7 @@ Describe "duplicate_patch_version_ref" {
             $state.Tags += [VersionRef]::new("v2.0.0", "refs/tags/v2.0.0", "def456", "tag")
             $config = @{}
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_DuplicatePatchVersionRef)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_DuplicatePatchVersionRef)
             
             $issues.Count | Should -Be 0
         }

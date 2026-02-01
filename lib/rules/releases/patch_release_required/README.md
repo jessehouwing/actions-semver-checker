@@ -23,6 +23,19 @@ This rule runs when:
 | `check-releases` | `error` or `warning` | Enforces that releases exist for patch versions |
 | `check-release-immutability` | `error` or `warning` | When enabled, created releases will be automatically published (immutable) |
 
+## Required Permissions
+
+**Important:** Draft releases are NOT visible via the GitHub API with `contents: read` permission. If you have draft releases but the workflow only has read access, this rule will incorrectly report them as missing.
+
+To see draft releases, ensure your workflow has `contents: write` permission:
+
+```yaml
+permissions:
+  contents: write  # Required to see draft releases
+```
+
+Without this permission, use `check-releases: none` to disable this rule, or ensure all releases are published (not draft).
+
 ## Automatic Remediation
 
 When `auto-fix` is enabled, this rule uses `CreateReleaseAction` which:

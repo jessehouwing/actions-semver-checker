@@ -1,9 +1,10 @@
-#############################################################################
+﻿#############################################################################
 # CreateReleaseAction.ps1 - Create a new GitHub Release
 #############################################################################
 
 class CreateReleaseAction : ReleaseRemediationAction {
     [bool]$AutoPublish = $false  # If true, create directly as published (non-draft)
+    [Nullable[bool]]$MakeLatest = $null  # Controls whether release should become latest ($true, $false, or $null to let GitHub decide)
     
     CreateReleaseAction([string]$tagName, [bool]$isDraft) : base("Create release", $tagName) {
         # If isDraft is false, it means we want to publish, so set AutoPublish to true
@@ -24,7 +25,7 @@ class CreateReleaseAction : ReleaseRemediationAction {
         $actionDesc = if ($this.AutoPublish) { "Create and publish release" } else { "Create draft release" }
         
         Write-Host "Auto-fix: $actionDesc for $($this.TagName)"
-        $result = New-GitHubRelease -State $state -TagName $this.TagName -Draft $isDraft
+        $result = New-GitHubRelease -State $state -TagName $this.TagName -Draft $isDraft -MakeLatest $this.MakeLatest
         
         if ($result.Success) {
             Write-Host "✓ Success: $actionDesc for $($this.TagName)"
@@ -46,15 +47,20 @@ class CreateReleaseAction : ReleaseRemediationAction {
             return @()
         }
         
+        $latestArg = ""
+        if ($null -ne $this.MakeLatest) {
+            $latestArg = if ($this.MakeLatest) { " --latest" } else { " --latest=false" }
+        }
+        
         if ($this.AutoPublish) {
             # Create and immediately publish
             return @(
-                "gh release create $($this.TagName) --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`""
+                "gh release create $($this.TagName) --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`"$latestArg"
             )
         } else {
             # Create as draft
             return @(
-                "gh release create $($this.TagName) --draft --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`""
+                "gh release create $($this.TagName) --draft --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`"$latestArg"
             )
         }
     }

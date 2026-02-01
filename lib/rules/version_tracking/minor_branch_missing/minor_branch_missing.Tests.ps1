@@ -120,7 +120,7 @@ Describe "minor_branch_missing" {
             $result.Count | Should -Be 0
         }
         
-        It "BUG: should NOT return missing minor when only prerelease patches exist in that series and ignore-preview-releases is true" {
+        It "should NOT return missing minor when only prerelease patches exist in that series and ignore-preview-releases is true" {
             # This test demonstrates the bug where Condition returns a missing minor branch
             # even though the only patches in that minor series are prereleases.
             
@@ -154,16 +154,9 @@ Describe "minor_branch_missing" {
             }
             $result = & $Rule_MinorBranchMissing.Condition $state $config
             
-            # BUG: Currently returns 1 (major=1, minor=1) when it should return 0
-            # When fixed, this assertion should pass:
-            # $result.Count | Should -Be 0
-            
-            # Demonstrate the BUG exists:
-            $result.Count | Should -Be 1
-            $result[0].Major | Should -Be 1
-            $result[0].Minor | Should -Be 1
-            
-            Write-Host "BUG CONFIRMED: Condition returns missing v1.1 branch even though only prerelease v1.1.0 exists" -ForegroundColor Red
+            # Should NOT return missing minor when only prerelease patches exist
+            # because prereleases are filtered out when ignore-preview-releases is true
+            $result.Count | Should -Be 0
         }
         
         It "should find patches from both tags and branches" {

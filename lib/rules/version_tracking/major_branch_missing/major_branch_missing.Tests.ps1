@@ -98,7 +98,7 @@ Describe "major_branch_missing" {
             $result.Count | Should -Be 2
         }
         
-        It "BUG: should NOT return missing major when only prerelease patches exist and ignore-preview-releases is true" {
+        It "should NOT return missing major when only prerelease patches exist and ignore-preview-releases is true" {
             # This test demonstrates the bug where Condition returns a missing major branch
             # even though the only patches are prereleases and should be ignored.
             
@@ -125,15 +125,9 @@ Describe "major_branch_missing" {
             }
             $result = & $Rule_MajorBranchMissing.Condition $state $config
             
-            # BUG: Currently returns 1 (item with Major=2) when it should return 0
-            # When fixed, this assertion should pass:
-            # $result.Count | Should -Be 0
-            
-            # Demonstrate the BUG exists:
-            $result.Count | Should -Be 1
-            $result[0].Major | Should -Be 2
-            
-            Write-Host "BUG CONFIRMED: Condition returns missing v2 branch even though only prerelease v2.0.0 exists" -ForegroundColor Red
+            # Should NOT return missing major when only prerelease patches exist
+            # because prereleases are filtered out when ignore-preview-releases is true
+            $result.Count | Should -Be 0
         }
     }
 

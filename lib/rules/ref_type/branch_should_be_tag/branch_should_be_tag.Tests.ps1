@@ -169,7 +169,7 @@ Describe "branch_should_be_tag" {
         }
     }
     
-    Context "Integration with Invoke-ValidationRules" {
+    Context "Integration with Invoke-ValidationRule" {
         It "creates issues for all problematic branches" {
             $state = [RepositoryState]::new()
             $state.Branches += [VersionRef]::new("v1", "refs/heads/v1", "abc123", "branch")
@@ -177,7 +177,7 @@ Describe "branch_should_be_tag" {
             $state.Branches += [VersionRef]::new("v1.0.0", "refs/heads/v1.0.0", "abc123", "branch")
             $config = @{ 'floating-versions-use' = "tags" }
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_BranchShouldBeTag)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_BranchShouldBeTag)
             
             $issues.Count | Should -Be 3
             $issues[0].Version | Should -Be "v1"
@@ -191,7 +191,7 @@ Describe "branch_should_be_tag" {
             $state.Branches += [VersionRef]::new("v1.0", "refs/heads/v1.0", "abc123", "branch")
             $config = @{ 'floating-versions-use' = "branches" }
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_BranchShouldBeTag)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_BranchShouldBeTag)
             
             $issues.Count | Should -Be 0
         }

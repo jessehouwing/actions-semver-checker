@@ -4,6 +4,9 @@
 # Priority: 10
 #############################################################################
 
+# Load shared release helpers
+. "$PSScriptRoot/../ReleaseRulesHelper.ps1"
+
 $Rule_PatchReleaseRequired = [ValidationRule]@{
     Name = "patch_release_required"
     Description = "Patch versions must have GitHub Releases when check-releases is enabled"
@@ -17,6 +20,8 @@ $Rule_PatchReleaseRequired = [ValidationRule]@{
             return @()
         }
         
+        # Track versions we've already added to avoid duplicates
+        $seenVersions = @{}
         $results = @()
         
         # Get all patch versions from both tags and branches
@@ -36,7 +41,12 @@ $Rule_PatchReleaseRequired = [ValidationRule]@{
             return $null -eq $release
         }
         
-        $results += $existingPatchesWithoutRelease
+        foreach ($patch in $existingPatchesWithoutRelease) {
+            if (-not $seenVersions.ContainsKey($patch.Version)) {
+                $seenVersions[$patch.Version] = $true
+                $results += $patch
+            }
+        }
         
         # 2. Find expected patch versions from floating versions (e.g., v1 exists but v1.0.0 doesn't)
         $floatingVersions = ($State.Tags + $State.Branches) | Where-Object { 
@@ -62,6 +72,11 @@ $Rule_PatchReleaseRequired = [ValidationRule]@{
             }
             
             if ($expectedPatchVersion) {
+                # Skip if we've already added this version (from existing patch or another floating)
+                if ($seenVersions.ContainsKey($expectedPatchVersion)) {
+                    continue
+                }
+                
                 # Check if this patch version already exists
                 $existingPatch = $allPatches | Where-Object { $_.Version -eq $expectedPatchVersion }
                 
@@ -80,6 +95,7 @@ $Rule_PatchReleaseRequired = [ValidationRule]@{
                         # Create a synthetic VersionRef for the expected patch
                         # Use a dummy ref path since this version doesn't exist yet
                         $syntheticRef = [VersionRef]::new($expectedPatchVersion, "refs/tags/$expectedPatchVersion", $floatingRef.Sha, "tag")
+                        $seenVersions[$expectedPatchVersion] = $true
                         $results += $syntheticRef
                     }
                 }
@@ -112,7 +128,17 @@ $Rule_PatchReleaseRequired = [ValidationRule]@{
         # CreateReleaseAction constructor: tagName, isDraft, autoPublish
         # isDraft should be opposite of shouldAutoPublish
         $isDraft = -not $shouldAutoPublish
-        $issue.RemediationAction = [CreateReleaseAction]::new($version, $isDraft, $shouldAutoPublish)
+        $action = [CreateReleaseAction]::new($version, $isDraft, $shouldAutoPublish)
+        
+        # Determine if this release should become "latest"
+        # Only set MakeLatest=false explicitly if it should NOT be latest
+        # to prevent overwriting a correct latest release
+        $shouldBeLatest = Test-ShouldBeLatestRelease -State $State -Version $version
+        if (-not $shouldBeLatest) {
+            $action.MakeLatest = $false
+        }
+        
+        $issue.RemediationAction = $action
         
         return $issue
     }

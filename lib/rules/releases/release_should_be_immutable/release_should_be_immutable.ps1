@@ -4,6 +4,9 @@
 # Priority: 12
 #############################################################################
 
+# Load shared release helpers
+. "$PSScriptRoot/../ReleaseRulesHelper.ps1"
+
 $Rule_ReleaseShouldBeImmutable = [ValidationRule]@{
     Name = "release_should_be_immutable"
     Description = "Published releases for patch versions should be immutable (via repository settings)"
@@ -32,6 +35,33 @@ $Rule_ReleaseShouldBeImmutable = [ValidationRule]@{
             return $false
         }
         
+        # Exclude releases that are duplicates and will be deleted by duplicate_release rule
+        # (rare case: multiple published releases for same tag)
+        $duplicateReleaseIds = @()
+        $patchReleases = $State.Releases | Where-Object {
+            -not $_.IsIgnored -and $_.TagName -match '^v\d+\.\d+\.\d+$'
+        }
+        $releasesByTag = $patchReleases | Group-Object -Property TagName
+        foreach ($group in $releasesByTag) {
+            if ($group.Count -gt 1) {
+                $releases = $group.Group
+                # Sort to find which release to keep (same logic as duplicate_release rule)
+                $sortedReleases = $releases | Sort-Object -Property @(
+                    @{ Expression = { -not $_.IsDraft }; Descending = $true }
+                    @{ Expression = { $_.IsImmutable }; Descending = $true }
+                    @{ Expression = { $_.Id }; Ascending = $true }
+                )
+                # Mark all but the first as duplicates (only drafts can be deleted, but exclude all duplicates from validation)
+                $duplicates = $sortedReleases | Select-Object -Skip 1
+                $duplicateReleaseIds += $duplicates.Id
+            }
+        }
+        
+        # Filter out duplicates
+        $patchPublishedReleases = $patchPublishedReleases | Where-Object {
+            $_.Id -notin $duplicateReleaseIds
+        }
+        
         return $patchPublishedReleases
     }
     
@@ -51,7 +81,16 @@ $Rule_ReleaseShouldBeImmutable = [ValidationRule]@{
         $issue.Version = $version
         
         # RepublishReleaseAction constructor: tagName
-        $issue.RemediationAction = [RepublishReleaseAction]::new($version)
+        $action = [RepublishReleaseAction]::new($version)
+
+        # Determine if this release should become "latest" when republished
+        # Only set MakeLatest=false explicitly if it should NOT be latest
+        $shouldBeLatest = Test-ShouldBeLatestRelease -State $State -Version $version -ReleaseInfo $ReleaseInfo
+        if (-not $shouldBeLatest) {
+            $action.MakeLatest = $false
+        }
+
+        $issue.RemediationAction = $action
         
         return $issue
     }

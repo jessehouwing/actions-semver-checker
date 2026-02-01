@@ -6,7 +6,50 @@ Unfortunately, GitHub's creative use of tags doesn't do this automatically and m
 
 You can run this action for your GitHub Action's repository to ensure the correct tags have been created and point to the correct commits.
 
-**NEW:** Now available as a [PowerShell module](module/README.md) for running from the command line!
+## Quick Start
+
+```yaml
+- uses: jessehouwing/actions-semver-checker@v2
+  with:
+    # GitHub token for API access. Falls back to GITHUB_TOKEN if not provided.
+    # Required for auto-fix mode
+    token: ${{ secrets.GITHUB_TOKEN }}
+    
+    # Check minor version tags (v1.0) in addition to major tags (v1)
+    # Options: error, warning, none, true, false
+    # Default: error
+    check-minor-version: 'error'
+    
+    # Require GitHub Releases for every patch version (v1.0.0)
+    # Options: error, warning, none, true, false  
+    # Default: error
+    check-releases: 'error'
+    
+    # Ensure releases are published (immutable), not drafts
+    # Options: error, warning, none, true, false
+    # Default: error
+    check-release-immutability: 'error'
+    
+    # Exclude preview/pre-release versions from floating version calculations
+    # Options: true, false
+    # Default: true
+    ignore-preview-releases: 'true'
+    
+    # Use tags or branches for floating versions (v1, v1.0, latest)
+    # Options: tags, branches
+    # Default: tags
+    floating-versions-use: 'tags'
+    
+    # Automatically fix detected issues. Requires contents: write permission
+    # Options: true, false
+    # Default: false
+    auto-fix: 'false'
+    
+    # Comma-separated list of versions to skip during validation
+    # Supports wildcards (e.g., 'v1.*')
+    # Default: "" (empty)
+    ignore-versions: ''
+```
 
 ## GitHub's Immutable Release Strategy
 
@@ -29,39 +72,116 @@ This strategy balances **stability** (pinned versions never change) with **conve
 - ✅ Provides suggested commands to fix any issues with direct links to GitHub release pages
 - ✅ Optional auto-fix mode to automatically update version tags/branches
 - ✅ **NEW in v2:** No checkout required - uses GitHub REST API exclusively
-- ✅ **NEW:** Ignore specific versions from validation (useful for legacy versions)
-- ✅ **NEW:** Auto-fix automatically republishes non-immutable releases to make them immutable (when `check-release-immutability` is enabled)
-- ✅ **NEW:** Retry logic with exponential backoff for better reliability
-- ✅ **NEW:** PowerShell module for CLI usage on Windows and Linux - see [module/README.md](module/README.md)
+- ✅ Ignore specific versions from validation (useful for legacy versions)
+- ✅ Auto-fix automatically republishes non-immutable releases to make them immutable (when `check-release-immutability` is enabled)
+- ✅ Retry logic with exponential backoff for better reliability
 
 Example output:
 
 > ### Annotations
 >
-> 🔴 Incorrect version
-> ```
+> 🔴 Manual Remediation Required
+>
+> ```text
 > Version: v1 ref 59499a44cd4482b68a7e989a5e7dd781414facfa must match: v1.0.6 ref 1a13fd188ebef96fb179faedfabcc8de5cb6189d
-> ```
-> 
-> 🔴 Incorrect version
-> ```
 > Version: v1.0 ref 59499a44cd4482b68a7e989a5e7dd781414facfa must match: v1.0.6 ref 1a13fd188ebef96fb179faedfabcc8de5cb6189d
-> ```
-> 🔴 Incorrect version
-> ```
 > Version: latest ref 59499a44cd4482b68a7e989a5e7dd781414facfa must match: v1.0.6 ref 1a13fd188ebef96fb179faedfabcc8de5cb6189d
 > ```
 
 And a set of suggested Git commands to fix this:
 
-> ### Suggested fix:
-> ```
+> ### Suggested fix
+>
+> ```bash
 > git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:refs/tags/v1 --force
 > git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:refs/tags/v1.0 --force
 > git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:latest --force
 > ```
 
-# Prerequisites
+## Supported Validation Rules
+
+The action uses a modular rule-based validation system. Each rule can be configured independently via action inputs.
+
+### Reference Type Rules
+
+| Rule | Description | Documentation |
+| --- | --- | --- |
+| `tag_should_be_branch` | Validates that floating versions use branches when configured for branches mode | [📖 Details](lib/rules/ref_type/tag_should_be_branch/README.md) |
+| `branch_should_be_tag` | Validates that floating versions use tags when configured for tags mode | [📖 Details](lib/rules/ref_type/branch_should_be_tag/README.md) |
+| `duplicate_floating_version_ref` | Detects when a floating version exists as both tag and branch | [📖 Details](lib/rules/ref_type/duplicate_floating_version_ref/README.md) |
+| `duplicate_latest_ref` | Detects when 'latest' exists as both tag and branch | [📖 Details](lib/rules/ref_type/duplicate_latest_ref/README.md) |
+| `duplicate_patch_version_ref` | Detects when a patch version exists as both tag and branch | [📖 Details](lib/rules/ref_type/duplicate_patch_version_ref/README.md) |
+
+### Release Rules
+
+| Rule | Description | Documentation |
+| --- | --- | --- |
+| `patch_release_required` | Ensures every patch version has a GitHub Release | [📖 Details](lib/rules/releases/patch_release_required/README.md) |
+| `release_should_be_published` | Validates that releases are published, not drafts | [📖 Details](lib/rules/releases/release_should_be_published/README.md) |
+| `release_should_be_immutable` | Ensures releases are truly immutable | [📖 Details](lib/rules/releases/release_should_be_immutable/README.md) |
+| `highest_patch_release_should_be_latest` | Ensures the correct release is marked as 'latest' | [📖 Details](lib/rules/releases/highest_patch_release_should_be_latest/README.md) |
+| `floating_version_no_release` | Warns when a release exists for a floating version | [📖 Details](lib/rules/releases/floating_version_no_release/README.md) |
+| `duplicate_release` | Detects and removes duplicate draft releases for the same tag | [📖 Details](lib/rules/releases/duplicate_release/README.md) |
+
+### Version Tracking Rules
+
+| Rule | Description | Documentation |
+| --- | --- | --- |
+| `major_tag_missing` | Detects missing major version tags (v1, v2) | [📖 Details](lib/rules/version_tracking/major_tag_missing/README.md) |
+| `major_tag_tracks_highest_patch` | Ensures major tags point to latest patch | [📖 Details](lib/rules/version_tracking/major_tag_tracks_highest_patch/README.md) |
+| `major_branch_missing` | Detects missing major version branches | [📖 Details](lib/rules/version_tracking/major_branch_missing/README.md) |
+| `major_branch_tracks_highest_patch` | Ensures major branches point to latest patch | [📖 Details](lib/rules/version_tracking/major_branch_tracks_highest_patch/README.md) |
+| `minor_tag_missing` | Detects missing minor version tags (v1.0, v1.1) | [📖 Details](lib/rules/version_tracking/minor_tag_missing/README.md) |
+| `minor_tag_tracks_highest_patch` | Ensures minor tags point to latest patch | [📖 Details](lib/rules/version_tracking/minor_tag_tracks_highest_patch/README.md) |
+| `minor_branch_missing` | Detects missing minor version branches | [📖 Details](lib/rules/version_tracking/minor_branch_missing/README.md) |
+| `minor_branch_tracks_highest_patch` | Ensures minor branches point to latest patch | [📖 Details](lib/rules/version_tracking/minor_branch_tracks_highest_patch/README.md) |
+| `patch_tag_missing` | Detects missing patch version tags (v1.0.0) | [📖 Details](lib/rules/version_tracking/patch_tag_missing/README.md) |
+
+### Latest Version Rules
+
+| Rule | Description | Documentation |
+| --- | --- | --- |
+| `latest_tag_tracks_global_highest` | Ensures 'latest' tag points to the globally highest patch | [📖 Details](lib/rules/latest/latest_tag_tracks_global_highest/README.md) |
+| `latest_branch_tracks_global_highest` | Ensures 'latest' branch points to the globally highest patch | [📖 Details](lib/rules/latest/latest_branch_tracks_global_highest/README.md) |
+
+## Supported Auto-Fix Actions
+
+When `auto-fix: true` is enabled, the action can automatically remediate issues using these actions:
+
+### Tag Actions
+
+| Action | Description | Documentation |
+| --- | --- | --- |
+| `CreateTagAction` | Creates a new Git tag at a specified commit | [📖 Details](lib/actions/tags/CreateTagAction/README.md) |
+| `UpdateTagAction` | Updates an existing tag to point to a different commit | [📖 Details](lib/actions/tags/UpdateTagAction/README.md) |
+| `DeleteTagAction` | Deletes an existing tag | [📖 Details](lib/actions/tags/DeleteTagAction/README.md) |
+
+### Branch Actions
+
+| Action | Description | Documentation |
+| --- | --- | --- |
+| `CreateBranchAction` | Creates a new branch at a specified commit | [📖 Details](lib/actions/branches/CreateBranchAction/README.md) |
+| `UpdateBranchAction` | Updates an existing branch to point to a different commit | [📖 Details](lib/actions/branches/UpdateBranchAction/README.md) |
+| `DeleteBranchAction` | Deletes an existing branch | [📖 Details](lib/actions/branches/DeleteBranchAction/README.md) |
+
+### Release Actions
+
+| Action | Description | Documentation |
+| --- | --- | --- |
+| `CreateReleaseAction` | Creates a new GitHub Release for a tag | [📖 Details](lib/actions/releases/CreateReleaseAction/README.md) |
+| `PublishReleaseAction` | Publishes a draft release | [📖 Details](lib/actions/releases/PublishReleaseAction/README.md) |
+| `RepublishReleaseAction` | Republishes a release to make it immutable | [📖 Details](lib/actions/releases/RepublishReleaseAction/README.md) |
+| `SetLatestReleaseAction` | Sets a release as the 'latest' release | [📖 Details](lib/actions/releases/SetLatestReleaseAction/README.md) |
+| `DeleteReleaseAction` | Deletes an existing release | [📖 Details](lib/actions/releases/DeleteReleaseAction/README.md) |
+
+### Conversion Actions
+
+| Action | Description | Documentation |
+| --- | --- | --- |
+| `ConvertTagToBranchAction` | Converts a tag to a branch | [📖 Details](lib/actions/conversions/ConvertTagToBranchAction/README.md) |
+| `ConvertBranchToTagAction` | Converts a branch to a tag | [📖 Details](lib/actions/conversions/ConvertBranchToTagAction/README.md) |
+
+## Prerequisites
 
 ## v2 (Current)
 
@@ -75,9 +195,6 @@ This is a significant improvement over v1, making the action faster and simpler 
 
 ## v1 (Legacy)
 
-<details>
-<summary>If using v1, you still need full git history...</summary>
-
 Version 1 requires full git history and tags:
 
 ```yaml
@@ -86,8 +203,6 @@ Version 1 requires full git history and tags:
     fetch-depth: 0      # Required for v1: Fetches full git history
     fetch-tags: true    # Required for v1: Fetches all tags
 ```
-
-</details>
 
 ## Auto-fix Mode Prerequisites
 
@@ -106,6 +221,7 @@ jobs:
 ```
 
 **Requirements:**
+
 - **`contents: write` permission** - Required to push tag/branch updates via REST API
 - **`token`** - GitHub token for API calls (create releases, update refs)
 
@@ -114,6 +230,7 @@ jobs:
 The default `GITHUB_TOKEN` **cannot** push tags or branches that would modify files in `.github/workflows/`. This is a security feature of GitHub Actions. If your action repository has workflow files that change between versions, auto-fix will fail with a permission error.
 
 To work around this limitation, you can use either:
+
 1. **GitHub App Token** (Recommended for organizations)
 2. **Fine-grained Personal Access Token** (Simpler for personal repositories)
 
@@ -122,6 +239,7 @@ To work around this limitation, you can use either:
 Using a GitHub App provides the most secure and manageable approach, especially for organizations.
 
 **Step 1:** Create a GitHub App with the following permissions:
+
 - **Repository permissions:**
   - `Contents`: Read and write
   - `Workflows`: Read and write *(this is the key permission)*
@@ -160,10 +278,12 @@ jobs:
 ```
 
 **Benefits:**
+
 - Fine-grained permissions scoped to specific repositories
 - Can be managed at organization level
 - Token automatically expires (more secure than PATs)
 - Audit logging for all actions taken
+
 
 ### Option 2: Fine-grained Personal Access Token
 
@@ -172,6 +292,7 @@ For personal repositories or simpler setups, a fine-grained PAT works well.
 **Step 1:** Create a Fine-grained PAT at [GitHub Settings → Developer Settings → Personal Access Tokens → Fine-grained tokens](https://github.com/settings/tokens?type=beta)
 
 **Step 2:** Configure the token with these permissions:
+
 - **Repository access:** Select your action repository
 - **Repository permissions:**
   - `Contents`: Read and write
@@ -205,6 +326,7 @@ jobs:
 ### When Do You Need a Custom Token?
 
 You need a custom token with `workflows` permission if:
+
 - Your action repository contains `.github/workflows/` files
 - These workflow files change between versions
 - You want to use `auto-fix: true` to push tags/branches
@@ -214,27 +336,25 @@ If your repository has no workflow files, or workflow files don't change between
 ### Troubleshooting Token Issues
 
 If auto-fix fails with a permission error like:
-```
+
+```text
 refusing to allow a GitHub App to create or update workflow
 ```
 
 This indicates the token lacks `workflows` permission. Follow one of the options above to use a properly configured token.
 
-# Usage
+## Usage
 
 ## Basic Usage
 
-```yaml  
+```yaml
 - uses: jessehouwing/actions-semver-checker@v2
-  with:
-    # Configures warnings for minor versions.
-    # Default: true
-    check-minor-version: 'error'
 ```
 
 ## Configuration Options
 
 ### `token`
+
 **Default:** `""` (uses GITHUB_TOKEN)
 
 GitHub token for API access. If not provided, falls back to the GITHUB_TOKEN environment variable.
@@ -246,9 +366,16 @@ GitHub token for API access. If not provided, falls back to the GITHUB_TOKEN env
 ```
 
 ### `check-minor-version`
+
 **Default:** `error`
 
 Configures whether to check minor versions (e.g., `v1.0`) in addition to major versions.
+
+**Options:** `error`, `warning`, or `none`
+
+- `error` or `true`: Report as error and fail the action
+- `warning`: Report as warning but don't fail
+- `none` or `false`: Skip this check entirely
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
@@ -257,14 +384,18 @@ Configures whether to check minor versions (e.g., `v1.0`) in addition to major v
 ```
 
 ### `check-releases`
+
 **Default:** `error`
 
 Check that every build version (e.g., `v1.0.0`) has a corresponding GitHub Release.
 
 **Options:** `error`, `warning`, or `none`
-- `error`: Report as error and fail the action
+
+- `error` or `true`: Report as error and fail the action
 - `warning`: Report as warning but don't fail
-- `none`: Skip this check entirely
+- `none` or `false`: Skip this check entirely
+
+> **⚠️ Permission Note:** Draft releases are NOT visible with `contents: read` permission. If you have draft releases and this check is enabled, you must use `contents: write` permission or the action will incorrectly report them as missing.
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
@@ -273,14 +404,16 @@ Check that every build version (e.g., `v1.0.0`) has a corresponding GitHub Relea
 ```
 
 ### `check-release-immutability`
+
 **Default:** `error`
 
 Check that releases are immutable (not in draft status). Draft releases allow tag changes, making them mutable.
 
 **Options:** `error`, `warning`, or `none`
-- `error`: Report as error and fail the action
+
+- `error` or `true`: Report as error and fail the action
 - `warning`: Report as warning but don't fail
-- `none`: Skip this check entirely
+- `none` or `false`: Skip this check entirely
 
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
@@ -289,9 +422,11 @@ Check that releases are immutable (not in draft status). Draft releases allow ta
 ```
 
 ### `ignore-preview-releases`
+
 **Default:** `true` ✅ **Recommended**
 
 Ignore preview/pre-release versions when calculating which version major/minor tags should point to. When enabled (default):
+
 - Preview releases are excluded from `v1` and `v1.0` tag calculations
 - If `v1.1.1` (stable) exists and `v1.1.2` (preview), `v1` and `v1.1` will point to `v1.1.1`
 
@@ -306,6 +441,7 @@ Ignore preview/pre-release versions when calculating which version major/minor t
 ```
 
 ### `floating-versions-use`
+
 **Default:** `tags`
 
 Specify whether floating versions (major like `v1`, minor like `v1.0`, and `latest`) should use tags or branches. This is useful when you want mutable major/minor versions that can be updated via branch commits.
@@ -319,9 +455,10 @@ Specify whether floating versions (major like `v1`, minor like `v1.0`, and `late
 ```
 
 ### `auto-fix`
+
 **Default:** `false`
 
-Automatically fix major/minor version tags or branches when a build tag is pushed. 
+Automatically fix major/minor version tags or branches when a build tag is pushed.
 
 **⚠️ Important:** When enabling auto-fix, you must grant `contents: write` permission:
 
@@ -336,20 +473,23 @@ jobs:
           auto-fix: 'true'
 ```
 
-**Note:** 
+**Note:**
+
 - Auto-fix handles all operations via REST API (no checkout required)
 - When `check-release-immutability` is set to `error` or `warning` (default), auto-fix will also automatically republish non-immutable releases to make them immutable
-- GitHub Release creation for new versions must be done manually (auto-fix creates draft releases only)
 
 **Auto-fix behavior for releases:**
+
 When `auto-fix: true` is enabled and `check-release-immutability` is set to `error` or `warning`:
-1. Creates draft releases for missing patch versions (vX.Y.Z)
+
+1. Creates releases for missing patch versions (vX.Y.Z)
 2. Attempts to publish draft releases automatically
 3. **Republishes non-immutable releases** by temporarily converting them to draft and publishing again to make them immutable
 
 This automatic republishing helps migrate repositories to GitHub's immutable release strategy without manual intervention.
 
 ### `ignore-versions`
+
 **Default:** `""` (empty)
 
 List of versions to ignore during validation. This is useful for skipping legacy or problematic versions that you don't want to validate.
@@ -383,6 +523,7 @@ ignore-versions: 'v1.0.0'
 ```
 
 **Use cases:**
+
 - Skip validation for legacy versions that don't follow current standards
 - Ignore problematic versions that can't be fixed
 - Exclude pre-release versions from validation
@@ -403,6 +544,8 @@ on:
 
 jobs:
   check-semver:
+    permissions:
+      contents: read
     concurrency:
       group: '${{ github.workflow }}'
       cancel-in-progress: true
@@ -415,7 +558,7 @@ jobs:
           check-release-immutability: 'true'
 ```
 
-### Auto-fix with Branches
+### Auto-fix enabled
 
 ```yaml
 name: Auto-fix SemVer
@@ -433,7 +576,7 @@ jobs:
     steps:
       - uses: jessehouwing/actions-semver-checker@v2
         with:
-          floating-versions-use: 'branches'
+          token: ${{ secrets.GITHUB_TOKEN }}
           auto-fix: 'true'
 ```
 
@@ -454,7 +597,7 @@ jobs:
       - uses: jessehouwing/actions-semver-checker@v2
         with:
           check-releases: 'error'
-          # ignore-preview-releases: true (default)
+          ignore-preview-releases: false
 ```
 
 ## Suggested Fixes
@@ -462,20 +605,21 @@ jobs:
 When issues are detected, the action provides specific commands to fix them, including direct links to GitHub release pages:
 
 ### Creating a Release
+
 ```bash
 gh release create v1.0.0 --draft --title "v1.0.0" --notes "Release v1.0.0"
 gh release edit v1.0.0 --draft=false  # Or edit at: https://github.com/{owner}/{repo}/releases/edit/v1.0.0
 ```
 
-**Note:** Creating releases as drafts first is important to maintain immutability checks. The action provides direct links to the GitHub release edit page for convenience.
-
 ### Updating Version Tags
+
 ```bash
 git push origin <sha>:refs/tags/v1 --force
 git push origin <sha>:refs/tags/v1.0 --force
 ```
 
 ### Updating Version Branches
+
 ```bash
 git push origin <sha>:refs/heads/v1 --force
 git push origin <sha>:refs/heads/v1.0 --force
@@ -485,10 +629,14 @@ git push origin <sha>:refs/heads/latest --force
 ## Permissions
 
 ### Read-only Mode (Default)
-No special permissions required. The action only checks and reports issues.
+
+Requires `contents: read` permission to retrieve tags, branches and published releases.
+
+> **Note:** Draft releases are NOT visible with `contents: read` permission. If you have draft releases and `check-releases` is enabled, the action will incorrectly report them as missing. Use `contents: write` to see draft releases.
 
 ### Auto-fix Mode
-Requires `contents: write` permission to push tag/branch updates:
+
+Requires `contents: write` permission to push tag/branch updates and see draft releases:
 
 ```yaml
 jobs:
@@ -499,102 +647,120 @@ jobs:
 
 ## Architecture
 
-This action uses a modular architecture with a domain model at its core, making it maintainable, testable, and extensible.
+This action uses a modular architecture with a rule-based validation system, making it maintainable, testable, and extensible.
 
 ### Module Structure
 
-```
+```text
 actions-semver-checker/
-├── main.ps1              # Orchestrator (1,407 lines)
+├── main.ps1              # Orchestrator (~350 lines)
 │   ├── Initialize State
-│   ├── Collect tags, branches, releases
-│   ├── Run validations
-│   ├── Execute remediation (auto-fix)
+│   ├── Collect tags, branches, releases via GitHub API
+│   ├── Load and execute validation rules
+│   ├── Execute remediation actions (auto-fix)
 │   └── Report results
 │
-├── lib/                  # Reusable modules (1,114 lines)
-│   ├── StateModel.ps1    # Domain model (420 lines)
-│   │   ├── VersionRef class
-│   │   ├── ReleaseInfo class
-│   │   ├── ValidationIssue class (with status tracking)
-│   │   ├── RepositoryState class (single source of truth)
-│   │   └── RemediationPlan class (dependency ordering)
+├── lib/                  # Core modules (~3,246 lines total)
+│   ├── StateModel.ps1    # Domain model (~639 lines)
+│   │   ├── VersionRef class - Represents version tags/branches
+│   │   ├── ReleaseInfo class - GitHub release metadata
+│   │   ├── ValidationIssue class - Tracks issues with status
+│   │   ├── RepositoryState class - Single source of truth
+│   │   └── RemediationPlan class - Dependency ordering
 │   │
-│   ├── GitHubApi.ps1     # GitHub REST API (432 lines)
+│   ├── GitHubApi.ps1     # GitHub REST API client (~1,165 lines)
 │   │   ├── Get releases with pagination
-│   │   ├── Create/delete tags and branches
-│   │   ├── Manage releases and attestations
-│   │   └── Handle rate limiting
+│   │   ├── Create/update/delete tags and branches
+│   │   ├── Manage releases (create, publish, delete)
+│   │   ├── Retry logic with exponential backoff
+│   │   └── Handle rate limiting and errors
 │   │
-│   ├── Remediation.ps1   # Auto-fix strategies (144 lines)
+│   ├── ValidationRules.ps1  # Rule engine (~163 lines)
+│   │   ├── ValidationRule base class
+│   │   ├── Get-ValidationRule - Auto-discovery
+│   │   ├── Invoke-ValidationRule - Execute rules
+│   │   └── Helper functions for rule execution
+│   │
+│   ├── RemediationActions.ps1  # Action base (~48 lines)
+│   │   └── RemediationAction base class
+│   │
+│   ├── Remediation.ps1   # Auto-fix coordination (~301 lines)
 │   │   ├── Execute fixes via REST API
-│   │   ├── Calculate next available version
+│   │   ├── Handle HTTP 422 (unfixable) errors
+│   │   ├── Calculate next available versions
 │   │   └── Generate manual fix commands
 │   │
-│   ├── Logging.ps1       # Safe output (75 lines)
-│   │   ├── Workflow command injection protection
-│   │   └── GitHub Actions formatting
+│   ├── InputValidation.ps1  # Input parsing (~325 lines)
+│   │   ├── Read-ActionInput - Parse from environment
+│   │   ├── Test-ActionInput - Validate configuration
+│   │   └── Write-InputDebugInfo - Debug output
 │   │
-│   └── VersionParser.ps1 # Version parsing (43 lines)
-│       └── Semantic version validation
+│   ├── Logging.ps1       # Safe output (~105 lines)
+│   │   ├── Workflow command injection protection
+│   │   └── GitHub Actions formatting helpers
+│   │
+│   └── VersionParser.ps1 # Version parsing (~150 lines)
+│       └── ConvertTo-Version - Semantic version parsing
 │
-└── main.Tests.ps1        # Comprehensive test suite (81 tests)
-```
-
-### Domain Model
-
-**RepositoryState** (single source of truth):
-- **Tags/Branches**: `VersionRef[]` with semantic parsing
-- **Releases**: `ReleaseInfo[]` with immutability status
-- **Issues**: `ValidationIssue[]` with lifecycle tracking
-- **Calculated metrics**: Counts derived from issue statuses
-
-**ValidationIssue statuses**:
-- `pending` → Not yet processed
-- `fixed` → Auto-fix succeeded
-- `failed` → Auto-fix failed
-- `unfixable` → Requires manual intervention
-
-### Design Principles
-
-1. **Single Source of Truth**: All state tracked in `RepositoryState` domain model
-2. **Status-Based Calculation**: Metrics calculated on-demand (no manual counters)
-3. **Separation of Concerns**: Each module has a single responsibility
-4. **Zero Breaking Changes**: 100% backward compatibility maintained
-
-### Validation Flow
-
-```
-1. Initialize
-   └── Create RepositoryState with configuration
-
-2. Collect
-   ├── Git tags (git tag -l v*)
-   ├── Git branches (git branch --remotes)
-   └── GitHub releases (REST API with pagination)
-
-3. Validate
-   ├── Check floating versions point to correct patches
-   ├── Verify releases exist for patch versions
-   ├── Ensure releases are immutable (not drafts)
-   └── Detect ambiguous refs (tag + branch conflicts)
-
-4. Remediate (if auto-fix enabled)
-   ├── Create/update tags via REST API
-   ├── Create/update branches via REST API
-   ├── Create draft releases via REST API
-   └── Track status: fixed/failed/unfixable
-
-5. Report
-   ├── Display state summary
-   ├── Show fixed/failed/unfixable counts
-   ├── Provide manual fix commands
-   └── Exit with appropriate code
+├── lib/rules/            # Validation rules (22 rules organized by category)
+│   ├── ref_type/         # Reference type validation (5 rules)
+│   │   ├── tag_should_be_branch/
+│   │   ├── branch_should_be_tag/
+│   │   ├── duplicate_floating_version_ref/
+│   │   ├── duplicate_latest_ref/
+│   │   └── duplicate_patch_version_ref/
+│   │
+│   ├── releases/         # Release validation (6 rules)
+│   │   ├── patch_release_required/
+│   │   ├── release_should_be_published/
+│   │   ├── release_should_be_immutable/
+│   │   ├── highest_patch_release_should_be_latest/
+│   │   ├── floating_version_no_release/
+│   │   └── duplicate_release/
+│   │
+│   ├── version_tracking/ # Version tracking (9 rules)
+│   │   ├── major_tag_missing/
+│   │   ├── major_tag_tracks_highest_patch/
+│   │   ├── major_branch_missing/
+│   │   ├── major_branch_tracks_highest_patch/
+│   │   ├── minor_tag_missing/
+│   │   ├── minor_tag_tracks_highest_patch/
+│   │   ├── minor_branch_missing/
+│   │   ├── minor_branch_tracks_highest_patch/
+│   │   └── patch_tag_missing/
+│   │
+│   └── latest/           # Latest version tracking (2 rules)
+│       ├── latest_tag_tracks_global_highest/
+│       └── latest_branch_tracks_global_highest/
+│
+└── lib/actions/          # Remediation actions (14 actions organized by type)
+    ├── base/             # Base class and documentation
+    ├── tags/             # Tag operations (3 actions)
+    │   ├── CreateTagAction/
+    │   ├── UpdateTagAction/
+    │   └── DeleteTagAction/
+    │
+    ├── branches/         # Branch operations (3 actions)
+    │   ├── CreateBranchAction/
+    │   ├── UpdateBranchAction/
+    │   └── DeleteBranchAction/
+    │
+    ├── releases/         # Release operations (5 actions)
+    │   ├── CreateReleaseAction/
+    │   ├── PublishReleaseAction/
+    │   ├── RepublishReleaseAction/
+    │   ├── SetLatestReleaseAction/
+    │   └── DeleteReleaseAction/
+    │
+    └── conversions/      # Type conversions (2 actions)
+        ├── ConvertTagToBranchAction/
+        └── ConvertBranchToTagAction/
 ```
 
 ### Contributing
 
 Want to contribute? See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
 - Development setup
 - Module guide with detailed responsibilities
 - Testing guidelines

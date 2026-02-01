@@ -42,8 +42,8 @@ function Invoke-WithRetry
             $errorMessage = $_.Exception.Message
             
             # Check if this is a retryable error (network, timeout, rate limit)
-            $isRetryable = $errorMessage -match '(timeout|connection|429|503|502|500)' -or
-                          $_.Exception.GetType().Name -match '(WebException|HttpRequestException)'
+            $isRetryable = $errorMessage -match '(timeout|connection|429|503|502|500)' -or `
+                $_.Exception.GetType().Name -match '(WebException|HttpRequestException)'
             
             if ($attempt -ge $MaxRetries -or -not $isRetryable) {
                 Write-Host "::debug::Non-retryable error or max retries reached for $OperationDescription"
@@ -62,8 +62,7 @@ function Invoke-WithRetry
     throw "Maximum retry attempts ($MaxRetries) reached for $OperationDescription without success or error"
 }
 
-function Get-ApiHeaders
-{
+function Get-ApiHeader {
     param(
         [string]$Token
     )
@@ -114,6 +113,50 @@ function Throw-GitHubApiFailure
     throw "GitHub API request failed during $Operation$statusSuffix"
 }
 
+function Test-VersionShouldBeIgnored {
+    <#
+    .SYNOPSIS
+    Tests if a version should be ignored based on the ignore-versions patterns.
+    
+    .DESCRIPTION
+    Checks if a version matches any of the ignore patterns. Supports both exact
+    matches and wildcard patterns (using PowerShell's -like operator).
+    
+    .PARAMETER Version
+    The version string to check (e.g., "v1.0.0", "v2.1")
+    
+    .PARAMETER IgnoreVersions
+    Array of patterns to match against. Supports wildcards like "v1.*"
+    
+    .EXAMPLE
+    Test-VersionShouldBeIgnored -Version "v1.0.0" -IgnoreVersions @("v1.*")
+    # Returns $true
+    
+    .EXAMPLE
+    Test-VersionShouldBeIgnored -Version "v2.0.0" -IgnoreVersions @("v1.0.0", "v1.1.0")
+    # Returns $false
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [string]$Version,
+        
+        [string[]]$IgnoreVersions = @()
+    )
+    
+    if (-not $IgnoreVersions -or $IgnoreVersions.Count -eq 0) {
+        return $false
+    }
+    
+    foreach ($pattern in $IgnoreVersions) {
+        # Use -like for wildcard pattern matching (supports *, ?)
+        if ($Version -like $pattern) {
+            return $true
+        }
+    }
+    
+    return $false
+}
+
 function Get-GitHubRepoInfo
 {
     param(
@@ -145,7 +188,7 @@ function Test-ReleaseImmutability
     
     try {
         # Use GitHub GraphQL API to check if release is immutable
-        $headers = Get-ApiHeaders -Token $Token
+        $headers = Get-ApiHeader -Token $Token
         
         # Construct the GraphQL query
         $query = @"
@@ -205,11 +248,29 @@ query(`$owner: String!, `$name: String!, `$tag: String!) {
     }
 }
 
-function Get-GitHubReleases
-{
+function Get-GitHubRelease {
+    <#
+    .SYNOPSIS
+    Fetches all releases from a GitHub repository via the GraphQL API.
+    
+    .DESCRIPTION
+    Uses the GitHub GraphQL API to fetch all releases with immutability and latest status.
+    Returns ReleaseInfo objects directly, ready to add to RepositoryState.
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER IgnoreVersions
+    Optional array of version strings to mark as ignored.
+    
+    .OUTPUTS
+    Returns an array of ReleaseInfo objects.
+    #>
     param(
         [Parameter(Mandatory)]
-        [RepositoryState]$State
+        [RepositoryState]$State,
+        
+        [string[]]$IgnoreVersions = @()
     )
     
     try {
@@ -221,8 +282,8 @@ function Get-GitHubReleases
         
         # Use GitHub GraphQL API to get releases with immutability status
         # This is more efficient than REST API + separate immutability checks
-        $headers = Get-ApiHeaders -Token $State.Token
-        $allReleases = @()
+        $headers = Get-ApiHeader -Token $State.Token
+        [ReleaseInfo[]]$allReleases = @()
         $cursor = $null
         
         # Determine GraphQL endpoint from API URL
@@ -247,6 +308,7 @@ query(`$owner: String!, `$name: String!, `$first: Int!, `$after: String) {
         isPrerelease
         isDraft
         immutable
+        isLatest
       }
     }
   }
@@ -296,15 +358,26 @@ query(`$owner: String!, `$name: String!, `$first: Int!, `$after: String) {
                 break
             }
             
-            # Collect releases
+            # Collect releases - create ReleaseInfo objects directly
             foreach ($release in $releases.nodes) {
-                $allReleases += @{
+                # Build PSCustomObject in the format ReleaseInfo constructor expects
+                $releaseData = [PSCustomObject]@{
+                    tag_name = $release.tagName
                     id = $release.databaseId
-                    tagName = $release.tagName
-                    isPrerelease = $release.isPrerelease
-                    isDraft = $release.isDraft
+                    draft = $release.isDraft
+                    prerelease = $release.isPrerelease
+                    html_url = $null  # Not available in GraphQL query
+                    target_commitish = $null  # Not available in GraphQL query
                     immutable = $release.immutable
+                    isLatest = $release.isLatest
                 }
+                
+                $ri = [ReleaseInfo]::new($releaseData)
+                
+                # Check if this release's tag should be ignored (supports wildcards)
+                $ri.IsIgnored = Test-VersionShouldBeIgnored -Version $ri.TagName -IgnoreVersions $IgnoreVersions
+                
+                $allReleases += $ri
             }
             
             # Check if there are more pages
@@ -323,8 +396,7 @@ query(`$owner: String!, `$name: String!, `$first: Int!, `$after: String) {
     }
 }
 
-function Get-GitHubTags
-{
+function Get-GitHubTag {
     <#
     .SYNOPSIS
     Fetches all tags from a GitHub repository via the REST API.
@@ -332,6 +404,7 @@ function Get-GitHubTags
     .DESCRIPTION
     Uses the GitHub REST API to fetch all tags from the repository.
     This eliminates the need for a full clone with fetch-depth: 0 and fetch-tags: true.
+    Returns VersionRef objects directly, ready to add to RepositoryState.
     
     .PARAMETER State
     The RepositoryState object containing API configuration.
@@ -339,14 +412,19 @@ function Get-GitHubTags
     .PARAMETER Pattern
     Optional regex pattern to filter tags. If not specified, all tags are returned.
     
+    .PARAMETER IgnoreVersions
+    Optional array of version strings to mark as ignored.
+    
     .OUTPUTS
-    Returns an array of hashtables with 'name' and 'sha' properties for each tag.
+    Returns an array of VersionRef objects.
     #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         
-        [string]$Pattern = $null
+        [string]$Pattern = $null,
+        
+        [string[]]$IgnoreVersions = @()
     )
     
     try {
@@ -357,8 +435,8 @@ function Get-GitHubTags
             return @()
         }
         
-        $headers = Get-ApiHeaders -Token $State.Token
-        $allTags = @()
+        $headers = Get-ApiHeader -Token $State.Token
+        $allTags = @()  # Untyped array for accumulating hashtables
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/refs/tags?per_page=100"
         
         do {
@@ -433,15 +511,25 @@ function Get-GitHubTags
             
         } while ($url)
         
-        return $allTags
+        # Convert hashtables to VersionRef objects
+        [VersionRef[]]$result = @()
+        foreach ($tag in $allTags) {
+            $vr = [VersionRef]::new($tag.name, "refs/tags/$($tag.name)", $tag.sha, "tag")
+            
+            # Check if this version should be ignored (supports wildcards)
+            $vr.IsIgnored = Test-VersionShouldBeIgnored -Version $tag.name -IgnoreVersions $IgnoreVersions
+            
+            $result += $vr
+        }
+        
+        return $result
     }
     catch {
         Throw-GitHubApiFailure -Operation "fetching tags" -ErrorRecord $_
     }
 }
 
-function Get-GitHubBranches
-{
+function Get-GitHubBranch {
     <#
     .SYNOPSIS
     Fetches all branches from a GitHub repository via the REST API.
@@ -449,6 +537,7 @@ function Get-GitHubBranches
     .DESCRIPTION
     Uses the GitHub REST API to fetch all branches from the repository.
     This eliminates the need for a full clone.
+    Returns VersionRef objects directly, ready to add to RepositoryState.
     
     .PARAMETER State
     The RepositoryState object containing API configuration.
@@ -456,14 +545,19 @@ function Get-GitHubBranches
     .PARAMETER Pattern
     Optional regex pattern to filter branches. If not specified, all branches are returned.
     
+    .PARAMETER IgnoreVersions
+    Optional array of version strings to mark as ignored.
+    
     .OUTPUTS
-    Returns an array of hashtables with 'name' and 'sha' properties for each branch.
+    Returns an array of VersionRef objects.
     #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         
-        [string]$Pattern = $null
+        [string]$Pattern = $null,
+        
+        [string[]]$IgnoreVersions = @()
     )
     
     try {
@@ -474,7 +568,7 @@ function Get-GitHubBranches
             return @()
         }
         
-        $headers = Get-ApiHeaders -Token $State.Token
+        $headers = Get-ApiHeader -Token $State.Token
         $allBranches = @()
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/branches?per_page=100"
         
@@ -521,7 +615,18 @@ function Get-GitHubBranches
             
         } while ($url)
         
-        return $allBranches
+        # Convert hashtables to VersionRef objects
+        [VersionRef[]]$result = @()
+        foreach ($branch in $allBranches) {
+            $vr = [VersionRef]::new($branch.name, "refs/heads/$($branch.name)", $branch.sha, "branch")
+            
+            # Check if this version should be ignored (supports wildcards)
+            $vr.IsIgnored = Test-VersionShouldBeIgnored -Version $branch.name -IgnoreVersions $IgnoreVersions
+            
+            $result += $vr
+        }
+        
+        return $result
     }
     catch {
         Throw-GitHubApiFailure -Operation "fetching branches" -ErrorRecord $_
@@ -568,7 +673,7 @@ function Get-GitHubRef
             return $null
         }
         
-        $headers = Get-ApiHeaders -Token $State.Token
+        $headers = Get-ApiHeader -Token $State.Token
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/refs/$RefType/$RefName"
         
         $response = Invoke-WithRetry -OperationDescription "Get ref $RefType/$RefName" -ScriptBlock {
@@ -667,6 +772,8 @@ function Test-ImmutableReleaseError
         }
         catch {
             # If JSON parsing fails, fall back to string matching
+            # This is intentional - we continue to the fallback check below
+            $null = $null  # Suppress PSSA warning for empty catch
         }
     }
     
@@ -706,7 +813,7 @@ function Remove-GitHubRelease
             return $false
         }
         
-        $headers = Get-ApiHeaders -Token $State.Token
+        $headers = Get-ApiHeader -Token $State.Token
         $releaseIdToDelete = $ReleaseId
         
         # If ReleaseId not provided, look it up by tag name
@@ -740,9 +847,9 @@ function Remove-GitHubRelease
         
         Invoke-WithRetry -OperationDescription "Delete release $TagName" -ScriptBlock {
             if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $deleteResponse = Invoke-WebRequestWrapper -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
+                $null = Invoke-WebRequestWrapper -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
             } else {
-                $deleteResponse = Invoke-WebRequest -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
+                $null = Invoke-WebRequest -Uri $deleteUrl -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 5
             }
         }
         
@@ -774,6 +881,12 @@ function New-GitHubRelease
     .PARAMETER Draft
     If true, creates a draft release. If false, creates a published release. Defaults to true.
     
+    .PARAMETER MakeLatest
+    Controls whether this release should be marked as "latest".
+    - $true: Force this release to be latest
+    - $false: Prevent this release from becoming latest
+    - $null: Let GitHub determine based on version (default behavior)
+    
     .OUTPUTS
     A hashtable with Success (bool), ReleaseId (int or null), and Unfixable (bool) properties.
     #>
@@ -781,7 +894,9 @@ function New-GitHubRelease
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         [string]$TagName,
-        [bool]$Draft = $true
+        [bool]$Draft = $true,
+        [Parameter(Mandatory = $false)]
+        $MakeLatest = $null
     )
     
     try {
@@ -792,15 +907,22 @@ function New-GitHubRelease
         }
         
         # Create a release (draft or published based on parameter)
-        $headers = Get-ApiHeaders -Token $State.Token
+        $headers = Get-ApiHeader -Token $State.Token
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases"
         
-        $body = @{
+        $bodyObj = @{
             tag_name = $TagName
             name = $TagName
             body = "Release $TagName"
             draft = $Draft
-        } | ConvertTo-Json
+        }
+        
+        # Add make_latest if explicitly specified
+        if ($null -ne $MakeLatest) {
+            $bodyObj['make_latest'] = if ($MakeLatest) { 'true' } else { 'false' }
+        }
+        
+        $body = $bodyObj | ConvertTo-Json
         
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
@@ -826,14 +948,41 @@ function New-GitHubRelease
     }
 }
 
-function Publish-GitHubRelease
-{
+function Publish-GitHubRelease {
+    <#
+    .SYNOPSIS
+    Publish a draft GitHub release.
+    
+    .DESCRIPTION
+    Publishes a draft release by setting draft to false. Optionally controls whether
+    the release should be marked as "latest".
+    
+    .PARAMETER State
+    The repository state object containing API configuration.
+    
+    .PARAMETER TagName
+    The tag name for the release.
+    
+    .PARAMETER ReleaseId
+    The release ID. If not provided, will be looked up by tag name.
+    
+    .PARAMETER MakeLatest
+    Controls whether this release should be marked as "latest".
+    - $true: Force this release to be latest
+    - $false: Prevent this release from becoming latest
+    - $null: Let GitHub determine based on version (default behavior)
+    
+    .OUTPUTS
+    A hashtable with Success (bool) and Unfixable (bool) properties.
+    #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         [string]$TagName,
-        [Parameter(Mandatory=$false)]
-        [int]$ReleaseId
+        [Parameter(Mandatory = $false)]
+        [int]$ReleaseId,
+        [Parameter(Mandatory = $false)]
+        $MakeLatest = $null
     )
     
     try {
@@ -843,7 +992,7 @@ function Publish-GitHubRelease
             return @{ Success = $false; Unfixable = $false }
         }
         
-        $headers = Get-ApiHeaders -Token $State.Token
+        $headers = Get-ApiHeader -Token $State.Token
         
         # If ReleaseId is not provided, fetch it by tag name
         if (-not $ReleaseId) {
@@ -860,16 +1009,23 @@ function Publish-GitHubRelease
         
         # Update the release to publish it (set draft to false)
         $updateUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$ReleaseId"
-        $body = @{
+        $bodyObj = @{
             draft = $false
-        } | ConvertTo-Json
+        }
+        
+        # Add make_latest if explicitly specified
+        if ($null -ne $MakeLatest) {
+            $bodyObj['make_latest'] = if ($MakeLatest) { 'true' } else { 'false' }
+        }
+        
+        $body = $bodyObj | ConvertTo-Json
         
         # Use error variable to capture errors without writing to error stream
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            $null = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         } else {
             # Suppress PowerShell error output by using try/catch and error variable
-            $response = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+            $null = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
         }
         
         return @{ Success = $true; Unfixable = $false }
@@ -882,6 +1038,74 @@ function Publish-GitHubRelease
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error - tag used by immutable release for $TagName : "
         } else {
             Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to publish release for $TagName : "
+        }
+        
+        return @{ Success = $false; Unfixable = $isUnfixable }
+    }
+}
+
+function Set-GitHubReleaseLatest
+{
+    <#
+    .SYNOPSIS
+    Set a release as the "latest" release in GitHub.
+    
+    .DESCRIPTION
+    Updates a release to be marked as the "latest" release using the make_latest
+    parameter. This is used when the wrong release is currently marked as latest.
+    
+    .PARAMETER State
+    The repository state object containing API configuration.
+    
+    .PARAMETER TagName
+    The tag name for the release.
+    
+    .PARAMETER ReleaseId
+    The release ID.
+    
+    .OUTPUTS
+    A hashtable with Success (bool) and Unfixable (bool) properties.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        [Parameter(Mandatory)]
+        [string]$TagName,
+        [Parameter(Mandatory)]
+        [int]$ReleaseId
+    )
+    
+    try {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return @{ Success = $false; Unfixable = $false }
+        }
+        
+        $headers = Get-ApiHeader -Token $State.Token
+        
+        # Update the release to set it as latest
+        $updateUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$ReleaseId"
+        $body = @{
+            make_latest = 'true'
+        } | ConvertTo-Json
+        
+        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+            $null = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+        } else {
+            $null = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+        }
+        
+        return @{ Success = $true; Unfixable = $false }
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        $isUnfixable = Test-ImmutableReleaseError -ErrorRecord $_
+        
+        if ($isUnfixable) {
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error when setting $TagName as latest: "
+        } else {
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to set release $TagName as latest: "
         }
         
         return @{ Success = $false; Unfixable = $isUnfixable }
@@ -906,7 +1130,9 @@ function Republish-GitHubRelease
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         [Parameter(Mandatory)]
-        [string]$TagName
+        [string]$TagName,
+        [Parameter(Mandatory = $false)]
+        $MakeLatest = $null
     )
     
     try {
@@ -916,7 +1142,7 @@ function Republish-GitHubRelease
             return @{ Success = $false; Reason = "No repo info available"; Unfixable = $false }
         }
         
-        $headers = Get-ApiHeaders -Token $State.Token
+        $headers = Get-ApiHeader -Token $State.Token
         
         # Step 1: Get the release by tag name
         $releasesUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/tags/$TagName"
@@ -958,8 +1184,8 @@ function Republish-GitHubRelease
         }
         
         # Step 3: Publish the release to make it immutable
-        Write-Host "::debug::Publishing release $TagName to make it immutable"
-        $publishResult = Publish-GitHubRelease -State $State -TagName $TagName -ReleaseId $releaseId
+        Write-Host "::debug::Publishing release $TagName to make it immutable (makeLatest=$MakeLatest)"
+        $publishResult = Publish-GitHubRelease -State $State -TagName $TagName -ReleaseId $releaseId -MakeLatest $MakeLatest
         
         if ($publishResult.Success) {
             return @{ Success = $true; Reason = "Republished successfully"; Unfixable = $false }
@@ -993,7 +1219,7 @@ function New-GitHubRef
             return @{ Success = $false; RequiresManualFix = $false; ErrorOutput = "No repo info available" }
         }
         
-        $headers = Get-ApiHeaders -Token $State.Token
+        $headers = Get-ApiHeader -Token $State.Token
         
         # Try to update the ref first (in case it exists)
         $updateUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/$RefName"
@@ -1004,9 +1230,9 @@ function New-GitHubRef
         
         try {
             if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $response = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+                $null = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
             } else {
-                $response = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+                $null = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
             }
             return @{ Success = $true; RequiresManualFix = $false }
         }
@@ -1027,9 +1253,9 @@ function New-GitHubRef
                 } | ConvertTo-Json
                 
                 if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                    $createResponse = Invoke-WebRequestWrapper -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+                    $null = Invoke-WebRequestWrapper -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
                 } else {
-                    $createResponse = Invoke-RestMethod -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+                    $null = Invoke-RestMethod -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
                 }
                 return @{ Success = $true; RequiresManualFix = $false }
             }
@@ -1051,7 +1277,7 @@ function New-GitHubRef
         # Check for permission errors (403 Forbidden)
         if ($statusCode -eq 403) {
             $gitRoot = Join-Path (Get-Location) ".git"
-            $gitAvailable = (Get-Command git -ErrorAction SilentlyContinue) -ne $null
+            $gitAvailable = $null -ne (Get-Command git -ErrorAction SilentlyContinue)
             $hasGitRepo = Test-Path $gitRoot
 
             if ($env:GITHUB_API_ALLOW_GIT_FALLBACK -ne 'true') {
@@ -1068,8 +1294,6 @@ function New-GitHubRef
             
             # Fall back to using git push since REST API doesn't have permission
             # Extract tag/branch name from RefName (e.g., "refs/tags/v1.0.0" -> "v1.0.0")
-            $refParts = $RefName -split '/'
-            $refShortName = $refParts[-1]
             
             try {
                 # Use git push to create/update the ref
@@ -1145,14 +1369,14 @@ function Remove-GitHubRef
             return $false
         }
         
-        $headers = Get-ApiHeaders -Token $State.Token
+        $headers = Get-ApiHeader -Token $State.Token
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/$RefName"
         
         Invoke-WithRetry -OperationDescription "Delete ref $RefName" -ScriptBlock {
             if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
+                $null = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
             } else {
-                $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
+                $null = Invoke-RestMethod -Uri $url -Headers $headers -Method Delete -ErrorAction Stop -TimeoutSec 10
             }
         }
         
@@ -1163,3 +1387,4 @@ function Remove-GitHubRef
         return $false
     }
 }
+

@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # StateModel.ps1 - Domain Model for Repository State
 #############################################################################
 # This module defines the domain model classes used to track the current
@@ -92,6 +92,7 @@ class ReleaseInfo {
     [bool]$IsPrerelease
     [bool]$IsImmutable
     [bool]$IsIgnored      # Whether this release's tag is in the ignore-versions list
+    [bool]$IsLatest       # Whether this release is marked as "latest" in GitHub
     [int]$Id
     [string]$HtmlUrl
     
@@ -110,6 +111,16 @@ class ReleaseInfo {
         
         # Set immutability from explicit input
         $this.IsImmutable = $isImmutable
+        
+        # Set IsLatest from response property (if available)
+        # The GitHub API returns is_latest on release objects
+        if ($null -ne $apiResponse.is_latest) {
+            $this.IsLatest = $apiResponse.is_latest
+        } elseif ($null -ne $apiResponse.isLatest) {
+            $this.IsLatest = $apiResponse.isLatest
+        } else {
+            $this.IsLatest = $false
+        }
     }
     
     # Constructor with immutable property in the response object (GraphQL response)
@@ -131,6 +142,15 @@ class ReleaseInfo {
         } else {
             $this.IsImmutable = $false
         }
+        
+        # Set IsLatest from response property (if available)
+        if ($null -ne $apiResponse.is_latest) {
+            $this.IsLatest = $apiResponse.is_latest
+        } elseif ($null -ne $apiResponse.isLatest) {
+            $this.IsLatest = $apiResponse.isLatest
+        } else {
+            $this.IsLatest = $false
+        }
     }
     
     [string]ToString() {
@@ -138,6 +158,7 @@ class ReleaseInfo {
         if ($this.IsDraft) { $status += "draft" }
         if ($this.IsPrerelease) { $status += "prerelease" }
         if (-not $this.IsImmutable) { $status += "mutable" }
+        if ($this.IsLatest) { $status += "latest" }
         
         $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
         return "$($this.TagName)$statusStr"
@@ -160,12 +181,13 @@ class ValidationIssue {
     [string]$ManualFixCommand
     [object]$RemediationAction  # RemediationAction instance
     [string[]]$Dependencies  # Other issues that must be fixed first
-    [string]$Status       # "pending", "fixed", "failed", "manual_fix_required", "unfixable"
-                          # - pending: Not yet attempted
-                          # - fixed: Successfully auto-fixed
-                          # - failed: Auto-fix attempted but failed
-                          # - manual_fix_required: Can be fixed manually (e.g., workflow permission issues)
-                          # - unfixable: Cannot be fixed (e.g., immutable release conflicts)
+    # Status values: "pending", "fixed", "failed", "manual_fix_required", "unfixable"
+    # - pending: Not yet attempted
+    # - fixed: Successfully auto-fixed
+    # - failed: Auto-fix attempted but failed
+    # - manual_fix_required: Can be fixed manually (e.g., workflow permission issues)
+    # - unfixable: Cannot be fixed (e.g., immutable release conflicts)
+    [string]$Status
     
     ValidationIssue([string]$type, [string]$severity, [string]$message) {
         $this.Type = $type
@@ -183,47 +205,6 @@ class ValidationIssue {
     
     [string]ToString() {
         return "$($this.Severity.ToUpper()): $($this.Message)"
-    }
-}
-
-#############################################################################
-# State Diff Class
-#############################################################################
-
-class StateDiff {
-    [string]$Action       # "create", "update", "delete"
-    [string]$RefType      # "tag", "branch", "release"
-    [string]$Version
-    [string]$CurrentSha   # Current SHA (empty for create)
-    [string]$DesiredSha   # Desired SHA (empty for delete)
-    [string]$Reason
-    
-    StateDiff([string]$action, [string]$refType, [string]$version, [string]$currentSha, [string]$desiredSha, [string]$reason) {
-        $this.Action = $action
-        $this.RefType = $refType
-        $this.Version = $version
-        $this.CurrentSha = $currentSha
-        $this.DesiredSha = $desiredSha
-        $this.Reason = $reason
-    }
-    
-    [string]ToString() {
-        $shaInfo = ""
-        if ($this.Action -eq "create") {
-            $shortSha = if ($this.DesiredSha) { $this.DesiredSha.Substring(0, [Math]::Min(7, $this.DesiredSha.Length)) } else { "" }
-            $shaInfo = " → $shortSha"
-        }
-        elseif ($this.Action -eq "update") {
-            $currentShort = if ($this.CurrentSha) { $this.CurrentSha.Substring(0, [Math]::Min(7, $this.CurrentSha.Length)) } else { "" }
-            $desiredShort = if ($this.DesiredSha) { $this.DesiredSha.Substring(0, [Math]::Min(7, $this.DesiredSha.Length)) } else { "" }
-            $shaInfo = " $currentShort → $desiredShort"
-        }
-        elseif ($this.Action -eq "delete") {
-            $shortSha = if ($this.CurrentSha) { $this.CurrentSha.Substring(0, [Math]::Min(7, $this.CurrentSha.Length)) } else { "" }
-            $shaInfo = " $shortSha"
-        }
-        
-        return "$($this.RefType) $($this.Version)$shaInfo - $($this.Reason)"
     }
 }
 
@@ -443,197 +424,5 @@ function Write-RepositoryStateSummary {
         }
     }
     
-    Write-Host "##[endgroup]"
-}
-
-function Get-StateDiff {
-    <#
-    .SYNOPSIS
-    Calculate the difference between current and desired state based on validation issues.
-    
-    .PARAMETER State
-    The repository state object containing issues.
-    
-    .OUTPUTS
-    Array of StateDiff objects representing planned changes.
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [RepositoryState]$State
-    )
-    
-    $diffs = @()
-    
-    # Convert ValidationIssues to StateDiffs
-    foreach ($issue in $State.Issues) {
-        # Skip issues that don't have a fix command (not fixable)
-        if (-not $issue.ManualFixCommand -and -not $issue.Version) {
-            continue
-        }
-        
-        # Determine action type based on issue type
-        if ($issue.Type -match "missing") {
-            # Create action
-            $refType = "tag"
-            if ($issue.Type -match "branch") {
-                $refType = "branch"
-            }
-            elseif ($issue.Type -match "release") {
-                $refType = "release"
-            }
-            
-            $diff = [StateDiff]::new(
-                "create",
-                $refType,
-                $issue.Version,
-                "",
-                $issue.ExpectedSha,
-                $issue.Message
-            )
-            $diffs += $diff
-        }
-        elseif ($issue.Type -match "mismatch" -or $issue.Type -match "incorrect") {
-            # Update action
-            $refType = "tag"
-            if ($issue.Type -match "branch") {
-                $refType = "branch"
-            }
-            
-            $diff = [StateDiff]::new(
-                "update",
-                $refType,
-                $issue.Version,
-                $issue.CurrentSha,
-                $issue.ExpectedSha,
-                $issue.Message
-            )
-            $diffs += $diff
-        }
-        elseif ($issue.Type -eq "draft_release") {
-            # Publish draft release (update action)
-            $diff = [StateDiff]::new(
-                "update",
-                "release",
-                $issue.Version,
-                "",
-                "",
-                "Publish draft release"
-            )
-            $diffs += $diff
-        }
-        elseif ($issue.Type -eq "mutable_floating_release" -or $issue.Type -eq "floating_version_release") {
-            # Delete release on floating version
-            $diff = [StateDiff]::new(
-                "delete",
-                "release",
-                $issue.Version,
-                "",
-                "",
-                "Remove release from floating version"
-            )
-            $diffs += $diff
-        }
-        elseif ($issue.Type -eq "non_immutable_release") {
-            # Republish release for immutability (update action)
-            $diff = [StateDiff]::new(
-                "update",
-                "release",
-                $issue.Version,
-                "",
-                "",
-                "Republish release for immutability"
-            )
-            $diffs += $diff
-        }
-        elseif ($issue.Type -match "delete" -or $issue.Type -match "remove") {
-            # Delete action
-            $refType = "release"
-            if ($issue.Type -match "tag") {
-                $refType = "tag"
-            }
-            elseif ($issue.Type -match "branch") {
-                $refType = "branch"
-            }
-            
-            $diff = [StateDiff]::new(
-                "delete",
-                $refType,
-                $issue.Version,
-                $issue.CurrentSha,
-                "",
-                $issue.Message
-            )
-            $diffs += $diff
-        }
-    }
-    
-    return $diffs
-}
-
-function Write-StateDiff {
-    <#
-    .SYNOPSIS
-    Display a visual diff of planned changes.
-    
-    .PARAMETER Diffs
-    Array of StateDiff objects to display.
-    #>
-    param(
-        [Parameter(Mandatory)]
-        [StateDiff[]]$Diffs
-    )
-    
-    if ($Diffs.Count -eq 0) {
-        return
-    }
-    
-    Write-Host "##[group]Planned Changes (Auto-fix Preview)"
-    Write-Host ""
-    Write-Host ("=" * 77)
-    Write-Host " Planned Changes (Auto-fix Preview)"
-    Write-Host ("=" * 77)
-    Write-Host ""
-    
-    # Group by action
-    $creates = $Diffs | Where-Object { $_.Action -eq "create" }
-    $updates = $Diffs | Where-Object { $_.Action -eq "update" }
-    $deletes = $Diffs | Where-Object { $_.Action -eq "delete" }
-    
-    # Show creates (green)
-    if ($creates.Count -gt 0) {
-        Write-Host "CREATE ($($creates.Count)):" -ForegroundColor Green
-        foreach ($diff in $creates) {
-            Write-Host "  + $($diff.ToString())" -ForegroundColor Green
-        }
-        Write-Host ""
-    }
-    
-    # Show updates (yellow)
-    if ($updates.Count -gt 0) {
-        Write-Host "UPDATE ($($updates.Count)):" -ForegroundColor Yellow
-        foreach ($diff in $updates) {
-            Write-Host "  ~ $($diff.ToString())" -ForegroundColor Yellow
-        }
-        Write-Host ""
-    }
-    
-    # Show deletes (red)
-    if ($deletes.Count -gt 0) {
-        Write-Host "DELETE ($($deletes.Count)):" -ForegroundColor Red
-        foreach ($diff in $deletes) {
-            Write-Host "  - $($diff.ToString())" -ForegroundColor Red
-        }
-        Write-Host ""
-    }
-    
-    # Summary
-    Write-Host ("=" * 77)
-    Write-Host "Total changes: $($Diffs.Count) " -NoNewline
-    if ($creates.Count -gt 0) { Write-Host "(+$($creates.Count) create) " -NoNewline -ForegroundColor Green }
-    if ($updates.Count -gt 0) { Write-Host "(~$($updates.Count) update) " -NoNewline -ForegroundColor Yellow }
-    if ($deletes.Count -gt 0) { Write-Host "(-$($deletes.Count) delete) " -NoNewline -ForegroundColor Red }
-    Write-Host ""
-    Write-Host ("=" * 77)
-    Write-Host ""
     Write-Host "##[endgroup]"
 }

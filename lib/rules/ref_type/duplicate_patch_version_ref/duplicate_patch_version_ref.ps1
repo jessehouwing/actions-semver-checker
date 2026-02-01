@@ -38,7 +38,7 @@ $Rule_DuplicatePatchVersionRef = [ValidationRule]@{
             }
         }
         
-        return ,$duplicates
+        return , $duplicates
     }
     
     # Check: Both tag and branch should not exist for patches

@@ -20,6 +20,30 @@ This action enforces [GitHub's immutable release strategy](https://docs.github.c
 - Floating versions (`v1`, `v1.0`) must point to the latest compatible patch
 - Releases become immutable once published (non-draft) - tags cannot be moved
 
+### CRITICAL: Prerelease Status Determination
+
+**GitHub Actions does NOT support semver prerelease suffixes.** The prerelease status is determined **exclusively** from the GitHub Release API's `prerelease` field.
+
+| Approach | Supported | Notes |
+|----------|-----------|-------|
+| GitHub Release `prerelease: true` | ✅ Yes | The ONLY way to mark a release as prerelease |
+| Tag suffix `-beta`, `-rc`, `-preview` | ❌ No | These have NO special meaning in GitHub Actions |
+| Tag suffix `-alpha`, `-dev` | ❌ No | Ignored - will cause parsing errors |
+
+**Examples:**
+```yaml
+# CORRECT: Use clean semver tags, set prerelease via GitHub Release
+v1.0.0  # Tag name
+prerelease: true  # Set on GitHub Release object
+
+# WRONG: Do NOT use semver suffixes
+v1.0.0-beta    # ❌ Not recognized as prerelease
+v1.0.0-rc1     # ❌ Will cause VersionRef parsing errors
+v2.0.0-preview # ❌ Suffix is meaningless to GitHub Actions
+```
+
+When checking if a version is a prerelease, always use `ReleaseInfo.IsPrerelease` from the GitHub Release API.
+
 ## Architecture
 
 ```
@@ -32,8 +56,8 @@ main.ps1 (orchestrator) → lib/*.ps1 (modules) → GitHub REST API
 
 ## Core Domain Model (lib/StateModel.ps1)
 
-- **`VersionRef`**: Tag or branch with parsed semantic version (`Major`, `Minor`, `Patch`, `IsPatch`, `IsIgnored`)
-- **`ReleaseInfo`**: GitHub release with immutability and prerelease status (`IsPrerelease` from API)
+- **`VersionRef`**: Tag or branch with parsed semantic version (`Major`, `Minor`, `Patch`, `IsPatch`, `IsIgnored`). **Does NOT support semver suffixes** like `-beta` or `-rc`.
+- **`ReleaseInfo`**: GitHub release with immutability and prerelease status. **`IsPrerelease` comes from GitHub Release API only** - never from tag name parsing.
 - **`ValidationIssue`**: Problem found during validation with status (`pending` → `fixed`/`failed`/`unfixable`)
 - **`RepositoryState`**: Central state container with calculated methods (`GetFixedIssuesCount()`, `GetReturnCode()`)
 - **`RemediationAction`**: Base class for auto-fix actions (see `lib/RemediationActions.ps1` for implementations)
@@ -49,7 +73,7 @@ main.ps1 (orchestrator) → lib/*.ps1 (modules) → GitHub REST API
 | `ignore-preview-releases` | Exclude prereleases from floating version calculation | `true` |
 | `floating-versions-use` | Use `tags` or `branches` for floating versions | `tags` |
 | `auto-fix` | Automatically fix issues (requires `contents: write`) | `false` |
-| `ignore-versions` | Comma-separated list of versions to skip | `""` |
+| `ignore-versions` | Comma-separated list of versions to skip (supports wildcards like `v1.*`) | `""` |
 
 ### Input Access Pattern
 
@@ -176,9 +200,9 @@ if ($this.IsUnfixableError($result)) {
 ### REST API (Used)
 | Endpoint | Function | Purpose |
 |----------|----------|---------|
-| `GET /repos/{owner}/{repo}/releases` | `Get-GitHubReleases` | List all releases |
-| `GET /repos/{owner}/{repo}/git/refs/tags` | `Get-GitHubTags` | List all tags |
-| `GET /repos/{owner}/{repo}/branches` | `Get-GitHubBranches` | List all branches |
+| `GET /repos/{owner}/{repo}/releases` | `Get-GitHubRelease` | List all releases |
+| `GET /repos/{owner}/{repo}/git/refs/tags` | `Get-GitHubTag` | List all tags |
+| `GET /repos/{owner}/{repo}/branches` | `Get-GitHubBranch` | List all branches |
 | `POST /repos/{owner}/{repo}/git/refs` | `New-GitHubRef` | Create tag/branch |
 | `PATCH /repos/{owner}/{repo}/git/refs/{ref}` | `Update-GitHubRef` | Update tag/branch |
 | `DELETE /repos/{owner}/{repo}/git/refs/{ref}` | `Remove-GitHubRef` | Delete tag/branch |
@@ -187,9 +211,12 @@ if ($this.IsUnfixableError($result)) {
 | `PATCH /repos/{owner}/{repo}/releases/{id}` | `Publish-GitHubRelease` | Publish draft release |
 
 ### GraphQL API (Used)
-| Query | Function | Purpose |
-|-------|----------|---------|
-| `repository.release.immutable` | `Test-ReleaseImmutability` | Check if release is immutable |
+| Query | Function | Purpose | Queried Fields |
+|-------|----------|---------|----------------|
+| `repository.release` (single) | `Test-ReleaseImmutability` | Check if release is immutable | `tagName`, `isDraft`, `immutable` |
+| `repository.releases` (list) | `Get-GitHubRelease` | List all releases with metadata | `databaseId`, `tagName`, `isPrerelease`, `isDraft`, `immutable`, `isLatest` |
+
+**CRITICAL:** When code uses properties from GraphQL responses (e.g., `IsLatest`, `immutable`), a unit test in `tests/unit/GitHubApi.Tests.ps1` MUST verify that the GraphQL query includes those fields. See "Get-GitHubRelease GraphQL query validation" test for the pattern. This prevents runtime errors from missing fields in queries.
 
 ### Missing APIs (Not Available from GitHub)
 | Feature | Status | Workaround |
@@ -252,6 +279,7 @@ git tag v1
         New-Item -Path $logDir -ItemType Directory -Force | Out-Null
         $config = New-PesterConfiguration
         $config.Run.Path = './tests'
+        $config.Run.PassThru = $true
         $config.Output.Verbosity = 'Detailed'
         $config.TestResult.Enabled = $true
         $config.TestResult.OutputFormat = 'NUnitXml'
@@ -267,11 +295,22 @@ git tag v1
 
 ## Critical Conventions
 
-1. **No `git` commands for tag/branch fetching** - Use `Get-GitHubTags`/`Get-GitHubBranches` from `lib/GitHubApi.ps1`
+1. **No `git` commands for tag/branch fetching** - Use `Get-GitHubTag`/`Get-GitHubBranch` from `lib/GitHubApi.ps1`
 2. **Status-based calculations** - Never store counts; calculate from issue statuses via `RepositoryState` methods
 3. **Retry wrapper** - All API calls use `Invoke-WithRetry` for transient failures
 4. **GitHub Actions output** - Use `Write-SafeHost`, `Write-SafeWarning` from `lib/Logging.ps1` to prevent injection
 5. **Token masking** - Always call `::add-mask::` when handling tokens
+6. **PowerShell class reloading** - After editing any PowerShell class (`VersionRef`, `ReleaseInfo`, `ValidationIssue`, `RepositoryState`, `RemediationAction`, `ValidationRule`), **ALWAYS** start a fresh PowerShell terminal before running tests or validation. PowerShell creates new class definitions with different assembly versions when classes are reloaded in the same session, causing type comparison failures (`-is [ClassName]` returns false). Close the existing terminal and open a new one to ensure clean class loading.
+7. **PSScriptAnalyzer TypeNotFound warnings** - TypeNotFound warnings are expected and should be ignored. PSScriptAnalyzer is a static analyzer that examines each file independently and cannot follow dot-sourcing paths or resolve classes defined in other files. When running PSScriptAnalyzer, always filter out TypeNotFound warnings: `Invoke-ScriptAnalyzer ... | Where-Object { $_.RuleName -ne 'TypeNotFound' }`. These warnings don't indicate actual problems - the test suite validates that types are correctly defined and used.
+8. **GraphQL query field validation** - When adding new GraphQL queries or modifying existing ones, **ALWAYS** add or update a unit test in `tests/unit/GitHubApi.Tests.ps1` that validates all required fields are present in the query. This prevents runtime errors from missing fields. See the "Get-GitHubRelease GraphQL query validation" test as an example. When code relies on a GraphQL property (e.g., `IsLatest`, `immutable`), the corresponding test must verify that property is queried.
+9. **API functions return domain objects directly** - `Get-GitHubTag`, `Get-GitHubBranch`, and `Get-GitHubRelease` return `VersionRef[]` and `ReleaseInfo[]` objects directly, ready to assign to `$script:State`. No manual mapping in `main.ps1` is needed. When adding new fields:
+   - Update the GraphQL query in `lib/GitHubApi.ps1` to include the new field
+   - Update the `$releaseData` PSCustomObject creation within `Get-GitHubRelease` to map the field
+   - The GraphQL response returns camelCase properties (e.g., `isLatest`), while REST API uses snake_case (e.g., `is_latest`). The `ReleaseInfo` constructor handles both formats.
+10. **Ignore-versions wildcard support** - The `Test-VersionShouldBeIgnored` function in `lib/GitHubApi.ps1` uses PowerShell's `-like` operator for pattern matching. Valid patterns are validated by `Test-ValidVersionPattern` in `lib/VersionParser.ps1`:
+   - Exact versions: `v1`, `v1.0`, `v1.0.0`
+   - Wildcard patterns: `v1.*`, `v1.0.*` (matches `v1.0`, `v1.0.0`, `v1.1.0`, etc.)
+   - Note: `v1.*` does NOT match `v1` (no dot), only versions with a dot after `v1`
 
 ## Adding New Validation Rules
 

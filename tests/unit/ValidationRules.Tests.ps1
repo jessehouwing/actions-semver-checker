@@ -5,7 +5,7 @@ BeforeAll {
     . "$PSScriptRoot/../../lib/ValidationRules.ps1"
 }
 
-Describe "Invoke-ValidationRules" {
+Describe "Invoke-ValidationRule" {
     It "adds issues when check fails" {
         $state = [RepositoryState]::new()
 
@@ -24,7 +24,7 @@ Describe "Invoke-ValidationRules" {
             }
         }
 
-        $result = Invoke-ValidationRules -State $state -Config @{} -Rules @($rule)
+        $result = Invoke-ValidationRule -State $state -Config @{} -Rules @($rule)
 
         $state.Issues.Count | Should -Be 1
         $state.Issues[0].Version | Should -Be "item-1"
@@ -46,7 +46,7 @@ Describe "Invoke-ValidationRules" {
             }
         }
 
-        $result = Invoke-ValidationRules -State $state -Config @{} -Rules @($rule)
+        $result = Invoke-ValidationRule -State $state -Config @{} -Rules @($rule)
 
         $state.Issues.Count | Should -Be 0
         $result.Count | Should -Be 0
@@ -88,7 +88,7 @@ Describe "Invoke-ValidationRules" {
             }
         }
 
-        Invoke-ValidationRules -State $state -Config $config -Rules @($lowPriority, $highPriority)
+        Invoke-ValidationRule -State $state -Config $config -Rules @($lowPriority, $highPriority)
 
         $config.ExecutionOrder | Should -Be @("high", "low")
     }
@@ -106,7 +106,7 @@ Describe "Invoke-ValidationRules" {
             CreateIssue = { param($Item, $State, $Config) $null }
         }
 
-        { Invoke-ValidationRules -State $state -Config @{} -Rules @($rule) } | Should -Throw
+        { Invoke-ValidationRule -State $state -Config @{} -Rules @($rule) } | Should -Throw
     }
 
     It "handles null condition results" {
@@ -125,7 +125,7 @@ Describe "Invoke-ValidationRules" {
             }
         }
 
-        $result = Invoke-ValidationRules -State $state -Config @{} -Rules @($rule)
+        $result = Invoke-ValidationRule -State $state -Config @{} -Rules @($rule)
 
         $state.Issues.Count | Should -Be 0
         $result.Count | Should -Be 0
@@ -134,7 +134,7 @@ Describe "Invoke-ValidationRules" {
 
 Describe "Rule discovery" {
     It "loads rules from a custom path" {
-        $state = [RepositoryState]::new()
+        $null = [RepositoryState]::new()
         $rulesDir = Join-Path $TestDrive "rules"
         New-Item -ItemType Directory -Path $rulesDir | Out-Null
 
@@ -157,7 +157,7 @@ $Rule_sample = [ValidationRule]@{
 $Rule_sample
 '@ | Set-Content -Path $ruleFile -Encoding ASCII
 
-        $rules = Get-AllValidationRules -RulesPath $rulesDir
+        $rules = Get-ValidationRule -RulesPath $rulesDir
 
         $rules.Count | Should -Be 1
         $rules[0].Name | Should -Be "sample_rule"
@@ -174,13 +174,13 @@ Describe "Helper functions" {
             
             # Mark v1.3.0 as prerelease via its release
             $release130 = [ReleaseInfo]::new([PSCustomObject]@{
-                tag_name = "v1.3.0"
-                id = 130
-                draft = $false
-                prerelease = $true
-                html_url = "https://example.com"
-                immutable = $false
-            })
+                    tag_name = "v1.3.0"
+                    id = 130
+                    draft = $false
+                    prerelease = $true
+                    html_url = "https://example.com"
+                    immutable = $false
+                })
 
             $state.Tags = @($tag100, $pre130)
             $state.Branches = @($branch120)
@@ -223,13 +223,13 @@ Describe "Helper functions" {
             
             # Mark v2.3.0 as prerelease via its release
             $release230 = [ReleaseInfo]::new([PSCustomObject]@{
-                tag_name = "v2.3.0"
-                id = 230
-                draft = $false
-                prerelease = $true
-                html_url = "https://example.com"
-                immutable = $false
-            })
+                    tag_name = "v2.3.0"
+                    id = 230
+                    draft = $false
+                    prerelease = $true
+                    html_url = "https://example.com"
+                    immutable = $false
+                })
 
             $state.Tags = @($v210, $v220)
             $state.Branches = @($v230)

@@ -171,7 +171,7 @@ Describe "duplicate_floating_version_ref" {
         }
     }
     
-    Context "Integration with Invoke-ValidationRules" {
+    Context "Integration with Invoke-ValidationRule" {
         It "creates issues for all duplicate floating versions in tags mode" {
             $state = [RepositoryState]::new()
             $state.Tags += [VersionRef]::new("v1", "refs/tags/v1", "abc123", "tag")
@@ -180,7 +180,7 @@ Describe "duplicate_floating_version_ref" {
             $state.Branches += [VersionRef]::new("v1.0", "refs/heads/v1.0", "def456", "branch")
             $config = @{ 'floating-versions-use' = "tags" }
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_DuplicateFloatingVersionRef)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_DuplicateFloatingVersionRef)
             
             $issues.Count | Should -Be 2
             $issues[0].RemediationAction.GetType().Name | Should -Be "DeleteBranchAction"
@@ -195,7 +195,7 @@ Describe "duplicate_floating_version_ref" {
             $state.Branches += [VersionRef]::new("v2", "refs/heads/v2", "def456", "branch")
             $config = @{ 'floating-versions-use' = "branches" }
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_DuplicateFloatingVersionRef)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_DuplicateFloatingVersionRef)
             
             $issues.Count | Should -Be 2
             $issues[0].RemediationAction.GetType().Name | Should -Be "DeleteTagAction"
@@ -208,7 +208,7 @@ Describe "duplicate_floating_version_ref" {
             $state.Branches += [VersionRef]::new("v2", "refs/heads/v2", "def456", "branch")
             $config = @{}
             
-            $issues = Invoke-ValidationRules -State $state -Config $config -Rules @($Rule_DuplicateFloatingVersionRef)
+            $issues = Invoke-ValidationRule -State $state -Config $config -Rules @($Rule_DuplicateFloatingVersionRef)
             
             $issues.Count | Should -Be 0
         }

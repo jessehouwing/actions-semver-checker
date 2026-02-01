@@ -8,7 +8,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  # contents: write is required to see draft releases via the API
+  # Without it, draft releases are not visible and will be reported as "missing"
+  contents: write
 
 jobs:
   check-semver:

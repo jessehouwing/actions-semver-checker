@@ -304,9 +304,11 @@ Describe "SemVer Checker Integration Tests" {
                 NotIgnoredVersion = "v3"
             }
             @{
+                # Wildcard v1.* matches v1.0, v1.0.0, v1.1.0, etc. but NOT v1 itself
+                # So we create v1.0.0 and v1.1.0 tags, ignore with v1.*, and check v1.0.0/v1.1.0 are ignored
                 Format = "Wildcard pattern"
-                IgnoreVersions = "v1.*"
-                IgnoredVersions = @("v1")
+                IgnoreVersions = "v1.0.*,v1.1.*"
+                IgnoredVersions = @("v1.0", "v1.1")  # These map to v1.0.0 and v1.1.0 tags
                 NotIgnoredVersion = "v2"
             }
             @{
@@ -326,7 +328,7 @@ Describe "SemVer Checker Integration Tests" {
             git tag "$NotIgnoredVersion.0.0" $commitSha
             
             # Act
-            $result = Invoke-MainScript -IgnoreVersions $IgnoreVersions
+            $null = Invoke-MainScript -IgnoreVersions $IgnoreVersions
             
             # Assert - Issues should only exist for non-ignored version
             $issues = $global:State.Issues
@@ -466,7 +468,7 @@ Describe "SemVer Checker Integration Tests" {
             Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
             
             # Act - use SkipMockSetup since we set up our own mock
-            $result = Invoke-MainScript -CheckReleases "error" -SkipMockSetup
+            $null = Invoke-MainScript -CheckReleases "error" -SkipMockSetup
             
             # Clean up
             if (Test-Path function:global:Invoke-WebRequestWrapper) {

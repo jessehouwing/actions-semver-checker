@@ -395,3 +395,4 @@ FodyWeavers.xsd
 
 # Pester test results
 testResults.xml
+unit-test-results.xml

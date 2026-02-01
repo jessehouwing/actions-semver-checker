@@ -98,7 +98,22 @@ $versionRef = [VersionRef]@{
 - `Major`, `Minor`, `Patch` (numeric parts)
 - `IsIgnored` (must be set manually if needed)
 
-**Note:** Prerelease status is determined from `ReleaseInfo.IsPrerelease` (GitHub Release API), not version suffixes. Use `Test-IsPrerelease -State $State -VersionRef $ref` helper function.
+**CRITICAL - Prerelease Status:**
+- Prerelease status is **ONLY** determined from `ReleaseInfo.IsPrerelease` (GitHub Release API)
+- **DO NOT** use semver suffixes like `-rc`, `-beta`, `-preview`, `-alpha` on tags or branches
+- GitHub Actions does NOT recognize semver prerelease suffixes - they have no special meaning
+- The `prerelease` flag must be set on the GitHub Release object via the API/UI
+- Use `Test-IsPrerelease -State $State -VersionRef $ref` helper function to check prerelease status
+
+**VersionRef does NOT support suffixes:**
+```powershell
+# CORRECT - clean semver tags only
+$versionRef = [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag")
+
+# WRONG - suffixes will cause parsing errors
+$versionRef = [VersionRef]::new("v1.0.0-beta", "refs/tags/v1.0.0-beta", "abc123", "tag")  # ERROR!
+$versionRef = [VersionRef]::new("v1.0.0-rc1", "refs/tags/v1.0.0-rc1", "abc123", "tag")   # ERROR!
+```
 
 ### ReleaseInfo Constructor
 
@@ -421,7 +436,7 @@ Document these relationships in the rule's README.md under "Related Rules".
 
 ## Rule Loading
 
-Rules are automatically loaded by `Get-AllValidationRules` which:
+Rules are automatically loaded by `Get-ValidationRule` which:
 1. Recursively scans `lib/rules/` for `*.ps1` files
 2. Excludes `*.Tests.ps1` files
 3. Dot-sources each file and collects ValidationRule objects

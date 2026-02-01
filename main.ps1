@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # Actions SemVer Checker - Main Script
 #############################################################################
 # This script validates semantic version tags and branches in a GitHub
@@ -25,6 +25,7 @@
 . "$PSScriptRoot/lib/GitHubApi.ps1"
 . "$PSScriptRoot/lib/RemediationActions.ps1"
 . "$PSScriptRoot/lib/Remediation.ps1"
+. "$PSScriptRoot/lib/rules/releases/ReleaseRulesHelper.ps1"
 . "$PSScriptRoot/lib/ValidationRules.ps1"
 . "$PSScriptRoot/lib/InputValidation.ps1"
 
@@ -70,7 +71,7 @@ if (-not $script:State.RepoOwner -or -not $script:State.RepoName) {
 #############################################################################
 
 # Parse and validate inputs using InputValidation module
-$inputConfig = Read-ActionInputs -State $script:State
+$inputConfig = Read-ActionInput -State $script:State
 if (-not $inputConfig) {
     exit 1
 }
@@ -89,7 +90,7 @@ $script:State.IgnoreVersions = $inputConfig.IgnoreVersions
 Write-InputDebugInfo -Config $inputConfig
 
 # Validate inputs
-$validationErrors = Test-ActionInputs -Config $inputConfig
+$validationErrors = Test-ActionInput -Config $inputConfig
 if ($validationErrors.Count -gt 0) {
     foreach ($error in $validationErrors) {
         Write-Output $error
@@ -101,24 +102,26 @@ if ($validationErrors.Count -gt 0) {
 Write-RepositoryDebugInfo -State $script:State -Config $inputConfig
 
 # Validate token is available for auto-fix mode
-if (-not (Test-AutoFixRequirements -State $script:State -AutoFix $inputConfig.AutoFix)) {
+if (-not (Test-AutoFixRequirement -State $script:State -AutoFix $inputConfig.AutoFix)) {
     $global:returnCode = 1
     exit 1
 }
 
 # Fetch tags and branches via GitHub API (no checkout required)
+# These now return VersionRef[] objects directly with IsIgnored set
 Write-Host "::debug::Fetching tags from GitHub API..."
-$apiTags = Get-GitHubTags -State $script:State -Pattern "^v\d+(\.\d+){0,2}$"
-$tags = $apiTags | ForEach-Object { $_.name }
+$apiTags = Get-GitHubTag -State $script:State -Pattern "^v\d+(\.\d+){0,2}$" -IgnoreVersions $inputConfig.IgnoreVersions
+$tags = $apiTags | ForEach-Object { $_.Version }
 Write-Host "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
 
 Write-Host "::debug::Fetching branches from GitHub API..."
-$apiBranches = Get-GitHubBranches -State $script:State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
-$branches = $apiBranches | ForEach-Object { $_.name }
+$apiBranches = Get-GitHubBranch -State $script:State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$" -IgnoreVersions $inputConfig.IgnoreVersions
+$branches = $apiBranches | ForEach-Object { $_.Version }
+Write-Host "::debug::Found $($branches.Count) version branches: $($branches -join ', ')"
 
 # Also fetch latest tag and branch via API (for 'latest' alias validation)
-$apiLatestTag = Get-GitHubTags -State $script:State -Pattern "^latest$"
-$apiLatestBranch = Get-GitHubBranches -State $script:State -Pattern "^latest$"
+$apiLatestTag = Get-GitHubTag -State $script:State -Pattern "^latest$"
+$apiLatestBranch = Get-GitHubBranch -State $script:State -Pattern "^latest$"
 
 # Auto-fix tracking variables are initialized in GLOBAL STATE section above
 
@@ -141,83 +144,50 @@ if ($inputConfig.AutoFix -and $repoInfo) {
     Write-Host "::debug::    contents: write"
 }
 
-# Get GitHub releases - always fetch to detect prerelease versions
+# Get GitHub releases - returns ReleaseInfo[] directly with IsIgnored set
 $releases = @()
 $releaseMap = @{}
 if ($repoInfo) {
-    $releases = Get-GitHubReleases -State $script:State
-    # Create a map for quick lookup and set isIgnored property
+    $releases = Get-GitHubRelease -State $script:State -IgnoreVersions $inputConfig.IgnoreVersions
+    Write-Host "::debug::Found $($releases.Count) releases: $(($releases | ForEach-Object { $_.TagName + $(if ($_.IsDraft) { ' (draft)' } else { '' }) }) -join ', ')"
+    
+    # Create a map for quick lookup
     foreach ($release in $releases) {
-        $release.isIgnored = Test-VersionIgnored -Version $release.tagName -IgnoreVersions $inputConfig.IgnoreVersions
-        $releaseMap[$release.tagName] = $release
+        $releaseMap[$release.TagName] = $release
     }
 }
 
 #############################################################################
 # POPULATE STATE MODEL
+# API functions now return VersionRef[] and ReleaseInfo[] directly
 #############################################################################
 
-# Populate State.Tags from API response
-foreach ($tag in $tags) {
-    # Check if this version should be ignored
-    $isIgnored = Test-VersionIgnored -Version $tag -IgnoreVersions $inputConfig.IgnoreVersions
-    
-    # Get SHA from API response
-    $tagInfo = $apiTags | Where-Object { $_.name -eq $tag } | Select-Object -First 1
-    $tagSha = if ($tagInfo) { $tagInfo.sha } else { $null }
-    
-    $vr = [VersionRef]::new($tag, "refs/tags/$tag", $tagSha, "tag")
-    $vr.IsIgnored = $isIgnored
-    
-    $script:State.Tags += $vr
-    Write-Host "::debug::Added tag $tag to State (ignored=$isIgnored)"
+# Populate State.Tags from API response (already VersionRef objects)
+$script:State.Tags = $apiTags
+foreach ($tag in $script:State.Tags) {
+    Write-Host "::debug::Added tag $($tag.Version) to State (ignored=$($tag.IsIgnored))"
 }
 
 # Add 'latest' tag to State if it exists
 if ($apiLatestTag -and $apiLatestTag.Count -gt 0) {
-    $latestTagInfo = $apiLatestTag | Select-Object -First 1
-    $latestVr = [VersionRef]::new("latest", "refs/tags/latest", $latestTagInfo.sha, "tag")
-    $script:State.Tags += $latestVr
+    $script:State.Tags += $apiLatestTag | Select-Object -First 1
 }
 
-# Populate State.Branches from API response
-foreach ($branch in $branches) {
-    # Check if this version should be ignored
-    $isIgnored = Test-VersionIgnored -Version $branch -IgnoreVersions $inputConfig.IgnoreVersions
-    
-    # Get SHA from API response
-    $branchInfo = $apiBranches | Where-Object { $_.name -eq $branch } | Select-Object -First 1
-    $branchSha = if ($branchInfo) { $branchInfo.sha } else { $null }
-    
-    $vr = [VersionRef]::new($branch, "refs/heads/$branch", $branchSha, "branch")
-    $vr.IsIgnored = $isIgnored
-    $script:State.Branches += $vr
-}
+# Populate State.Branches from API response (already VersionRef objects)
+$script:State.Branches = $apiBranches
 
 # Add 'latest' branch to State if it exists
 if ($apiLatestBranch -and $apiLatestBranch.Count -gt 0) {
-    $latestBranchInfo = $apiLatestBranch | Select-Object -First 1
-    $latestVr = [VersionRef]::new("latest", "refs/heads/latest", $latestBranchInfo.sha, "branch")
-    $script:State.Branches += $latestVr
+    $script:State.Branches += $apiLatestBranch | Select-Object -First 1
 }
 
-# Populate State.Releases from API response
-foreach ($release in $releases) {
-    # Convert the release hashtable to PSCustomObject format expected by ReleaseInfo constructor
-    # The immutable property is now included directly from the GraphQL response
-    $releaseData = [PSCustomObject]@{
-        tag_name = $release.tagName
-        id = $release.id
-        draft = $release.isDraft
-        prerelease = $release.isPrerelease
-        html_url = $release.htmlUrl
-        target_commitish = $release.targetCommitish
-        immutable = $release.immutable
-    }
+# Populate State.Releases from API response (already ReleaseInfo objects)
+$script:State.Releases = $releases
 
-    $ri = [ReleaseInfo]::new($releaseData)
-    $ri.IsIgnored = $release.isIgnored
-    $script:State.Releases += $ri
+Write-Host "::debug::State.Releases contains $($script:State.Releases.Count) releases"
+if ($script:State.Releases.Count -gt 0) {
+    $draftReleases = $script:State.Releases | Where-Object { $_.IsDraft }
+    Write-Host "::debug::Draft releases in State: $(($draftReleases | ForEach-Object { $_.TagName }) -join ', ')"
 }
 
 #############################################################################
@@ -241,12 +211,12 @@ $ruleConfig = @{
 Write-Host "::debug::Rule engine config: $($ruleConfig | ConvertTo-Json -Compress)"
 
 # Load and execute validation rules
-$allRules = Get-AllValidationRules
+$allRules = Get-ValidationRule
 Write-Host "::debug::Loaded $($allRules.Count) validation rules"
 
 if ($allRules.Count -gt 0) {
     # Execute rules directly on $script:State - issues are added to State.Issues
-    $ruleIssues = Invoke-ValidationRules -State $script:State -Config $ruleConfig -Rules $allRules
+    $ruleIssues = Invoke-ValidationRule -State $script:State -Config $ruleConfig -Rules $allRules
     
     Write-Host "::debug::Rule engine found $($ruleIssues.Count) issues"
     
@@ -262,22 +232,14 @@ if ($allRules.Count -gt 0) {
 Write-Host "##[endgroup]"
 
 #############################################################################
-# DIFF VISUALIZATION AND AUTO-FIX EXECUTION
+# AUTO-FIX EXECUTION
 #############################################################################
-
-# Display planned changes BEFORE executing any fixes
-if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {
-    $diffs = Get-StateDiff -State $State
-    if ($diffs.Count -gt 0) {
-        Write-StateDiff -Diffs $diffs
-    }
-}
 
 # Now execute all auto-fixes (or mark as unfixable when auto-fix is disabled)
 if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {
     Write-Host "##[group]Verifying potential solutions"
 }
-Invoke-AllAutoFixes -State $State -AutoFix $inputConfig.AutoFix
+Invoke-AutoFix -State $State -AutoFix $inputConfig.AutoFix
 if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {
     Write-Host "##[endgroup]"
 }
@@ -288,7 +250,7 @@ if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {
 
 # Log all unresolved issues (failed or unfixable) as errors/warnings
 # This happens AFTER autofix completes, regardless of whether autofix is enabled
-Write-UnresolvedIssues -State $State
+Write-UnresolvedIssue -State $State
 
 #############################################################################
 # FINAL SUMMARY AND EXIT
@@ -332,13 +294,13 @@ if ($inputConfig.AutoFix)
     }
     
     # Use new function to show manual remediation instructions
-    Get-ManualInstructions -State $State -GroupByType $false
+    Get-ManualInstruction -State $State -GroupByType $false
     Write-ManualInstructionsToStepSummary -State $State
 }
 else
 {
     # Not in auto-fix mode, show manual instructions for all issues
-    Get-ManualInstructions -State $State -GroupByType $false
+    Get-ManualInstruction -State $State -GroupByType $false
     Write-ManualInstructionsToStepSummary -State $State
 }
 

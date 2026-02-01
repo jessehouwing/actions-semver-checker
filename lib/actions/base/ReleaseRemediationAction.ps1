@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # ReleaseRemediationAction.ps1 - Base Class for Release Actions
 #############################################################################
 # This class provides common functionality for release-related actions.

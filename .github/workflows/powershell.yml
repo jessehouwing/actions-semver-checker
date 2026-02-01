@@ -35,13 +35,29 @@ jobs:
       - name: Run PSScriptAnalyzer
         uses: microsoft/psscriptanalyzer-action@7a0da25f33985767f15f93140306528900744195
         with:
-          # Check https://github.com/microsoft/action-psscriptanalyzer for more info about the options.
-          # The below set up runs PSScriptAnalyzer to your entire repository and runs some basic security rules.
           path: .\
           recurse: true
-          # Include your own basic security rules. Removing this option will run all the rules
-          includeRule: '"PSAvoidGlobalAliases", "PSAvoidUsingConvertToSecureStringWithPlainText"'
           output: results.sarif
+
+      - name: Filter TypeNotFound warnings from SARIF
+        shell: pwsh
+        run: |
+          # Load SARIF file
+          $sarif = Get-Content results.sarif -Raw | ConvertFrom-Json
+          
+          # Filter out TypeNotFound warnings
+          # PSScriptAnalyzer analyzes files independently and cannot resolve 
+          # classes defined in dot-sourced files, causing false TypeNotFound warnings
+          foreach ($run in $sarif.runs) {
+            $run.results = @($run.results | Where-Object { 
+              $_.ruleId -ne 'TypeNotFound' 
+            })
+          }
+          
+          # Save filtered SARIF
+          $sarif | ConvertTo-Json -Depth 100 | Set-Content results.sarif
+          
+          Write-Host "Filtered SARIF file saved (TypeNotFound warnings removed)"
 
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file
