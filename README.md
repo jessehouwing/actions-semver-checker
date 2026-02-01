@@ -119,6 +119,7 @@ The action uses a modular rule-based validation system. Each rule can be configu
 | `patch_release_required` | Ensures every patch version has a GitHub Release | [📖 Details](lib/rules/releases/patch_release_required/README.md) |
 | `release_should_be_published` | Validates that releases are published, not drafts | [📖 Details](lib/rules/releases/release_should_be_published/README.md) |
 | `release_should_be_immutable` | Ensures releases are truly immutable | [📖 Details](lib/rules/releases/release_should_be_immutable/README.md) |
+| `highest_patch_release_should_be_latest` | Ensures the correct release is marked as 'latest' | [📖 Details](lib/rules/releases/highest_patch_release_should_be_latest/README.md) |
 | `floating_version_no_release` | Warns when a release exists for a floating version | [📖 Details](lib/rules/releases/floating_version_no_release/README.md) |
 | `duplicate_release` | Detects and removes duplicate draft releases for the same tag | [📖 Details](lib/rules/releases/duplicate_release/README.md) |
 
@@ -170,6 +171,7 @@ When `auto-fix: true` is enabled, the action can automatically remediate issues 
 | `CreateReleaseAction` | Creates a new GitHub Release for a tag | [📖 Details](lib/actions/releases/CreateReleaseAction/README.md) |
 | `PublishReleaseAction` | Publishes a draft release | [📖 Details](lib/actions/releases/PublishReleaseAction/README.md) |
 | `RepublishReleaseAction` | Republishes a release to make it immutable | [📖 Details](lib/actions/releases/RepublishReleaseAction/README.md) |
+| `SetLatestReleaseAction` | Sets a release as the 'latest' release | [📖 Details](lib/actions/releases/SetLatestReleaseAction/README.md) |
 | `DeleteReleaseAction` | Deletes an existing release | [📖 Details](lib/actions/releases/DeleteReleaseAction/README.md) |
 
 ### Conversion Actions
@@ -700,7 +702,7 @@ actions-semver-checker/
 │   └── VersionParser.ps1 # Version parsing (~150 lines)
 │       └── ConvertTo-Version - Semantic version parsing
 │
-├── lib/rules/            # Validation rules (21 rules organized by category)
+├── lib/rules/            # Validation rules (22 rules organized by category)
 │   ├── ref_type/         # Reference type validation (5 rules)
 │   │   ├── tag_should_be_branch/
 │   │   ├── branch_should_be_tag/
@@ -708,10 +710,11 @@ actions-semver-checker/
 │   │   ├── duplicate_latest_ref/
 │   │   └── duplicate_patch_version_ref/
 │   │
-│   ├── releases/         # Release validation (5 rules)
+│   ├── releases/         # Release validation (6 rules)
 │   │   ├── patch_release_required/
 │   │   ├── release_should_be_published/
 │   │   ├── release_should_be_immutable/
+│   │   ├── highest_patch_release_should_be_latest/
 │   │   ├── floating_version_no_release/
 │   │   └── duplicate_release/
 │   │
@@ -730,7 +733,7 @@ actions-semver-checker/
 │       ├── latest_tag_tracks_global_highest/
 │       └── latest_branch_tracks_global_highest/
 │
-└── lib/actions/          # Remediation actions (13 actions organized by type)
+└── lib/actions/          # Remediation actions (14 actions organized by type)
     ├── base/             # Base class and documentation
     ├── tags/             # Tag operations (3 actions)
     │   ├── CreateTagAction/
@@ -742,10 +745,11 @@ actions-semver-checker/
     │   ├── UpdateBranchAction/
     │   └── DeleteBranchAction/
     │
-    ├── releases/         # Release operations (4 actions)
+    ├── releases/         # Release operations (5 actions)
     │   ├── CreateReleaseAction/
     │   ├── PublishReleaseAction/
     │   ├── RepublishReleaseAction/
+    │   ├── SetLatestReleaseAction/
     │   └── DeleteReleaseAction/
     │
     └── conversions/      # Type conversions (2 actions)

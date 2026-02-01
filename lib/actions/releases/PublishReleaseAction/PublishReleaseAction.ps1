@@ -4,6 +4,7 @@
 
 class PublishReleaseAction : ReleaseRemediationAction {
     [int]$ReleaseId
+    [Nullable[bool]]$MakeLatest = $null  # Controls whether release should become latest ($true, $false, or $null to let GitHub decide)
     
     PublishReleaseAction([string]$tagName) : base("Publish release", $tagName) {
         $this.ReleaseId = 0  # Will be looked up if needed
@@ -17,7 +18,7 @@ class PublishReleaseAction : ReleaseRemediationAction {
     
     [bool] Execute([RepositoryState]$state) {
         Write-Host "Auto-fix: Publish draft release for $($this.TagName)"
-        $result = Publish-GitHubRelease -State $state -TagName $this.TagName -ReleaseId $this.ReleaseId
+        $result = Publish-GitHubRelease -State $state -TagName $this.TagName -ReleaseId $this.ReleaseId -MakeLatest $this.MakeLatest
         
         if ($result.Success) {
             Write-Host "✓ Success: Published release for $($this.TagName)"
@@ -39,6 +40,12 @@ class PublishReleaseAction : ReleaseRemediationAction {
         if ($this.IsIssueUnfixable($state, "draft_release")) {
             return @()
         }
-        return @("gh release edit $($this.TagName) --draft=false")
+        
+        $latestArg = ""
+        if ($null -ne $this.MakeLatest) {
+            $latestArg = if ($this.MakeLatest) { " --latest" } else { " --latest=false" }
+        }
+        
+        return @("gh release edit $($this.TagName) --draft=false$latestArg")
     }
 }

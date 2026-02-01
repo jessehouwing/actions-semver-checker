@@ -288,5 +288,35 @@ Describe "release_should_be_immutable" {
             
             $issue.RemediationAction.TagName | Should -Be "v2.5.3"
         }
+
+        It "should set MakeLatest=false when higher version release exists" {
+            $existingRelease = [PSCustomObject]@{
+                tag_name = "v3.0.0"
+                id = 500
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v3.0.0"
+                target_commitish = "sha500"
+                immutable = $false
+            }
+            $state = [RepositoryState]::new()
+            $state.Releases = @([ReleaseInfo]::new($existingRelease))
+
+            $releaseData = [PSCustomObject]@{
+                tag_name = "v2.5.3"
+                id = 456
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v2.5.3"
+                target_commitish = "def789"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($releaseData)
+            $config = @{ 'check-release-immutability' = 'error' }
+
+            $issue = & $Rule_ReleaseShouldBeImmutable.CreateIssue $releaseInfo $state $config
+
+            $issue.RemediationAction.MakeLatest | Should -Be $false
+        }
     }
 }

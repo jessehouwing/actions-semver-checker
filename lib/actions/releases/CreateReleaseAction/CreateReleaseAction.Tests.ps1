@@ -114,4 +114,131 @@ Describe "CreateReleaseAction" {
             $issue.Message | Should -Match "immutable release"
         }
     }
+    
+    Context "MakeLatest - prevents overwriting correct latest release" {
+        BeforeEach {
+            Mock New-GitHubRelease { return @{ Success = $true } }
+        }
+        
+        It "Should default MakeLatest to null (let GitHub decide)" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $false)
+            
+            $action.MakeLatest | Should -BeNullOrEmpty
+        }
+        
+        It "Should allow explicit MakeLatest=false to prevent becoming latest" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $false)
+            $action.MakeLatest = $false
+            
+            $action.MakeLatest | Should -Be $false
+        }
+        
+        It "Should pass MakeLatest=false to New-GitHubRelease when explicitly set" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $false)
+            $action.MakeLatest = $false
+            
+            $action.Execute($script:state)
+            
+            Should -Invoke New-GitHubRelease -Times 1 -ParameterFilter {
+                $MakeLatest -eq $false
+            }
+        }
+        
+        It "Should not pass MakeLatest parameter when null (let GitHub use default)" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $false)
+            # MakeLatest is null by default
+            
+            $action.Execute($script:state)
+            
+            # When MakeLatest is null, New-GitHubRelease should not receive a specific MakeLatest value
+            Should -Invoke New-GitHubRelease -Times 1 -ParameterFilter {
+                $null -eq $MakeLatest -or $MakeLatest -eq $true
+            }
+        }
+        
+        It "Should use MakeLatest=false when creating release for older version" {
+            # Scenario: v2.0.0 exists as latest, we're creating v1.1.0
+            # Creating v1.1.0 should NOT become latest
+            $release = [PSCustomObject]@{
+                tag_name = "v2.0.0"
+                id = 200
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v2.0.0"
+                target_commitish = "def456"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($release)
+            $releaseInfo.IsLatest = $true
+            $script:state.Releases = @($releaseInfo)
+            $script:state.Tags = @([VersionRef]::new("v2.0.0", "refs/tags/v2.0.0", "def456", "tag"))
+            
+            $action = [CreateReleaseAction]::new("v1.1.0", $false)
+            $action.MakeLatest = $false  # Explicitly prevent becoming latest
+            
+            $action.Execute($script:state)
+            
+            Should -Invoke New-GitHubRelease -Times 1 -ParameterFilter {
+                $MakeLatest -eq $false
+            }
+        }
+        
+        It "Should use MakeLatest=false when creating release for prerelease version" {
+            # Scenario: v1.0.0 exists as latest (stable), we're creating v2.0.0 marked as prerelease
+            # The prerelease should NOT become latest
+            $release = [PSCustomObject]@{
+                tag_name = "v1.0.0"
+                id = 100
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.0"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($release)
+            $releaseInfo.IsLatest = $true
+            $script:state.Releases = @($releaseInfo)
+            $script:state.Tags = @([VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "abc123", "tag"))
+            
+            # Creating v2.0.0 as a prerelease - should NOT become latest
+            $action = [CreateReleaseAction]::new("v2.0.0", $false)
+            $action.MakeLatest = $false  # Explicitly prevent becoming latest for prerelease
+            
+            $action.Execute($script:state)
+            
+            Should -Invoke New-GitHubRelease -Times 1 -ParameterFilter {
+                $MakeLatest -eq $false
+            }
+        }
+    }
+    
+    Context "MakeLatest - GetManualCommands output" {
+        It "Should include --latest=false in manual command when MakeLatest is false" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $false)
+            $action.MakeLatest = $false
+            
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands[0] | Should -Match "--latest=false"
+        }
+        
+        It "Should include --latest in manual command when MakeLatest is true" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $false)
+            $action.MakeLatest = $true
+            
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands[0] | Should -Match "--latest"
+            $commands[0] | Should -Not -Match "--latest=false"
+        }
+        
+        It "Should not include --latest in manual command when MakeLatest is null" {
+            $action = [CreateReleaseAction]::new("v1.0.0", $false)
+            # MakeLatest is null by default
+            
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands[0] | Should -Not -Match "--latest"
+        }
+    }
 }

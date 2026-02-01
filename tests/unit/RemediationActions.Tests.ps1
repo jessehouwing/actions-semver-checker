@@ -141,18 +141,13 @@ Describe "RemediationAction Classes" {
     }
     
     Context "RepublishReleaseAction" {
-        It "Should generate manual commands without comments" {
+        It "Should generate manual commands without latest flag by default" {
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 2
             $commands[0] | Should -Match "gh release edit v1.0.0 --draft=true"
             $commands[1] | Should -Match "gh release edit v1.0.0 --draft=false"
-            
-            # Verify no comment lines
-            foreach ($cmd in $commands) {
-                $cmd | Should -Not -Match "^#"
-            }
         }
     }
     

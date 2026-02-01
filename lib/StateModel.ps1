@@ -92,6 +92,7 @@ class ReleaseInfo {
     [bool]$IsPrerelease
     [bool]$IsImmutable
     [bool]$IsIgnored      # Whether this release's tag is in the ignore-versions list
+    [bool]$IsLatest       # Whether this release is marked as "latest" in GitHub
     [int]$Id
     [string]$HtmlUrl
     
@@ -110,6 +111,14 @@ class ReleaseInfo {
         
         # Set immutability from explicit input
         $this.IsImmutable = $isImmutable
+        
+        # Set IsLatest from response property (if available)
+        # The GitHub API returns is_latest on release objects
+        if ($null -ne $apiResponse.is_latest) {
+            $this.IsLatest = $apiResponse.is_latest
+        } else {
+            $this.IsLatest = $false
+        }
     }
     
     # Constructor with immutable property in the response object (GraphQL response)
@@ -131,6 +140,13 @@ class ReleaseInfo {
         } else {
             $this.IsImmutable = $false
         }
+        
+        # Set IsLatest from response property (if available)
+        if ($null -ne $apiResponse.is_latest) {
+            $this.IsLatest = $apiResponse.is_latest
+        } else {
+            $this.IsLatest = $false
+        }
     }
     
     [string]ToString() {
@@ -138,6 +154,7 @@ class ReleaseInfo {
         if ($this.IsDraft) { $status += "draft" }
         if ($this.IsPrerelease) { $status += "prerelease" }
         if (-not $this.IsImmutable) { $status += "mutable" }
+        if ($this.IsLatest) { $status += "latest" }
         
         $statusStr = if ($status.Count -gt 0) { " [$($status -join ', ')]" } else { "" }
         return "$($this.TagName)$statusStr"

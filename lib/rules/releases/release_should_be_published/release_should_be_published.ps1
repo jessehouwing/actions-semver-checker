@@ -79,7 +79,17 @@ $Rule_ReleaseShouldBePublished = [ValidationRule]@{
         $issue.Version = $version
         
         # PublishReleaseAction constructor: tagName, releaseId
-        $issue.RemediationAction = [PublishReleaseAction]::new($version, $ReleaseInfo.Id)
+        $action = [PublishReleaseAction]::new($version, $ReleaseInfo.Id)
+        
+        # Determine if this release should become "latest" when published
+        # Only set MakeLatest=false explicitly if it should NOT be latest
+        # to prevent overwriting a correct latest release
+        $shouldBeLatest = Test-ShouldBeLatestRelease -State $State -Version $version -ReleaseInfo $ReleaseInfo
+        if (-not $shouldBeLatest) {
+            $action.MakeLatest = $false
+        }
+        
+        $issue.RemediationAction = $action
         
         return $issue
     }

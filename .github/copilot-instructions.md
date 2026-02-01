@@ -20,6 +20,30 @@ This action enforces [GitHub's immutable release strategy](https://docs.github.c
 - Floating versions (`v1`, `v1.0`) must point to the latest compatible patch
 - Releases become immutable once published (non-draft) - tags cannot be moved
 
+### CRITICAL: Prerelease Status Determination
+
+**GitHub Actions does NOT support semver prerelease suffixes.** The prerelease status is determined **exclusively** from the GitHub Release API's `prerelease` field.
+
+| Approach | Supported | Notes |
+|----------|-----------|-------|
+| GitHub Release `prerelease: true` | ✅ Yes | The ONLY way to mark a release as prerelease |
+| Tag suffix `-beta`, `-rc`, `-preview` | ❌ No | These have NO special meaning in GitHub Actions |
+| Tag suffix `-alpha`, `-dev` | ❌ No | Ignored - will cause parsing errors |
+
+**Examples:**
+```yaml
+# CORRECT: Use clean semver tags, set prerelease via GitHub Release
+v1.0.0  # Tag name
+prerelease: true  # Set on GitHub Release object
+
+# WRONG: Do NOT use semver suffixes
+v1.0.0-beta    # ❌ Not recognized as prerelease
+v1.0.0-rc1     # ❌ Will cause VersionRef parsing errors
+v2.0.0-preview # ❌ Suffix is meaningless to GitHub Actions
+```
+
+When checking if a version is a prerelease, always use `ReleaseInfo.IsPrerelease` from the GitHub Release API.
+
 ## Architecture
 
 ```
@@ -32,8 +56,8 @@ main.ps1 (orchestrator) → lib/*.ps1 (modules) → GitHub REST API
 
 ## Core Domain Model (lib/StateModel.ps1)
 
-- **`VersionRef`**: Tag or branch with parsed semantic version (`Major`, `Minor`, `Patch`, `IsPatch`, `IsIgnored`)
-- **`ReleaseInfo`**: GitHub release with immutability and prerelease status (`IsPrerelease` from API)
+- **`VersionRef`**: Tag or branch with parsed semantic version (`Major`, `Minor`, `Patch`, `IsPatch`, `IsIgnored`). **Does NOT support semver suffixes** like `-beta` or `-rc`.
+- **`ReleaseInfo`**: GitHub release with immutability and prerelease status. **`IsPrerelease` comes from GitHub Release API only** - never from tag name parsing.
 - **`ValidationIssue`**: Problem found during validation with status (`pending` → `fixed`/`failed`/`unfixable`)
 - **`RepositoryState`**: Central state container with calculated methods (`GetFixedIssuesCount()`, `GetReturnCode()`)
 - **`RemediationAction`**: Base class for auto-fix actions (see `lib/RemediationActions.ps1` for implementations)
@@ -252,6 +276,7 @@ git tag v1
         New-Item -Path $logDir -ItemType Directory -Force | Out-Null
         $config = New-PesterConfiguration
         $config.Run.Path = './tests'
+        $config.Run.PassThru = $true
         $config.Output.Verbosity = 'Detailed'
         $config.TestResult.Enabled = $true
         $config.TestResult.OutputFormat = 'NUnitXml'

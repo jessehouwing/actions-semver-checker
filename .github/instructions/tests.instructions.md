@@ -44,18 +44,28 @@ The following tests are SLOW and should be run less frequently, for example befo
 
  # Running tests from the commandline
 
- When running pester tests from the commandline, enable the xml output format to capture the test results in an easy to parse format. You can do this by adding the `-OutputFormat NUnitXml` parameter to the `Invoke-Pester` command. Additionally, specify the output file using the `-OutputFile` parameter. For example:
+ When running Pester tests from the commandline, use the Pester v5 configuration object syntax. The legacy parameter syntax (`-OutputFormat`, `-OutputFile`, `-PassThru`) cannot be mixed with `-Configuration`.
 
+ Example with configuration object:
  ```powershell
- Invoke-Pester -Path .\lib\rules\<rule-name>\<rule-name>.tests.ps1 -OutputFormat NUnitXml -OutputFile .\test-results\<rule-name>-tests.xml
+ $logDir = './artifacts/pester'
+ New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+ $config = New-PesterConfiguration
+ $config.Run.Path = './lib/rules/<rule-name>/<rule-name>.tests.ps1'
+ $config.Run.PassThru = $true
+ $config.Output.Verbosity = 'Detailed'
+ $config.TestResult.Enabled = $true
+ $config.TestResult.OutputFormat = 'NUnitXml'
+ $config.TestResult.OutputPath = "$logDir/results.xml"
+ $results = Invoke-Pester -Configuration $config
+ $results | ConvertTo-Json -Depth 10 | Set-Content "$logDir/results.json"
  ```
 
- Rely on the XML output file to find failing tests without having to run tests again.
-
- Additionally you can run Pester with the `-PassThru` parameter to get a summary of the test results directly in the console. For example:
-
+ Simple syntax (without configuration object):
  ```powershell
- invoke-pester tests/unit -PassThru | ConvertTo-Json | out-File -FilePath .\test-results\TestResults.json
+ Invoke-Pester -Path tests/unit -Output Detailed
  ```
 
- Instead of running the tests twice to get additional details, use result files to find the failing tests and then optionally rerun only those tests if needed.
+ **Note:** `-PassThru` must be set via `$config.Run.PassThru = $true` when using configuration objects, not as a separate parameter.
+
+ Rely on the XML/JSON output files to find failing tests without having to run tests again. Instead of running the tests twice to get additional details, use result files to find the failing tests and then optionally rerun only those tests if needed.

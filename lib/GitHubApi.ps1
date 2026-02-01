@@ -772,6 +772,12 @@ function New-GitHubRelease
     .PARAMETER Draft
     If true, creates a draft release. If false, creates a published release. Defaults to true.
     
+    .PARAMETER MakeLatest
+    Controls whether this release should be marked as "latest".
+    - $true: Force this release to be latest
+    - $false: Prevent this release from becoming latest
+    - $null: Let GitHub determine based on version (default behavior)
+    
     .OUTPUTS
     A hashtable with Success (bool), ReleaseId (int or null), and Unfixable (bool) properties.
     #>
@@ -779,7 +785,9 @@ function New-GitHubRelease
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         [string]$TagName,
-        [bool]$Draft = $true
+        [bool]$Draft = $true,
+        [Parameter(Mandatory = $false)]
+        $MakeLatest = $null
     )
     
     try {
@@ -793,12 +801,19 @@ function New-GitHubRelease
         $headers = Get-ApiHeader -Token $State.Token
         $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases"
         
-        $body = @{
+        $bodyObj = @{
             tag_name = $TagName
             name = $TagName
             body = "Release $TagName"
             draft = $Draft
-        } | ConvertTo-Json
+        }
+        
+        # Add make_latest if explicitly specified
+        if ($null -ne $MakeLatest) {
+            $bodyObj['make_latest'] = if ($MakeLatest) { 'true' } else { 'false' }
+        }
+        
+        $body = $bodyObj | ConvertTo-Json
         
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
             $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
@@ -825,12 +840,40 @@ function New-GitHubRelease
 }
 
 function Publish-GitHubRelease {
+    <#
+    .SYNOPSIS
+    Publish a draft GitHub release.
+    
+    .DESCRIPTION
+    Publishes a draft release by setting draft to false. Optionally controls whether
+    the release should be marked as "latest".
+    
+    .PARAMETER State
+    The repository state object containing API configuration.
+    
+    .PARAMETER TagName
+    The tag name for the release.
+    
+    .PARAMETER ReleaseId
+    The release ID. If not provided, will be looked up by tag name.
+    
+    .PARAMETER MakeLatest
+    Controls whether this release should be marked as "latest".
+    - $true: Force this release to be latest
+    - $false: Prevent this release from becoming latest
+    - $null: Let GitHub determine based on version (default behavior)
+    
+    .OUTPUTS
+    A hashtable with Success (bool) and Unfixable (bool) properties.
+    #>
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         [string]$TagName,
         [Parameter(Mandatory = $false)]
-        [int]$ReleaseId
+        [int]$ReleaseId,
+        [Parameter(Mandatory = $false)]
+        $MakeLatest = $null
     )
     
     try {
@@ -857,9 +900,16 @@ function Publish-GitHubRelease {
         
         # Update the release to publish it (set draft to false)
         $updateUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$ReleaseId"
-        $body = @{
+        $bodyObj = @{
             draft = $false
-        } | ConvertTo-Json
+        }
+        
+        # Add make_latest if explicitly specified
+        if ($null -ne $MakeLatest) {
+            $bodyObj['make_latest'] = if ($MakeLatest) { 'true' } else { 'false' }
+        }
+        
+        $body = $bodyObj | ConvertTo-Json
         
         # Use error variable to capture errors without writing to error stream
         if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
@@ -885,6 +935,74 @@ function Publish-GitHubRelease {
     }
 }
 
+function Set-GitHubReleaseLatest
+{
+    <#
+    .SYNOPSIS
+    Set a release as the "latest" release in GitHub.
+    
+    .DESCRIPTION
+    Updates a release to be marked as the "latest" release using the make_latest
+    parameter. This is used when the wrong release is currently marked as latest.
+    
+    .PARAMETER State
+    The repository state object containing API configuration.
+    
+    .PARAMETER TagName
+    The tag name for the release.
+    
+    .PARAMETER ReleaseId
+    The release ID.
+    
+    .OUTPUTS
+    A hashtable with Success (bool) and Unfixable (bool) properties.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        [Parameter(Mandatory)]
+        [string]$TagName,
+        [Parameter(Mandatory)]
+        [int]$ReleaseId
+    )
+    
+    try {
+        # Get repo info from State
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return @{ Success = $false; Unfixable = $false }
+        }
+        
+        $headers = Get-ApiHeader -Token $State.Token
+        
+        # Update the release to set it as latest
+        $updateUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/$ReleaseId"
+        $body = @{
+            make_latest = 'true'
+        } | ConvertTo-Json
+        
+        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+            $null = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+        } else {
+            $null = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
+        }
+        
+        return @{ Success = $true; Unfixable = $false }
+    }
+    catch {
+        $errorMessage = $_.Exception.Message
+        $isUnfixable = Test-ImmutableReleaseError -ErrorRecord $_
+        
+        if ($isUnfixable) {
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Unfixable error when setting $TagName as latest: "
+        } else {
+            Write-SafeOutput -Message $errorMessage -Prefix "::debug::Failed to set release $TagName as latest: "
+        }
+        
+        return @{ Success = $false; Unfixable = $isUnfixable }
+    }
+}
+
 function Republish-GitHubRelease
 {
     <#
@@ -903,7 +1021,9 @@ function Republish-GitHubRelease
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         [Parameter(Mandatory)]
-        [string]$TagName
+        [string]$TagName,
+        [Parameter(Mandatory = $false)]
+        $MakeLatest = $null
     )
     
     try {
@@ -955,8 +1075,8 @@ function Republish-GitHubRelease
         }
         
         # Step 3: Publish the release to make it immutable
-        Write-Host "::debug::Publishing release $TagName to make it immutable"
-        $publishResult = Publish-GitHubRelease -State $State -TagName $TagName -ReleaseId $releaseId
+        Write-Host "::debug::Publishing release $TagName to make it immutable (makeLatest=$MakeLatest)"
+        $publishResult = Publish-GitHubRelease -State $State -TagName $TagName -ReleaseId $releaseId -MakeLatest $MakeLatest
         
         if ($publishResult.Success) {
             return @{ Success = $true; Reason = "Republished successfully"; Unfixable = $false }
