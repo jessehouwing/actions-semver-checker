@@ -118,6 +118,7 @@ The action uses a modular rule-based validation system. Each rule can be configu
 | `release_should_be_published` | Validates that releases are published, not drafts | [📖 Details](lib/rules/releases/release_should_be_published/README.md) |
 | `release_should_be_immutable` | Ensures releases are truly immutable | [📖 Details](lib/rules/releases/release_should_be_immutable/README.md) |
 | `floating_version_no_release` | Warns when a release exists for a floating version | [📖 Details](lib/rules/releases/floating_version_no_release/README.md) |
+| `duplicate_release` | Detects and removes duplicate draft releases for the same tag | [📖 Details](lib/rules/releases/duplicate_release/README.md) |
 
 ### Version Tracking Rules
 
@@ -668,7 +669,7 @@ actions-semver-checker/
 │   └── VersionParser.ps1 # Version parsing (~150 lines)
 │       └── ConvertTo-Version - Semantic version parsing
 │
-├── lib/rules/            # Validation rules (20 rules organized by category)
+├── lib/rules/            # Validation rules (21 rules organized by category)
 │   ├── ref_type/         # Reference type validation (5 rules)
 │   │   ├── tag_should_be_branch/
 │   │   ├── branch_should_be_tag/
@@ -676,11 +677,12 @@ actions-semver-checker/
 │   │   ├── duplicate_latest_ref/
 │   │   └── duplicate_patch_version_ref/
 │   │
-│   ├── releases/         # Release validation (4 rules)
+│   ├── releases/         # Release validation (5 rules)
 │   │   ├── patch_release_required/
 │   │   ├── release_should_be_published/
 │   │   ├── release_should_be_immutable/
-│   │   └── floating_version_no_release/
+│   │   ├── floating_version_no_release/
+│   │   └── duplicate_release/
 │   │
 │   ├── version_tracking/ # Version tracking (9 rules)
 │   │   ├── major_tag_missing/

@@ -2,18 +2,19 @@
 
 ## What This Rule Checks
 
-Validates that draft releases for patch versions (e.g., `v1.0.0`) are published (not draft) when release immutability checking is enabled. This ensures releases become immutable as required by GitHub Actions best practices.
+Validates that draft releases for patch versions (e.g., `v1.0.0`) are published (not draft) when release checking or release immutability checking is enabled. This ensures releases are complete and become immutable as required by GitHub Actions best practices.
 
 ## Why This Is An Issue
 
-- **Impact:** Draft releases are mutable and can be edited, which violates GitHub's immutable release strategy for Actions. Users depending on patch versions may get different code if the draft is modified.
+- **Impact:** Draft releases are mutable and can be edited. When `check-releases` is enabled, a draft release indicates an incomplete release process. When `check-release-immutability` is enabled, draft releases violate GitHub's immutable release strategy for Actions.
 - **Best Practice:** GitHub's [immutable release strategy](https://docs.github.com/en/actions/how-tos/create-and-publish-actions/using-immutable-releases-and-tags-to-manage-your-actions-releases) requires that patch versions use **published** (non-draft) releases to prevent content changes.
 
 ## When This Rule Applies
 
 This rule runs when:
+- `check-releases` is set to `error` or `warning`, OR
 - `check-release-immutability` is set to `error` or `warning`
-- A draft release exists for a patch version (vX.Y.Z)
+- AND a draft release exists for a patch version (vX.Y.Z)
 
 **Note:** This rule only checks patch versions. Floating versions (vX, vX.Y) should not have releases at all - they are checked by the `floating_version_no_release` rule instead.
 
@@ -21,7 +22,10 @@ This rule runs when:
 
 | Input | Required Value | Description |
 |-------|----------------|-------------|
+| `check-releases` | `error` or `warning` | Requires releases for patch versions (draft releases trigger this rule) |
 | `check-release-immutability` | `error` or `warning` | Enforces that releases are published (immutable) |
+
+Either input being enabled will cause this rule to flag draft releases.
 
 ## Automatic Remediation
 

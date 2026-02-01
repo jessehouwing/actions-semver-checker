@@ -710,6 +710,312 @@ Describe "SemVer Checker" {
         }
     }
     
+    Context "Draft release detection with check-releases enabled" {
+        It "Should suggest publishing draft releases instead of creating new ones when check-releases is enabled" {
+            # This test verifies the fix for the issue where patch_release_required was flagging
+            # versions that had draft releases, instead of release_should_be_published flagging them
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v1.0.0 $commit
+            git tag v1.0.1 $commit
+            git tag v1 $commit
+            
+            # Mock API to return draft releases for all patch versions
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                # Tags refs endpoint
+                if ($Uri -match '/git/refs/tags') {
+                    $tags = & git tag -l 2>$null
+                    if (-not $tags) { $tags = @() }
+                    if ($tags -isnot [array]) { $tags = @($tags) }
+                    
+                    $refs = @()
+                    foreach ($tag in $tags) {
+                        if ([string]::IsNullOrWhiteSpace($tag)) { continue }
+                        $sha = (& git rev-list -n 1 $tag 2>$null)
+                        if ($sha) {
+                            $refs += @{
+                                ref = "refs/tags/$tag"
+                                object = @{
+                                    sha = $sha.Trim()
+                                    type = "commit"
+                                }
+                            }
+                        }
+                    }
+                    
+                    return @{
+                        Content = ($refs | ConvertTo-Json -Depth 5 -Compress)
+                        Headers = @{}
+                    }
+                }
+                
+                # Branches endpoint
+                if ($Uri -match '/branches(\?|$)') {
+                    return @{
+                        Content = "[]"
+                        Headers = @{}
+                    }
+                }
+                
+                # GraphQL endpoint - return draft releases
+                if ($Uri -match '/graphql') {
+                    $mockResponse = @{
+                        data = @{
+                            repository = @{
+                                releases = @{
+                                    pageInfo = @{
+                                        hasNextPage = $false
+                                        endCursor = $null
+                                    }
+                                    nodes = @(
+                                        @{
+                                            databaseId = 101
+                                            tagName = "v1.0.0"
+                                            isDraft = $true
+                                            isPrerelease = $false
+                                            immutable = $false
+                                        },
+                                        @{
+                                            databaseId = 102
+                                            tagName = "v1.0.1"
+                                            isDraft = $true
+                                            isPrerelease = $false
+                                            immutable = $false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } | ConvertTo-Json -Depth 10
+                    
+                    return @{
+                        Content = $mockResponse
+                        Headers = @{}
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Act - check releases but NOT immutability (user's original config)
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "none" -AutoFix "false" -SkipMockSetup
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Assert - should NOT suggest creating releases (they exist as drafts)
+            $result.Output | Should -Not -Match "Release required for patch version"
+            $result.Output | Should -Not -Match "gh release create"
+            
+            # Assert - should suggest publishing the draft releases
+            $result.Output | Should -Match "draft status"
+            $result.Output | Should -Match "gh release edit v1\.0\.0 --draft=false"
+            $result.Output | Should -Match "gh release edit v1\.0\.1 --draft=false"
+        }
+        
+        It "Should correctly load releases and match them to tags by TagName" {
+            # This test verifies that the ReleaseInfo.TagName property is correctly populated
+            # from the GraphQL response and can be matched to VersionRef.Version
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v2.0.0 $commit
+            git tag v2 $commit
+            
+            # Mock API with a published release (no issues expected)
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                # Tags refs endpoint
+                if ($Uri -match '/git/refs/tags') {
+                    $tags = & git tag -l 2>$null
+                    if (-not $tags) { $tags = @() }
+                    if ($tags -isnot [array]) { $tags = @($tags) }
+                    
+                    $refs = @()
+                    foreach ($tag in $tags) {
+                        if ([string]::IsNullOrWhiteSpace($tag)) { continue }
+                        $sha = (& git rev-list -n 1 $tag 2>$null)
+                        if ($sha) {
+                            $refs += @{
+                                ref = "refs/tags/$tag"
+                                object = @{
+                                    sha = $sha.Trim()
+                                    type = "commit"
+                                }
+                            }
+                        }
+                    }
+                    
+                    return @{
+                        Content = ($refs | ConvertTo-Json -Depth 5 -Compress)
+                        Headers = @{}
+                    }
+                }
+                
+                # Branches endpoint
+                if ($Uri -match '/branches(\?|$)') {
+                    return @{
+                        Content = "[]"
+                        Headers = @{}
+                    }
+                }
+                
+                # GraphQL endpoint - return published release
+                if ($Uri -match '/graphql') {
+                    $mockResponse = @{
+                        data = @{
+                            repository = @{
+                                releases = @{
+                                    pageInfo = @{
+                                        hasNextPage = $false
+                                        endCursor = $null
+                                    }
+                                    nodes = @(
+                                        @{
+                                            databaseId = 200
+                                            tagName = "v2.0.0"
+                                            isDraft = $false
+                                            isPrerelease = $false
+                                            immutable = $false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } | ConvertTo-Json -Depth 10
+                    
+                    return @{
+                        Content = $mockResponse
+                        Headers = @{}
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            
+            # Act - check releases
+            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "none" -AutoFix "false" -SkipMockSetup
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            
+            # Assert - should NOT report missing release for v2.0.0 (it has a published release)
+            $result.Output | Should -Not -Match "Release required for patch version v2\.0\.0"
+            $result.Output | Should -Not -Match "gh release create v2\.0\.0"
+        }
+        
+        It "Should show debug output for loaded releases when ACTIONS_STEP_DEBUG is enabled" {
+            # This test verifies the debug logging we added for releases
+            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
+            
+            $commit = Get-CommitSha
+            git tag v3.0.0 $commit
+            
+            # Mock API with draft release
+            $global:InvokeWebRequestWrapper = {
+                param($Uri, $Headers, $Method, $TimeoutSec)
+                
+                # Tags refs endpoint
+                if ($Uri -match '/git/refs/tags') {
+                    $tags = & git tag -l 2>$null
+                    if (-not $tags) { $tags = @() }
+                    if ($tags -isnot [array]) { $tags = @($tags) }
+                    
+                    $refs = @()
+                    foreach ($tag in $tags) {
+                        if ([string]::IsNullOrWhiteSpace($tag)) { continue }
+                        $sha = (& git rev-list -n 1 $tag 2>$null)
+                        if ($sha) {
+                            $refs += @{
+                                ref = "refs/tags/$tag"
+                                object = @{
+                                    sha = $sha.Trim()
+                                    type = "commit"
+                                }
+                            }
+                        }
+                    }
+                    
+                    return @{
+                        Content = ($refs | ConvertTo-Json -Depth 5 -Compress)
+                        Headers = @{}
+                    }
+                }
+                
+                # Branches endpoint
+                if ($Uri -match '/branches(\?|$)') {
+                    return @{
+                        Content = "[]"
+                        Headers = @{}
+                    }
+                }
+                
+                # GraphQL endpoint - return draft release
+                if ($Uri -match '/graphql') {
+                    $mockResponse = @{
+                        data = @{
+                            repository = @{
+                                releases = @{
+                                    pageInfo = @{
+                                        hasNextPage = $false
+                                        endCursor = $null
+                                    }
+                                    nodes = @(
+                                        @{
+                                            databaseId = 300
+                                            tagName = "v3.0.0"
+                                            isDraft = $true
+                                            isPrerelease = $false
+                                            immutable = $false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } | ConvertTo-Json -Depth 10
+                    
+                    return @{
+                        Content = $mockResponse
+                        Headers = @{}
+                    }
+                }
+                
+                return @{ Content = "[]"; Headers = @{} }
+            }
+            
+            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
+            $env:GITHUB_TOKEN = "test-token"
+            $env:ACTIONS_STEP_DEBUG = "true"  # Enable debug output
+            
+            # Act
+            $result = Invoke-MainScript -CheckReleases "error" -AutoFix "false" -SkipMockSetup
+            
+            # Clean up
+            if (Test-Path function:global:Invoke-WebRequestWrapper) {
+                Remove-Item function:global:Invoke-WebRequestWrapper
+            }
+            Remove-Item Env:ACTIONS_STEP_DEBUG -ErrorAction SilentlyContinue
+            
+            # Assert - debug output should show releases were loaded
+            $result.Output | Should -Match "::debug::Loaded 1 releases into state"
+            $result.Output | Should -Match "::debug::.*Release: v3\.0\.0.*draft=True"
+        }
+    }
+
     Context "Preview release handling" {
         It "Should not filter preview releases when ignore-preview-releases is false" {
             # Arrange
