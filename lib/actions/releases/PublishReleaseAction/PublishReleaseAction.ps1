@@ -4,7 +4,7 @@
 
 class PublishReleaseAction : ReleaseRemediationAction {
     [int]$ReleaseId
-    $MakeLatest = $null  # Controls whether release should become latest ($true, $false, or $null to let GitHub decide)
+    [Nullable[bool]]$MakeLatest = $null  # Controls whether release should become latest ($true, $false, or $null to let GitHub decide)
     
     PublishReleaseAction([string]$tagName) : base("Publish release", $tagName) {
         $this.ReleaseId = 0  # Will be looked up if needed

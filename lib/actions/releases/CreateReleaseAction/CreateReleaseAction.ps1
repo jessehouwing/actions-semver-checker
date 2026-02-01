@@ -4,7 +4,7 @@
 
 class CreateReleaseAction : ReleaseRemediationAction {
     [bool]$AutoPublish = $false  # If true, create directly as published (non-draft)
-    $MakeLatest = $null          # Controls whether release should become latest ($true, $false, or $null to let GitHub decide)
+    [Nullable[bool]]$MakeLatest = $null  # Controls whether release should become latest ($true, $false, or $null to let GitHub decide)
     
     CreateReleaseAction([string]$tagName, [bool]$isDraft) : base("Create release", $tagName) {
         # If isDraft is false, it means we want to publish, so set AutoPublish to true

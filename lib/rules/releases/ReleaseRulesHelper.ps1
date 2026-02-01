@@ -23,7 +23,7 @@
     Used to check prerelease status.
 
 .OUTPUTS
-    $true if the release should become latest, $false otherwise, $null to let GitHub decide.
+    $true if the release should become latest, $false otherwise.
 #>
 function Test-ShouldBeLatestRelease {
     param(
@@ -82,7 +82,7 @@ function Test-ShouldBeLatestRelease {
     
     # Compare target version against highest existing
     # If target is higher, it should become latest
-    if ($highestExisting -eq $null) {
+    if ($null -eq $highestExisting) {
         # No existing eligible releases, this should become latest
         return $true
     }

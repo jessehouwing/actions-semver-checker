@@ -61,11 +61,11 @@ $Rule_HighestPatchReleaseShouldBeLatest = [ValidationRule]@{
         # Find the currently marked "latest" release
         $currentLatest = $State.Releases | Where-Object { $_.IsLatest } | Select-Object -First 1
         
-        # Return a single object with both expected and current latest
-        return @{
+        # Return a single object with both expected and current latest, wrapped in an array
+        return @(@{
             ExpectedLatest = $expectedLatestRelease
-            CurrentLatest = $currentLatest
-        }
+            CurrentLatest  = $currentLatest
+        })
     }
     
     Check = { param($Item, [RepositoryState]$State, [hashtable]$Config)
