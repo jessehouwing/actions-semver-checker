@@ -41,6 +41,11 @@ jobs:
           
           Invoke-Pester -Configuration $config
 
+          # Clear the GitHub step summary before ending
+          if ($env:GITHUB_STEP_SUMMARY -and (Test-Path $env:GITHUB_STEP_SUMMARY)) {
+            Clear-Content -Path $env:GITHUB_STEP_SUMMARY -Force
+          }
+
           Write-Output "::$stopMarker::"
       
       - name: Upload Unit Test Results
@@ -82,6 +87,11 @@ jobs:
           
           Invoke-Pester -Configuration $config
 
+          # Clear the GitHub step summary before ending
+          if ($env:GITHUB_STEP_SUMMARY -and (Test-Path $env:GITHUB_STEP_SUMMARY)) {
+            Clear-Content -Path $env:GITHUB_STEP_SUMMARY -Force
+          }
+
           Write-Output "::$stopMarker::"
       
       - name: Upload Integration Test Results
@@ -122,6 +132,11 @@ jobs:
           $config.Run.Exit = $true
           
           Invoke-Pester -Configuration $config
+
+          # Clear the GitHub step summary before ending
+          if ($env:GITHUB_STEP_SUMMARY -and (Test-Path $env:GITHUB_STEP_SUMMARY)) {
+            Clear-Content -Path $env:GITHUB_STEP_SUMMARY -Force
+          }
 
           Write-Output "::$stopMarker::"
       
