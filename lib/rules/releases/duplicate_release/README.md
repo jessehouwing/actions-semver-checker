@@ -24,6 +24,15 @@ This rule runs when:
 |-------|----------------|-------------|
 | `check-releases` | `error` or `warning` | Enables release validation including duplicate detection |
 
+## Required Permissions
+
+**Important:** Draft releases are NOT visible via the GitHub API with `contents: read` permission. This rule can only detect duplicate draft releases if the workflow has `contents: write` permission.
+
+```yaml
+permissions:
+  contents: write  # Required to see draft releases
+```
+
 ## Which Release Is Kept?
 
 When multiple releases exist for the same tag, the rule keeps one and marks others for deletion based on this priority:

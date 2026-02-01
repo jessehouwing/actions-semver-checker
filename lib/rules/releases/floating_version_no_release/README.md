@@ -25,6 +25,15 @@ This rule runs when:
 
 **Note:** Either setting being enabled will trigger this rule.
 
+## Required Permissions
+
+**Important:** Draft releases are NOT visible via the GitHub API with `contents: read` permission. This rule can only detect draft releases on floating versions if the workflow has `contents: write` permission.
+
+```yaml
+permissions:
+  contents: write  # Required to see draft releases
+```
+
 ## Automatic Remediation
 
 When `auto-fix` is enabled, this rule uses `DeleteReleaseAction` for **mutable** (draft) releases:

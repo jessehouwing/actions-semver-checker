@@ -27,6 +27,17 @@ This rule runs when:
 
 Either input being enabled will cause this rule to flag draft releases.
 
+## Required Permissions
+
+**Important:** Draft releases are NOT visible via the GitHub API with `contents: read` permission. This rule can only detect draft releases if the workflow has `contents: write` permission.
+
+```yaml
+permissions:
+  contents: write  # Required to see draft releases
+```
+
+Without this permission, draft releases will not be detected by this rule. Instead, the `patch_release_required` rule will incorrectly report them as missing releases.
+
 ## Automatic Remediation
 
 When `auto-fix` is enabled, this rule uses `PublishReleaseAction` which:
