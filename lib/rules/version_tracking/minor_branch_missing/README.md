@@ -21,10 +21,28 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `floating-versions-use` | `branches` | Minor versions must be tracked as branches |
-| `check-minor-version` | `error` or `warning` | Enable minor version validation |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `floating-versions-use` | `branches` | Rule applies to branches |
+| `check-minor-version` | `error` or `warning` | Enables minor version validation |
+
+**Note:** If `floating-versions-use` is `tags` or `check-minor-version` is `none`, this rule is disabled.
+
+### Settings That Affect Severity
+
+| check-minor-version | Issue Severity |
+|--------------------|----------------|
+| `error` | **error** |
+| `warning` | **warning** |
+| `none` | (rule disabled) |
+
+### Other Relevant Settings
+
+| Input | Effect |
+|-------|--------|
+| `ignore-preview-releases` | When `true`, excludes prerelease versions from highest-patch calculation |
 
 ## Manual Remediation
 

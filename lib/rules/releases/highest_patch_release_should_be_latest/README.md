@@ -52,12 +52,28 @@ gh release edit v1.0.0 --latest
 
 ## Configuration
 
-| Input                     | Effect                                                |
-| ------------------------- | ----------------------------------------------------- |
-| `check-releases: error`   | Creates error-level issues                            |
-| `check-releases: warning` | Creates warning-level issues                          |
-| `check-releases: none`    | Rule is disabled                                      |
-| `ignore-versions`         | Excludes specified versions from latest consideration |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `check-releases` | `error` or `warning` | Enables this rule |
+
+**Note:** If `check-releases` is `none`, this rule is disabled.
+
+### Settings That Affect Severity
+
+| check-releases | Issue Severity |
+|---------------|----------------|
+| `error` | **error** |
+| `warning` | **warning** |
+| `none` | (rule disabled) |
+
+### Other Relevant Settings
+
+| Input | Effect |
+|-------|--------|
+| `ignore-versions` | Excludes specified versions from latest consideration |
+| `ignore-preview-releases` | When `true`, excludes prereleases from consideration |
 
 ## Examples
 

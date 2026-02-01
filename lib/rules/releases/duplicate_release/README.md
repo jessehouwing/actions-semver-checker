@@ -20,9 +20,21 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `check-releases` | `error` or `warning` | Enables release validation including duplicate detection |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `check-releases` | `error` or `warning` | Enables this rule |
+
+**Note:** If `check-releases` is `none`, this rule is disabled.
+
+### Settings That Affect Severity
+
+| check-releases | Issue Severity |
+|---------------|----------------|
+| `error` | **error** |
+| `warning` | **warning** |
+| `none` | (rule disabled) |
 
 ## Required Permissions
 

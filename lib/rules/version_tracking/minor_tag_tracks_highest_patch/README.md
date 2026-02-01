@@ -18,11 +18,28 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `floating-versions-use` | `tags` | Use tags for floating versions (default) |
-| `check-minor-version` | `error` or `warning` | Enable minor version validation |
-| `ignore-preview-releases` | `true`/`false` | Whether to exclude prereleases when finding highest patch |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `floating-versions-use` | `tags` | Rule applies to tags (default) |
+| `check-minor-version` | `error` or `warning` | Enables minor version validation |
+
+**Note:** If `floating-versions-use` is `branches` or `check-minor-version` is `none`, this rule is disabled.
+
+### Settings That Affect Severity
+
+| check-minor-version | Issue Severity |
+|--------------------|----------------|
+| `error` | **error** |
+| `warning` | **warning** |
+| `none` | (rule disabled) |
+
+### Other Relevant Settings
+
+| Input | Effect |
+|-------|--------|
+| `ignore-preview-releases` | When `true`, excludes prerelease versions from highest-patch calculation |
 
 ## Automatic Remediation
 

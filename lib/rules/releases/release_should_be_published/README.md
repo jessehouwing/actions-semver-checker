@@ -20,12 +20,31 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `check-releases` | `error` or `warning` | Requires releases for patch versions (draft releases trigger this rule) |
-| `check-release-immutability` | `error` or `warning` | Enforces that releases are published (immutable) |
+### Settings That Enable This Rule
 
-Either input being enabled will cause this rule to flag draft releases.
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `check-releases` | `error` or `warning` | Enables this rule |
+| `check-release-immutability` | `error` or `warning` | Enables this rule |
+
+**Note:** Either setting being enabled will trigger this rule. If both are `none`, this rule is disabled.
+
+### Settings That Affect Severity
+
+This rule uses **most-severe-wins** logic when determining issue severity:
+
+| check-releases | check-release-immutability | Issue Severity |
+|---------------|---------------------------|----------------|
+| `error` | `error` | **error** |
+| `error` | `warning` | **error** |
+| `warning` | `error` | **error** |
+| `warning` | `warning` | **warning** |
+| `error` | `none` | **error** |
+| `none` | `error` | **error** |
+| `warning` | `none` | **warning** |
+| `none` | `warning` | **warning** |
+
+The most strict validation level takes precedence to ensure important issues aren't downgraded.
 
 ## Required Permissions
 
