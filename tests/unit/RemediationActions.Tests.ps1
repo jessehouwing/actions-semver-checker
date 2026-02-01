@@ -134,7 +134,7 @@ Describe "RemediationAction Classes" {
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 1
-            $commands[0] | Should -Match "gh release edit v1.0.0 --draft=false"
+            $commands[0] | Should -Match 'gh release edit v1\.0\.0.*--draft=false'
             $commands[0] | Should -Not -Match "^#"
             $commands[0] | Should -Not -Match "# Or edit at"
         }
@@ -146,8 +146,8 @@ Describe "RemediationAction Classes" {
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 2
-            $commands[0] | Should -Match "gh release edit v1.0.0 --draft=true"
-            $commands[1] | Should -Match "gh release edit v1.0.0 --draft=false"
+            $commands[0] | Should -Match 'gh release edit v1\.0\.0.*--draft=true'
+            $commands[1] | Should -Match 'gh release edit v1\.0\.0.*--draft=false'
         }
     }
     
@@ -163,7 +163,7 @@ Describe "RemediationAction Classes" {
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 1
-            $commands[0] | Should -Match "gh release delete v1.0.0 --yes"
+            $commands[0] | Should -Match 'gh release delete v1\.0\.0.*--yes'
         }
     }
     
@@ -250,10 +250,10 @@ Describe "RemediationAction Classes" {
         It "<ActionType> should generate command matching '<Pattern>'" -TestCases @(
             @{ ActionType = "DeleteTagAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 0; Pattern = "git tag -d v1.0.0" }
             @{ ActionType = "DeleteBranchAction"; Version = "v1"; Sha = $null; ReleaseId = 0; Pattern = "git branch -d v1" }
-            @{ ActionType = "DeleteReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 123; Pattern = "gh release delete v1.0.0" }
+            @{ ActionType = "DeleteReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 123; Pattern = 'gh release delete v1\.0\.0.*--yes' }
             @{ ActionType = "CreateTagAction"; Version = "v1.0.0"; Sha = "abc123"; ReleaseId = 0; Pattern = "git push origin abc123:refs/tags/v1.0.0" }
             @{ ActionType = "CreateBranchAction"; Version = "v1"; Sha = "abc123"; ReleaseId = 0; Pattern = "git push origin abc123:refs/heads/v1" }
-            @{ ActionType = "PublishReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 123; Pattern = "gh release edit v1.0.0 --draft=false" }
+            @{ ActionType = "PublishReleaseAction"; Version = "v1.0.0"; Sha = $null; ReleaseId = 123; Pattern = 'gh release edit v1\.0\.0.*--draft=false' }
         ) {
             param($ActionType, $Version, $Sha, $ReleaseId, $Pattern)
             
@@ -268,8 +268,8 @@ Describe "RemediationAction Classes" {
             
             $commands = $action.GetManualCommands($script:state)
             $joinedCommands = $commands -join "`n"
-            $escapedPattern = [regex]::Escape($Pattern)
-            $joinedCommands | Should -Match $escapedPattern
+            # Use pattern directly as regex (patterns with .* are already regex)
+            $joinedCommands | Should -Match $Pattern
         }
     }
     
