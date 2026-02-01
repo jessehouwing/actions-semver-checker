@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     # Suppress progress bars for cleaner test output (affects all operations in test session)
     $global:ProgressPreference = 'SilentlyContinue'
 

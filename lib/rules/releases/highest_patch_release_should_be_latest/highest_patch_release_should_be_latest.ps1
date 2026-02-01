@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # Rule: highest_patch_release_should_be_latest
 # Category: releases
 # Priority: 15
@@ -63,9 +63,9 @@ $Rule_HighestPatchReleaseShouldBeLatest = [ValidationRule]@{
         
         # Return a single object with both expected and current latest, wrapped in an array
         return @(@{
-            ExpectedLatest = $expectedLatestRelease
-            CurrentLatest  = $currentLatest
-        })
+                ExpectedLatest = $expectedLatestRelease
+                CurrentLatest  = $currentLatest
+            })
     }
     
     Check = { param($Item, [RepositoryState]$State, [hashtable]$Config)

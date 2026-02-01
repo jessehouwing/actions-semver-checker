@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     # Suppress progress reporting for folder cleanup operations (must be global scope)
     $global:ProgressPreference = 'SilentlyContinue'
     

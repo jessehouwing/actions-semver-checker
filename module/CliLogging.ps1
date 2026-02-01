@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # CliLogging.ps1 - CLI Logging Functions (No GitHub Actions Commands)
 #############################################################################
 # This module provides logging functions for CLI usage without emitting

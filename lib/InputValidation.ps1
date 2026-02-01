@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # InputValidation.ps1 - Input parsing and validation functions
 #############################################################################
 # This module contains functions for parsing and validating action inputs.

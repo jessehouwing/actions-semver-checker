@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     . "$PSScriptRoot/../../StateModel.ps1"
     . "$PSScriptRoot/../../Logging.ps1"
     . "$PSScriptRoot/../../GitHubApi.ps1"

@@ -1,4 +1,4 @@
-#############################################################################
+﻿##############################################################################
 # GitHubActionVersioning.psm1 - PowerShell Module for CLI Usage
 #############################################################################
 # This module provides a user-friendly PowerShell cmdlet for running the
@@ -93,6 +93,7 @@ function Test-GitHubActionVersioning
     With -PassThru, returns a hashtable with Issues, FixedCount, FailedCount, UnfixableCount, and ReturnCode.
     #>
     [CmdletBinding()]
+    [OutputType([int], [hashtable])]
     param(
         [Parameter(Position = 0)]
         [string]$Repository,
@@ -144,14 +145,13 @@ function Test-GitHubActionVersioning
     
     # Filter out GitHub Actions workflow commands (::debug::, etc.) from output
     # The library modules emit these for GitHub Actions, but they're not appropriate for CLI
-    $originalInformationPreference = $InformationPreference
     $script:cliMode = $true
     
     # Create a wrapper for Write-Host to filter workflow commands in CLI mode
     function global:Write-Host {
         [CmdletBinding()]
         param(
-            [Parameter(Position=0, ValueFromPipeline)]
+            [Parameter(Position = 0, ValueFromPipeline)]
             [object]$Object,
             [switch]$NoNewline,
             [object]$Separator,
@@ -227,7 +227,7 @@ function Test-GitHubActionVersioning
             }
         }
         catch {
-            # gh command not available or failed, continue
+            Write-Verbose "gh auth token not available or failed: $($_.Exception.Message)"
         }
         
         # Fallback to environment variable
@@ -392,7 +392,7 @@ function Test-GitHubActionVersioning
     }
     
     # Run validation rules
-    $addedIssues = Invoke-ValidationRule -State $state -Config $config -Rules $rulesToRun
+    Invoke-ValidationRule -State $state -Config $config -Rules $rulesToRun | Out-Null
     
     Write-Host "Validation complete. Found $($state.Issues.Count) issue(s)."
     
