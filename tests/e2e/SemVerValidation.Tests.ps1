@@ -2332,6 +2332,9 @@ exit 0
         It "Should write summary to GITHUB_STEP_SUMMARY when available" {
             Initialize-TestRepo -Path $script:testRepoPath -WithRemote
             
+            # Save the original GITHUB_STEP_SUMMARY value
+            $originalStepSummary = $env:GITHUB_STEP_SUMMARY
+            
             # Set up step summary file
             $summaryFile = Join-Path $TestDrive "step_summary.md"
             New-Item -ItemType File -Path $summaryFile -Force | Out-Null
@@ -2343,8 +2346,12 @@ exit 0
             # Run the checker
             $null = Invoke-MainScript
             
-            # Clean up
-            $env:GITHUB_STEP_SUMMARY = $null
+            # Restore the original GITHUB_STEP_SUMMARY value
+            if ($originalStepSummary) {
+                $env:GITHUB_STEP_SUMMARY = $originalStepSummary
+            } else {
+                $env:GITHUB_STEP_SUMMARY = $null
+            }
             
             # Should write to summary file
             if (Test-Path $summaryFile) {
