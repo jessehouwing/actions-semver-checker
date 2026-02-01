@@ -126,7 +126,7 @@ Describe "Rule Severity Level Validation" {
             $items.Count | Should -Be 0
         }
         
-        It "release_should_be_published uses OR logic for severity" {
+        It "release_should_be_published uses most-severe-wins logic for severity" {
             # Load the rule
             . "$PSScriptRoot/../../lib/rules/releases/ReleaseRulesHelper.ps1"
             . "$PSScriptRoot/../../lib/rules/releases/release_should_be_published/release_should_be_published.ps1"
@@ -144,7 +144,7 @@ Describe "Rule Severity Level Validation" {
                 $issue.Severity | Should -Be 'error'
             }
             
-            # One warning → warning (OR logic)
+            # One error + one warning → error (most severe wins)
             $config = @{ 
                 'check-releases' = 'error'
                 'check-release-immutability' = 'warning'
@@ -152,13 +152,24 @@ Describe "Rule Severity Level Validation" {
             $items = & $Rule_ReleaseShouldBePublished.Condition $state $config
             if ($items.Count -gt 0) {
                 $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $items[0] $state $config
-                $issue.Severity | Should -Be 'warning'
+                $issue.Severity | Should -Be 'error'
             }
             
-            # Other way around → warning
+            # Other way around → error (most severe wins)
             $config = @{ 
                 'check-releases' = 'warning'
                 'check-release-immutability' = 'error'
+            }
+            $items = & $Rule_ReleaseShouldBePublished.Condition $state $config
+            if ($items.Count -gt 0) {
+                $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $items[0] $state $config
+                $issue.Severity | Should -Be 'error'
+            }
+            
+            # Both warning → warning
+            $config = @{ 
+                'check-releases' = 'warning'
+                'check-release-immutability' = 'warning'
             }
             $items = & $Rule_ReleaseShouldBePublished.Condition $state $config
             if ($items.Count -gt 0) {

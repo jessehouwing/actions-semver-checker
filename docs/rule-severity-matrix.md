@@ -117,20 +117,21 @@ These rules ensure the `latest` tag/branch points to the highest patch version a
 
 ## Special Case: release_should_be_published
 
-The `release_should_be_published` rule has special severity logic:
+The `release_should_be_published` rule has special severity logic that uses **most-severe-wins** approach:
 
 ```powershell
-$severity = 'error'
-if ($checkImmutability -eq 'warning' -or $checkReleases -eq 'warning') {
-    $severity = 'warning'
+# Most severe level wins: error > warning
+$severity = 'warning'
+if ($checkImmutability -eq 'error' -or $checkReleases -eq 'error') {
+    $severity = 'error'
 }
 ```
 
 This means:
-- If **EITHER** `check-releases` OR `check-release-immutability` is `"warning"`, the issue is a **WARNING**
-- Only if **BOTH** are set to `"error"` (or one is error and the other is none), the issue is an **ERROR**
+- If **EITHER** `check-releases` OR `check-release-immutability` is `"error"`, the issue is an **ERROR**
+- Only if **BOTH** are set to `"warning"`, the issue is a **WARNING**
 
-This logic ensures that if a user wants lenient validation for either releases or immutability, draft releases are treated leniently.
+This logic ensures that the most strict validation level takes precedence.
 
 ---
 

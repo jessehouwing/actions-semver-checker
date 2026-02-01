@@ -356,7 +356,7 @@ Describe "release_should_be_published" {
             $issue.RemediationAction.GetType().Name | Should -Be "PublishReleaseAction"
         }
         
-        It "should create issue with warning severity" {
+        It "should create issue with warning severity when both are warning" {
             $releaseData = [PSCustomObject]@{
                 tag_name = "v1.0.0"
                 id = 123
@@ -368,11 +368,44 @@ Describe "release_should_be_published" {
             }
             $releaseInfo = [ReleaseInfo]::new($releaseData)
             $state = [RepositoryState]::new()
-            $config = @{ 'check-release-immutability' = 'warning' }
+            $config = @{ 
+                'check-release-immutability' = 'warning'
+                'check-releases' = 'warning'
+            }
             
             $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
             
             $issue.Severity | Should -Be "warning"
+        }
+        
+        It "should create issue with error severity when one is error and one is warning (most severe wins)" {
+            $releaseData = [PSCustomObject]@{
+                tag_name = "v1.0.0"
+                id = 123
+                draft = $true
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.0"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($releaseData)
+            $state = [RepositoryState]::new()
+            
+            # Test: check-releases=error, check-release-immutability=warning → error
+            $config = @{ 
+                'check-release-immutability' = 'warning'
+                'check-releases' = 'error'
+            }
+            $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
+            $issue.Severity | Should -Be "error"
+            
+            # Test: check-releases=warning, check-release-immutability=error → error
+            $config = @{ 
+                'check-release-immutability' = 'error'
+                'check-releases' = 'warning'
+            }
+            $issue = & $Rule_ReleaseShouldBePublished.CreateIssue $releaseInfo $state $config
+            $issue.Severity | Should -Be "error"
         }
         
         It "should configure PublishReleaseAction with release ID" {

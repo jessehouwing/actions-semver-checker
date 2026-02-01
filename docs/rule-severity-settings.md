@@ -73,25 +73,25 @@ Three configuration inputs control rule severity:
 
 ### Scenario 4: Combined Settings (release_should_be_published)
 
-The `release_should_be_published` rule has special logic that considers **both** `check-releases` and `check-release-immutability`.
+The `release_should_be_published` rule has special logic that considers **both** `check-releases` and `check-release-immutability` using **most-severe-wins** approach.
 
 | check-releases | check-release-immutability | Result Severity | Enabled? |
 |---------------|---------------------------|-----------------|----------|
 | `error` | `error` | **ERROR** | ✅ Yes |
-| `error` | `warning` | **WARNING** | ✅ Yes |
-| `warning` | `error` | **WARNING** | ✅ Yes |
+| `error` | `warning` | **ERROR** | ✅ Yes |
+| `warning` | `error` | **ERROR** | ✅ Yes |
 | `warning` | `warning` | **WARNING** | ✅ Yes |
 | `none` | `error` | **ERROR** | ✅ Yes |
 | `error` | `none` | **ERROR** | ✅ Yes |
 | `none` | `none` | N/A | ❌ No (disabled) |
 
-**Logic:** If **either** setting is `warning`, the issue is a **warning**. Both must be `error` for an error.
+**Logic:** If **either** setting is `error`, the issue is an **error**. Both must be `warning` for a warning.
 
 **Rationale:** Publishing a draft release serves two purposes:
 1. Complete the release workflow (related to `check-releases`)
 2. Make the release immutable (related to `check-release-immutability`)
 
-If the user wants lenient validation for either aspect, publishing should be lenient.
+The most strict validation level takes precedence to ensure important issues aren't missed.
 
 ---
 
