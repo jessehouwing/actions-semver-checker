@@ -3,6 +3,7 @@
 #############################################################################
 
 class RepublishReleaseAction : ReleaseRemediationAction {
+    [Nullable[bool]]$MakeLatest = $null  # Controls whether release should become latest ($true, $false, or $null to let GitHub decide)
     
     RepublishReleaseAction([string]$tagName) : base("Republish release for immutability", $tagName) {
         $this.Priority = 45  # Republish after other release operations
@@ -10,7 +11,7 @@ class RepublishReleaseAction : ReleaseRemediationAction {
     
     [bool] Execute([RepositoryState]$state) {
         Write-Host "Auto-fix: Republish release $($this.TagName) to make it immutable"
-        $result = Republish-GitHubRelease -State $state -TagName $this.TagName
+        $result = Republish-GitHubRelease -State $state -TagName $this.TagName -MakeLatest $this.MakeLatest
         
         if ($result.Success) {
             # Verify the release is actually immutable after republishing
@@ -47,11 +48,14 @@ class RepublishReleaseAction : ReleaseRemediationAction {
             $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
             return @("# Enable 'Release immutability' in repository settings: $settingsUrl")
         }
+
+        $latestArg = ""
+        if ($null -ne $this.MakeLatest) {
+            $latestArg = if ($this.MakeLatest) { " --latest" } else { " --latest=false" }
+        }
         return @(
-            "# Note: First check if this release is currently 'latest' using: gh release view $($this.TagName) --json isLatest",
-            "# If it is the latest release, add --latest to the second command to preserve that status",
             "gh release edit $($this.TagName) --draft=true",
-            "gh release edit $($this.TagName) --draft=false  # Add --latest if this was the latest release"
+            "gh release edit $($this.TagName) --draft=false$latestArg"
         )
     }
 }

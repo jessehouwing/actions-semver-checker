@@ -1,7 +1,6 @@
 BeforeAll {
     . "$PSScriptRoot/../../../StateModel.ps1"
     . "$PSScriptRoot/../../../Logging.ps1"
-    . "$PSScriptRoot/../../../rules/releases/ReleaseRulesHelper.ps1"
     . "$PSScriptRoot/../../../GitHubApi.ps1"
     . "$PSScriptRoot/../../base/RemediationAction.ps1"
     . "$PSScriptRoot/../../base/ReleaseRemediationAction.ps1"
@@ -29,15 +28,29 @@ Describe "RepublishReleaseAction" {
     }
     
     Context "GetManualCommands" {
-        It "Should generate manual commands with comments about preserving latest status" {
+        It "Should generate manual commands without latest flag by default" {
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 4
-            $commands[0] | Should -Match "check if this release is currently 'latest'"
-            $commands[1] | Should -Match "If it is the latest release"
-            $commands[2] | Should -Be "gh release edit v1.0.0 --draft=true"
-            $commands[3] | Should -Match "gh release edit v1.0.0 --draft=false"
+            $commands.Count | Should -Be 2
+            $commands[0] | Should -Be "gh release edit v1.0.0 --draft=true"
+            $commands[1] | Should -Be "gh release edit v1.0.0 --draft=false"
+        }
+
+        It "Should include --latest when MakeLatest is true" {
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $action.MakeLatest = $true
+            $commands = $action.GetManualCommands($script:state)
+
+            $commands[1] | Should -Be "gh release edit v1.0.0 --draft=false --latest"
+        }
+
+        It "Should include --latest=false when MakeLatest is false" {
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $action.MakeLatest = $false
+            $commands = $action.GetManualCommands($script:state)
+
+            $commands[1] | Should -Be "gh release edit v1.0.0 --draft=false --latest=false"
         }
         
         It "Should return empty array when issue is unfixable" {

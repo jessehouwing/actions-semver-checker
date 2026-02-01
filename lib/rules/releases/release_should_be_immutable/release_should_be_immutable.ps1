@@ -4,6 +4,9 @@
 # Priority: 12
 #############################################################################
 
+# Load shared release helpers
+. "$PSScriptRoot/../ReleaseRulesHelper.ps1"
+
 $Rule_ReleaseShouldBeImmutable = [ValidationRule]@{
     Name = "release_should_be_immutable"
     Description = "Published releases for patch versions should be immutable (via repository settings)"
@@ -78,7 +81,16 @@ $Rule_ReleaseShouldBeImmutable = [ValidationRule]@{
         $issue.Version = $version
         
         # RepublishReleaseAction constructor: tagName
-        $issue.RemediationAction = [RepublishReleaseAction]::new($version)
+        $action = [RepublishReleaseAction]::new($version)
+
+        # Determine if this release should become "latest" when republished
+        # Only set MakeLatest=false explicitly if it should NOT be latest
+        $shouldBeLatest = Test-ShouldBeLatestRelease -State $State -Version $version -ReleaseInfo $ReleaseInfo
+        if (-not $shouldBeLatest) {
+            $action.MakeLatest = $false
+        }
+
+        $issue.RemediationAction = $action
         
         return $issue
     }

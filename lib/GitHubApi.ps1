@@ -1021,7 +1021,9 @@ function Republish-GitHubRelease
         [Parameter(Mandatory)]
         [RepositoryState]$State,
         [Parameter(Mandatory)]
-        [string]$TagName
+        [string]$TagName,
+        [Parameter(Mandatory = $false)]
+        $MakeLatest = $null
     )
     
     try {
@@ -1046,21 +1048,6 @@ function Republish-GitHubRelease
         
         $releaseId = $releaseResponse.id
         $isDraft = $releaseResponse.draft
-        
-        # Create a ReleaseInfo object to use with Test-ShouldBeLatestRelease
-        $releaseInfo = [ReleaseInfo]::new([PSCustomObject]@{
-            tag_name = $TagName
-            id = $releaseId
-            draft = $isDraft
-            prerelease = $releaseResponse.prerelease
-            html_url = $releaseResponse.html_url
-            target_commitish = $releaseResponse.target_commitish
-            is_latest = $releaseResponse.is_latest
-        })
-        
-        # Calculate the correct latest status based on repository state
-        # Don't just copy the current status as it may have been incorrectly set by a previous auto-fix
-        $shouldBeLatest = Test-ShouldBeLatestRelease -State $State -Version $TagName -ReleaseInfo $releaseInfo
         
         # Step 2: Check if already immutable
         $isImmutable = Test-ReleaseImmutability -Owner $repoInfo.Owner -Repo $repoInfo.Repo -Tag $TagName -Token $State.Token -ApiUrl $State.ApiUrl
@@ -1088,9 +1075,8 @@ function Republish-GitHubRelease
         }
         
         # Step 3: Publish the release to make it immutable
-        # Calculate the correct MakeLatest value based on repository state (not the current value)
-        Write-Host "::debug::Publishing release $TagName to make it immutable (shouldBeLatest=$shouldBeLatest)"
-        $publishResult = Publish-GitHubRelease -State $State -TagName $TagName -ReleaseId $releaseId -MakeLatest $shouldBeLatest
+        Write-Host "::debug::Publishing release $TagName to make it immutable (makeLatest=$MakeLatest)"
+        $publishResult = Publish-GitHubRelease -State $State -TagName $TagName -ReleaseId $releaseId -MakeLatest $MakeLatest
         
         if ($publishResult.Success) {
             return @{ Success = $true; Reason = "Republished successfully"; Unfixable = $false }
