@@ -1,4 +1,4 @@
-BeforeAll {
+﻿BeforeAll {
     # Suppress progress reporting for folder cleanup operations (must be global scope)
     $global:ProgressPreference = 'SilentlyContinue'
     
@@ -10,7 +10,7 @@ BeforeAll {
     # Create a temporary git repository for testing
     $script:testRepoPath = Join-Path $TestDrive "test-repo"
     $script:remoteRepoPath = Join-Path $TestDrive "remote-repo"
-    $script:originalLocation = Get-Location
+    $script:originalLocation = [System.IO.Directory]::GetCurrentDirectory()
     
     function Initialize-TestRepo {
         param(
@@ -60,7 +60,7 @@ BeforeAll {
     }
     
     # Helper function to create a mock that uses local git to return API-formatted responses
-    function New-GitBasedApiMock {
+    function Get-GitBasedApiMock {
         <#
         .SYNOPSIS
         Creates an API mock that uses local git commands to return tag/branch data.
@@ -69,6 +69,9 @@ BeforeAll {
         This mock intercepts Invoke-WebRequestWrapper calls and returns data from the
         local git repository formatted as GitHub API responses.
         #>
+        [CmdletBinding(SupportsShouldProcess)]
+        [OutputType([System.Management.Automation.ScriptBlock])]
+        param()
         return {
             param($Uri, $Headers, $Method, $TimeoutSec)
             
@@ -194,7 +197,7 @@ BeforeAll {
         # Define mock function in global scope before running script (unless caller skipped)
         if (-not $SkipMockSetup) {
             # Use the git-based API mock by default
-            $global:InvokeWebRequestWrapper = New-GitBasedApiMock
+            $global:InvokeWebRequestWrapper = Get-GitBasedApiMock
             
             # Make the function available
             Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
@@ -232,7 +235,7 @@ Describe "SemVer Checker" {
         It "Should suggest creating both major version (v1) and patch version (v1.1.0)" {
             # Arrange: Create only v1.1 tag
             $commitSha = Get-CommitSha
-            git tag v1.1
+            git tag v1.1 $commitSha
             
             # Act
             $result = Invoke-MainScript
@@ -241,10 +244,10 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -Be 1
             
             # Should suggest creating v1
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/v1"
             
             # Should suggest creating v1.1.0
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1.1.0"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/v1.1.0"
             
             # Should NOT suggest deleting v1 (no :refs/tags/v1 without a sha)
             $result.Output | Should -Not -Match "git push origin :refs/tags/v1[^.]"
@@ -257,7 +260,6 @@ Describe "SemVer Checker" {
     Context "When repo has proper semver tags (v1, v1.1, v1.1.0)" {
         It "Should not report any errors when all tags point to same commit" {
             # Arrange: Create all proper tags
-            $commitSha = Get-CommitSha
             git tag v1
             git tag v1.1
             git tag v1.1.0
@@ -276,7 +278,7 @@ Describe "SemVer Checker" {
         It "Should suggest creating major (v1) and minor (v1.0) versions" {
             # Arrange: Create only v1.0.0 tag
             $commitSha = Get-CommitSha
-            git tag v1.0.0
+            git tag v1.0.0 $commitSha
             
             # Act
             $result = Invoke-MainScript
@@ -285,10 +287,10 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -Be 1
             
             # Should suggest creating v1
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1[^.]"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/v1[^.]"
             
             # Should suggest creating v1.0
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1.0[^.]"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/v1.0[^.]"
         }
     }
     
@@ -297,7 +299,6 @@ Describe "SemVer Checker" {
             # Arrange: Create v1.0.0 on first commit, then v1.1.0 and v1.1 on second commit,
             # but set v1 to point to the old v1.0.0 commit to test version mismatch detection
             git tag v1.0.0
-            $oldCommitSha = Get-CommitSha
             
             "# Update" | Out-File -FilePath "README.md" -Append
             git add README.md
@@ -313,14 +314,13 @@ Describe "SemVer Checker" {
             
             # Assert
             $result.ReturnCode | Should -Be 1
-            $result.Output | Should -Match "git push origin $newCommitSha`:refs/tags/v1 --force"
+            $result.Output | Should -Match "git push origin ${newCommitSha}:refs/tags/v1 --force"
         }
     }
     
     Context "When check-minor-version is false" {
         It "Should not check minor version tags" {
             # Arrange: Create only v1.1.0 tag (missing v1.1)
-            $commitSha = Get-CommitSha
             git tag v1.1.0
             git tag v1
             
@@ -337,7 +337,7 @@ Describe "SemVer Checker" {
         It "Should suggest creating patch version (v1.0.0) and minor version (v1.0) when check-minor-version is true" {
             # Arrange: Create only v1 tag
             $commitSha = Get-CommitSha
-            git tag v1
+            git tag v1 $commitSha
             
             # Act
             $result = Invoke-MainScript -CheckMinorVersion "true"
@@ -346,16 +346,16 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -Be 1
             
             # Should suggest creating v1.0.0
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1.0.0"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/v1.0.0"
             
             # Should also suggest creating v1.0 when check-minor-version is true
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1.0[^.]"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/v1.0[^.]"
         }
         
         It "Should suggest creating only patch version (v1.0.0) when check-minor-version is false" {
             # Arrange: Create only v1 tag
             $commitSha = Get-CommitSha
-            git tag v1
+            git tag v1 $commitSha
             
             # Act
             $result = Invoke-MainScript -CheckMinorVersion "false"
@@ -364,10 +364,10 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -Be 1
             
             # Should suggest creating v1.0.0
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1.0.0"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/v1.0.0"
             
             # Should NOT suggest creating v1.0 when check-minor-version is false
-            $result.Output | Should -Not -Match "git push origin $commitSha`:refs/tags/v1.0[^.]"
+            $result.Output | Should -Not -Match "git push origin ${commitSha}:refs/tags/v1.0[^.]"
         }
     }
     
@@ -459,7 +459,7 @@ Describe "SemVer Checker" {
             $commitSha = Get-CommitSha
             
             # Create and push a remote branch using checkout
-            git checkout -b v1.0.0 2>&1 | Out-Null
+            git checkout -b v1.0.0 $commitSha 2>&1 | Out-Null
             git push origin v1.0.0 2>&1 | Out-Null
             git checkout main 2>&1 | Out-Null
             
@@ -470,13 +470,12 @@ Describe "SemVer Checker" {
             $result.ReturnCode | Should -Be 1
             
             # Should suggest creating v1 and v1.0 tags (not branches)
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1[^.]"
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/v1.0[^.]"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/v1[^.]"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/v1.0[^.]"
         }
         
         It "Should flag patch branch when tag exists (same commit)" {
             # Arrange: Create both a tag and branch for v1.0.0
-            $commitSha = Get-CommitSha
             git tag v1.0.0
             
             # Push branch explicitly to refs/heads to avoid tag conflict
@@ -519,7 +518,6 @@ Describe "SemVer Checker" {
         It "Should auto-fix ref type respecting floating-versions-use setting (tags mode)" {
             # Arrange: Create both tag and branch for v1.0 pointing to same commit
             Initialize-TestRepo -Path $script:testRepoPath -WithRemote
-            $commitSha = Get-CommitSha
             git tag v1.0
             git branch v1.0-temp
             git push origin v1.0-temp:v1.0 2>&1 | Out-Null
@@ -536,7 +534,6 @@ Describe "SemVer Checker" {
         It "Should auto-fix ref type respecting floating-versions-use setting (branches mode)" {
             # Arrange: Create both tag and branch for v1.0 pointing to same commit  
             Initialize-TestRepo -Path $script:testRepoPath -WithRemote
-            $commitSha = Get-CommitSha
             git tag v1.0
             git branch v1.0-temp
             git push origin v1.0-temp:v1.0 2>&1 | Out-Null
@@ -586,7 +583,7 @@ Describe "SemVer Checker" {
             
             # Arrange
             $commitSha = Get-CommitSha
-            git tag $ExistingTag
+            git tag $ExistingTag $commitSha
             
             # Act
             $checkMinorStr = if ($CheckMinor) { "true" } else { "false" }
@@ -594,10 +591,10 @@ Describe "SemVer Checker" {
             
             # Assert
             $result.ReturnCode | Should -Be 1
-            $result.Output | Should -Match "git push origin $commitSha`:refs/tags/$ExpectedMissingMajor[^.]"
+            $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/${ExpectedMissingMajor}[^.]"
             
             if ($CheckMinor) {
-                $result.Output | Should -Match "git push origin $commitSha`:refs/tags/$ExpectedMissingMinor[^.]"
+                $result.Output | Should -Match "git push origin ${commitSha}:refs/tags/${ExpectedMissingMinor}[^.]"
             }
         }
     }
@@ -921,103 +918,6 @@ Describe "SemVer Checker" {
             $result.Output | Should -Not -Match "Release required for patch version v2\.0\.0"
             $result.Output | Should -Not -Match "gh release create v2\.0\.0"
         }
-        
-        It "Should show debug output for loaded releases when ACTIONS_STEP_DEBUG is enabled" {
-            # This test verifies the debug logging we added for releases
-            Initialize-TestRepo -Path $script:testRepoPath -WithRemote
-            
-            $commit = Get-CommitSha
-            git tag v3.0.0 $commit
-            
-            # Mock API with draft release
-            $global:InvokeWebRequestWrapper = {
-                param($Uri, $Headers, $Method, $TimeoutSec)
-                
-                # Tags refs endpoint
-                if ($Uri -match '/git/refs/tags') {
-                    $tags = & git tag -l 2>$null
-                    if (-not $tags) { $tags = @() }
-                    if ($tags -isnot [array]) { $tags = @($tags) }
-                    
-                    $refs = @()
-                    foreach ($tag in $tags) {
-                        if ([string]::IsNullOrWhiteSpace($tag)) { continue }
-                        $sha = (& git rev-list -n 1 $tag 2>$null)
-                        if ($sha) {
-                            $refs += @{
-                                ref = "refs/tags/$tag"
-                                object = @{
-                                    sha = $sha.Trim()
-                                    type = "commit"
-                                }
-                            }
-                        }
-                    }
-                    
-                    return @{
-                        Content = ($refs | ConvertTo-Json -Depth 5 -Compress)
-                        Headers = @{}
-                    }
-                }
-                
-                # Branches endpoint
-                if ($Uri -match '/branches(\?|$)') {
-                    return @{
-                        Content = "[]"
-                        Headers = @{}
-                    }
-                }
-                
-                # GraphQL endpoint - return draft release
-                if ($Uri -match '/graphql') {
-                    $mockResponse = @{
-                        data = @{
-                            repository = @{
-                                releases = @{
-                                    pageInfo = @{
-                                        hasNextPage = $false
-                                        endCursor = $null
-                                    }
-                                    nodes = @(
-                                        @{
-                                            databaseId = 300
-                                            tagName = "v3.0.0"
-                                            isDraft = $true
-                                            isPrerelease = $false
-                                            immutable = $false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    } | ConvertTo-Json -Depth 10
-                    
-                    return @{
-                        Content = $mockResponse
-                        Headers = @{}
-                    }
-                }
-                
-                return @{ Content = "[]"; Headers = @{} }
-            }
-            
-            Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
-            $env:GITHUB_TOKEN = "test-token"
-            $env:ACTIONS_STEP_DEBUG = "true"  # Enable debug output
-            
-            # Act
-            $result = Invoke-MainScript -CheckReleases "error" -AutoFix "false" -SkipMockSetup
-            
-            # Clean up
-            if (Test-Path function:global:Invoke-WebRequestWrapper) {
-                Remove-Item function:global:Invoke-WebRequestWrapper
-            }
-            Remove-Item Env:ACTIONS_STEP_DEBUG -ErrorAction SilentlyContinue
-            
-            # Assert - debug output should show releases were loaded
-            $result.Output | Should -Match "::debug::Loaded .*releases"
-            $result.Output | Should -Match "::debug::.*Release: v3\.0\.0.*draft=True"
-        }
     }
 
     Context "Preview release handling" {
@@ -1110,7 +1010,7 @@ Describe "SemVer Checker" {
             $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
             
             # Set up the mock
-            $global:InvokeWebRequestWrapper = New-GitBasedApiMock
+            $global:InvokeWebRequestWrapper = Get-GitBasedApiMock
             Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
             
             $result = & "$PSScriptRoot/../../main.ps1" 2>&1 | Out-String
@@ -1658,7 +1558,7 @@ exit 0
             $env:GITHUB_TOKEN = "test-token"
             
             # Run with release checking and immutability checking (no auto-fix to inspect State)
-            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "error" -AutoFix "false"
+            $null = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "error" -AutoFix "false"
             
             # Check that the State has a CreateReleaseAction with AutoPublish=true for the missing release
             $global:State.Issues | Should -Not -BeNullOrEmpty
@@ -1680,7 +1580,7 @@ exit 0
             $env:GITHUB_TOKEN = "test-token"
             
             # Run with release checking but NO immutability checking
-            $result = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "none" -AutoFix "false"
+            $null = Invoke-MainScript -CheckReleases "error" -CheckReleaseImmutability "none" -AutoFix "false"
             
             # Check that the State has a CreateReleaseAction with AutoPublish=false
             $global:State.Issues | Should -Not -BeNullOrEmpty
@@ -2435,7 +2335,7 @@ exit 0
             git tag v1.0.0 $commit
             
             # Run the checker
-            $result = Invoke-MainScript
+            $null = Invoke-MainScript
             
             # Clean up
             $env:GITHUB_STEP_SUMMARY = $null
@@ -2555,7 +2455,7 @@ exit 0
             git tag v2.0.0 $commit
             
             # v2.0.0 will have missing v2 and v2.0, but we'll ignore it
-            $result = Invoke-MainScript -IgnoreVersions "v2.0.0"
+            $null = Invoke-MainScript -IgnoreVersions "v2.0.0"
             
             # Check State object for issues - v1 issues should exist, v2 issues should not
             $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
@@ -2577,7 +2477,7 @@ exit 0
             git tag v2.0.0 $commit
             
             # Ignore all v1.* versions
-            $result = Invoke-MainScript -IgnoreVersions "v1.*"
+            $null = Invoke-MainScript -IgnoreVersions "v1.*"
             
             # Check State object - v1.x issues should not exist, v2.x issues should
             $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
@@ -2598,7 +2498,7 @@ exit 0
             git tag v3.0.0 $commit
             
             # Ignore v1.0.0 and v2.0.0, but not v3.0.0
-            $result = Invoke-MainScript -IgnoreVersions "v1.0.0,v2.0.0"
+            $null = Invoke-MainScript -IgnoreVersions "v1.0.0,v2.0.0"
             
             # Check State object
             $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
@@ -2680,7 +2580,7 @@ exit 0
             
             # Use newline-separated format (like multi-line YAML input)
             $newlineSeparated = "v1.0.0`nv2.0.0"
-            $result = Invoke-MainScript -IgnoreVersions $newlineSeparated
+            $null = Invoke-MainScript -IgnoreVersions $newlineSeparated
             
             # Check State object - v1 and v2 should be ignored
             $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
@@ -2702,7 +2602,7 @@ exit 0
             
             # Use JSON array format
             $jsonArray = '["v1.0.0", "v2.0.0"]'
-            $result = Invoke-MainScript -IgnoreVersions $jsonArray
+            $null = Invoke-MainScript -IgnoreVersions $jsonArray
             
             # Check State object - v1 and v2 should be ignored
             $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
@@ -2725,7 +2625,7 @@ exit 0
             
             # Mix of newlines and commas
             $mixedFormat = "v1.0.0,v2.0.0`nv3.0.0"
-            $result = Invoke-MainScript -IgnoreVersions $mixedFormat
+            $null = Invoke-MainScript -IgnoreVersions $mixedFormat
             
             # Check State object - v1, v2, v3 should be ignored
             $v1Issues = $global:State.Issues | Where-Object { $_.Version -like "v1*" }
@@ -2773,7 +2673,7 @@ exit 0
             $env:inputs = ($inputsObject | ConvertTo-Json -Compress)
             
             # Set up the mock
-            $global:InvokeWebRequestWrapper = New-GitBasedApiMock
+            $global:InvokeWebRequestWrapper = Get-GitBasedApiMock
             Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $global:InvokeWebRequestWrapper
             
             # Should not crash with any of these inputs

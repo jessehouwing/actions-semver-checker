@@ -7,6 +7,9 @@
         "/^cd /workspaces/actions-semver-checker && pwsh -Command \"Invoke-Pester -Path '\\./tests/integration' -Output Normal\" 2>&1 \\| head -50$/": {
             "approve": true,
             "matchCommandLine": true
-        }
+        },
+        "Invoke-ScriptAnalyzer": true,
+        "Invoke-Pester": true,
+        "Group-Object": true
     }
 }

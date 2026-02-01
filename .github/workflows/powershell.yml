@@ -33,15 +33,29 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run PSScriptAnalyzer
-        uses: microsoft/psscriptanalyzer-action@7a0da25f33985767f15f93140306528900744195
-        with:
-          # Check https://github.com/microsoft/action-psscriptanalyzer for more info about the options.
-          # The below set up runs PSScriptAnalyzer to your entire repository and runs some basic security rules.
-          path: .\
-          recurse: true
-          # Include your own basic security rules. Removing this option will run all the rules
-          includeRule: '"PSAvoidGlobalAliases", "PSAvoidUsingConvertToSecureStringWithPlainText"'
-          output: results.sarif
+        shell: pwsh
+        run: |
+          # Install PSScriptAnalyzer if not present
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+            Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+          }
+          
+          # Run PSScriptAnalyzer and filter out TypeNotFound warnings
+          # TypeNotFound warnings occur because PSScriptAnalyzer analyzes files independently
+          # and cannot resolve classes defined in dot-sourced files
+          $issues = Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSScriptAnalyzerSettings.psd1 |
+            Where-Object { $_.RuleName -ne 'TypeNotFound' }
+          
+          if ($issues.Count -gt 0) {
+            Write-Host "::error::Found $($issues.Count) PSScriptAnalyzer issues (excluding TypeNotFound)"
+            $issues | ForEach-Object {
+              $file = $_.ScriptPath -replace [regex]::Escape($PWD), '.'
+              Write-Host "::error file=$file,line=$($_.Line)::$($_.RuleName): $($_.Message)"
+            }
+            exit 1
+          } else {
+            Write-Host "::notice::No PSScriptAnalyzer issues found (TypeNotFound warnings excluded)"
+          }
 
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file

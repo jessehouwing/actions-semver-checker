@@ -20,7 +20,7 @@
 .OUTPUTS
     An array of release IDs that are duplicates and should be deleted.
 #>
-function Get-DuplicateReleaseIds {
+function Get-DuplicateReleaseId {
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State
@@ -73,7 +73,7 @@ function Get-DuplicateReleaseIds {
 .OUTPUTS
     An array of ReleaseInfo objects for duplicate drafts that should be deleted.
 #>
-function Get-DuplicateDraftReleases {
+function Get-DuplicateDraftRelease {
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State

@@ -38,7 +38,7 @@ $Rule_DuplicateFloatingVersionRef = [ValidationRule]@{
             }
         }
         
-        return ,$duplicates
+        return , $duplicates
     }
     
     # Check: Both tag and branch should not exist

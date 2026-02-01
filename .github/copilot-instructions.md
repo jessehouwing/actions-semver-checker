@@ -176,9 +176,9 @@ if ($this.IsUnfixableError($result)) {
 ### REST API (Used)
 | Endpoint | Function | Purpose |
 |----------|----------|---------|
-| `GET /repos/{owner}/{repo}/releases` | `Get-GitHubReleases` | List all releases |
-| `GET /repos/{owner}/{repo}/git/refs/tags` | `Get-GitHubTags` | List all tags |
-| `GET /repos/{owner}/{repo}/branches` | `Get-GitHubBranches` | List all branches |
+| `GET /repos/{owner}/{repo}/releases` | `Get-GitHubRelease` | List all releases |
+| `GET /repos/{owner}/{repo}/git/refs/tags` | `Get-GitHubTag` | List all tags |
+| `GET /repos/{owner}/{repo}/branches` | `Get-GitHubBranch` | List all branches |
 | `POST /repos/{owner}/{repo}/git/refs` | `New-GitHubRef` | Create tag/branch |
 | `PATCH /repos/{owner}/{repo}/git/refs/{ref}` | `Update-GitHubRef` | Update tag/branch |
 | `DELETE /repos/{owner}/{repo}/git/refs/{ref}` | `Remove-GitHubRef` | Delete tag/branch |
@@ -267,11 +267,13 @@ git tag v1
 
 ## Critical Conventions
 
-1. **No `git` commands for tag/branch fetching** - Use `Get-GitHubTags`/`Get-GitHubBranches` from `lib/GitHubApi.ps1`
+1. **No `git` commands for tag/branch fetching** - Use `Get-GitHubTag`/`Get-GitHubBranch` from `lib/GitHubApi.ps1`
 2. **Status-based calculations** - Never store counts; calculate from issue statuses via `RepositoryState` methods
 3. **Retry wrapper** - All API calls use `Invoke-WithRetry` for transient failures
 4. **GitHub Actions output** - Use `Write-SafeHost`, `Write-SafeWarning` from `lib/Logging.ps1` to prevent injection
 5. **Token masking** - Always call `::add-mask::` when handling tokens
+6. **PowerShell class reloading** - After editing any PowerShell class (`VersionRef`, `ReleaseInfo`, `ValidationIssue`, `RepositoryState`, `RemediationAction`, `ValidationRule`), **ALWAYS** start a fresh PowerShell terminal before running tests or validation. PowerShell creates new class definitions with different assembly versions when classes are reloaded in the same session, causing type comparison failures (`-is [ClassName]` returns false). Close the existing terminal and open a new one to ensure clean class loading.
+7. **PSScriptAnalyzer TypeNotFound warnings** - TypeNotFound warnings are expected and should be ignored. PSScriptAnalyzer is a static analyzer that examines each file independently and cannot follow dot-sourcing paths or resolve classes defined in other files. When running PSScriptAnalyzer, always filter out TypeNotFound warnings: `Invoke-ScriptAnalyzer ... | Where-Object { $_.RuleName -ne 'TypeNotFound' }`. These warnings don't indicate actual problems - the test suite validates that types are correctly defined and used.
 
 ## Adding New Validation Rules
 

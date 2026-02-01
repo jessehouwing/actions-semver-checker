@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # Actions SemVer Checker - Main Script
 #############################################################################
 # This script validates semantic version tags and branches in a GitHub
@@ -25,6 +25,7 @@
 . "$PSScriptRoot/lib/GitHubApi.ps1"
 . "$PSScriptRoot/lib/RemediationActions.ps1"
 . "$PSScriptRoot/lib/Remediation.ps1"
+. "$PSScriptRoot/lib/rules/releases/ReleaseRulesHelper.ps1"
 . "$PSScriptRoot/lib/ValidationRules.ps1"
 . "$PSScriptRoot/lib/InputValidation.ps1"
 
@@ -70,7 +71,7 @@ if (-not $script:State.RepoOwner -or -not $script:State.RepoName) {
 #############################################################################
 
 # Parse and validate inputs using InputValidation module
-$inputConfig = Read-ActionInputs -State $script:State
+$inputConfig = Read-ActionInput -State $script:State
 if (-not $inputConfig) {
     exit 1
 }
@@ -89,7 +90,7 @@ $script:State.IgnoreVersions = $inputConfig.IgnoreVersions
 Write-InputDebugInfo -Config $inputConfig
 
 # Validate inputs
-$validationErrors = Test-ActionInputs -Config $inputConfig
+$validationErrors = Test-ActionInput -Config $inputConfig
 if ($validationErrors.Count -gt 0) {
     foreach ($error in $validationErrors) {
         Write-Output $error
@@ -101,24 +102,24 @@ if ($validationErrors.Count -gt 0) {
 Write-RepositoryDebugInfo -State $script:State -Config $inputConfig
 
 # Validate token is available for auto-fix mode
-if (-not (Test-AutoFixRequirements -State $script:State -AutoFix $inputConfig.AutoFix)) {
+if (-not (Test-AutoFixRequirement -State $script:State -AutoFix $inputConfig.AutoFix)) {
     $global:returnCode = 1
     exit 1
 }
 
 # Fetch tags and branches via GitHub API (no checkout required)
 Write-Host "::debug::Fetching tags from GitHub API..."
-$apiTags = Get-GitHubTags -State $script:State -Pattern "^v\d+(\.\d+){0,2}$"
+$apiTags = Get-GitHubTag -State $script:State -Pattern "^v\d+(\.\d+){0,2}$"
 $tags = $apiTags | ForEach-Object { $_.name }
 Write-Host "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
 
 Write-Host "::debug::Fetching branches from GitHub API..."
-$apiBranches = Get-GitHubBranches -State $script:State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
+$apiBranches = Get-GitHubBranch -State $script:State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
 $branches = $apiBranches | ForEach-Object { $_.name }
 
 # Also fetch latest tag and branch via API (for 'latest' alias validation)
-$apiLatestTag = Get-GitHubTags -State $script:State -Pattern "^latest$"
-$apiLatestBranch = Get-GitHubBranches -State $script:State -Pattern "^latest$"
+$apiLatestTag = Get-GitHubTag -State $script:State -Pattern "^latest$"
+$apiLatestBranch = Get-GitHubBranch -State $script:State -Pattern "^latest$"
 
 # Auto-fix tracking variables are initialized in GLOBAL STATE section above
 
@@ -145,7 +146,7 @@ if ($inputConfig.AutoFix -and $repoInfo) {
 $releases = @()
 $releaseMap = @{}
 if ($repoInfo) {
-    $releases = Get-GitHubReleases -State $script:State
+    $releases = Get-GitHubRelease -State $script:State
     # Create a map for quick lookup and set isIgnored property
     foreach ($release in $releases) {
         $release.isIgnored = Test-VersionIgnored -Version $release.tagName -IgnoreVersions $inputConfig.IgnoreVersions
@@ -241,12 +242,12 @@ $ruleConfig = @{
 Write-Host "::debug::Rule engine config: $($ruleConfig | ConvertTo-Json -Compress)"
 
 # Load and execute validation rules
-$allRules = Get-AllValidationRules
+$allRules = Get-ValidationRule
 Write-Host "::debug::Loaded $($allRules.Count) validation rules"
 
 if ($allRules.Count -gt 0) {
     # Execute rules directly on $script:State - issues are added to State.Issues
-    $ruleIssues = Invoke-ValidationRules -State $script:State -Config $ruleConfig -Rules $allRules
+    $ruleIssues = Invoke-ValidationRule -State $script:State -Config $ruleConfig -Rules $allRules
     
     Write-Host "::debug::Rule engine found $($ruleIssues.Count) issues"
     
@@ -277,7 +278,7 @@ if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {
 if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {
     Write-Host "##[group]Verifying potential solutions"
 }
-Invoke-AllAutoFixes -State $State -AutoFix $inputConfig.AutoFix
+Invoke-AutoFix -State $State -AutoFix $inputConfig.AutoFix
 if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {
     Write-Host "##[endgroup]"
 }
@@ -288,7 +289,7 @@ if ($inputConfig.AutoFix -and $State.Issues.Count -gt 0) {
 
 # Log all unresolved issues (failed or unfixable) as errors/warnings
 # This happens AFTER autofix completes, regardless of whether autofix is enabled
-Write-UnresolvedIssues -State $State
+Write-UnresolvedIssue -State $State
 
 #############################################################################
 # FINAL SUMMARY AND EXIT
@@ -332,13 +333,13 @@ if ($inputConfig.AutoFix)
     }
     
     # Use new function to show manual remediation instructions
-    Get-ManualInstructions -State $State -GroupByType $false
+    Get-ManualInstruction -State $State -GroupByType $false
     Write-ManualInstructionsToStepSummary -State $State
 }
 else
 {
     # Not in auto-fix mode, show manual instructions for all issues
-    Get-ManualInstructions -State $State -GroupByType $false
+    Get-ManualInstruction -State $State -GroupByType $false
     Write-ManualInstructionsToStepSummary -State $State
 }
 

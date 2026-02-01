@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # StateModel.ps1 - Domain Model for Repository State
 #############################################################################
 # This module defines the domain model classes used to track the current
@@ -160,12 +160,13 @@ class ValidationIssue {
     [string]$ManualFixCommand
     [object]$RemediationAction  # RemediationAction instance
     [string[]]$Dependencies  # Other issues that must be fixed first
-    [string]$Status       # "pending", "fixed", "failed", "manual_fix_required", "unfixable"
-                          # - pending: Not yet attempted
-                          # - fixed: Successfully auto-fixed
-                          # - failed: Auto-fix attempted but failed
-                          # - manual_fix_required: Can be fixed manually (e.g., workflow permission issues)
-                          # - unfixable: Cannot be fixed (e.g., immutable release conflicts)
+    # Status values: "pending", "fixed", "failed", "manual_fix_required", "unfixable"
+    # - pending: Not yet attempted
+    # - fixed: Successfully auto-fixed
+    # - failed: Auto-fix attempted but failed
+    # - manual_fix_required: Can be fixed manually (e.g., workflow permission issues)
+    # - unfixable: Cannot be fixed (e.g., immutable release conflicts)
+    [string]$Status
     
     ValidationIssue([string]$type, [string]$severity, [string]$message) {
         $this.Type = $type

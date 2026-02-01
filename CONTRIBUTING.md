@@ -224,9 +224,8 @@ Rule discovery and execution engine:
 - `ValidationRule`: Base class for all validation rules with Priority, Category, Condition, Check, CreateIssue
 
 **Functions:**
-- `Get-AllValidationRules`: Auto-discover rules from lib/rules/ directory
-- `Get-ValidationRules`: Get rules with optional filtering
-- `Invoke-ValidationRules`: Execute rules in priority order
+- `Get-ValidationRule`: Auto-discover rules from lib/rules/ directory
+- `Invoke-ValidationRule`: Execute rules in priority order
 - `Test-IsPrerelease`: Helper to check if a version is a prerelease
 
 **When to modify:**
@@ -264,8 +263,8 @@ Strategies for coordinating and executing fixes:
 Action input parsing and validation:
 
 **Functions:**
-- `Read-ActionInputs`: Parse inputs from environment JSON
-- `Test-ActionInputs`: Validate input configuration
+- `Read-ActionInput`: Parse inputs from environment JSON
+- `Test-ActionInput`: Validate input configuration
 - `Write-InputDebugInfo`: Output debug information
 
 **When to modify:**
@@ -524,7 +523,7 @@ When adding new functionality:
 ### PowerShell Style Guide
 
 **Naming Conventions:**
-- **Functions**: PascalCase with Verb-Noun pattern (e.g., `Get-GitHubReleases`)
+- **Functions**: PascalCase with Verb-Noun pattern (e.g., `Get-GitHubRelease`)
 - **Variables**: camelCase (e.g., `$autoFix`)
 - **Parameters**: PascalCase (e.g., `-TagName`)
 - **Classes**: PascalCase (e.g., `RepositoryState`)

@@ -42,7 +42,7 @@ $Rule_DuplicateRelease = [ValidationRule]@{
                 )
                 
                 # Keep the first one (best candidate), mark others as duplicates
-                $keepRelease = $sortedReleases[0]
+                # The best candidate is selected by the sort order above
                 $duplicates = $sortedReleases | Select-Object -Skip 1
                 
                 foreach ($duplicate in $duplicates) {
