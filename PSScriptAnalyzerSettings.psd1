@@ -43,7 +43,6 @@
         'PSUseBOMForUnicodeEncodedFile',
         'PSUseCmdletCorrectly',
         'PSUseCompatibleCmdlets',
-        'PSUseCompatibleCommands',
         'PSUseConsistentIndentation',
         'PSUseConsistentWhitespace',
         'PSUseCorrectCasing',
