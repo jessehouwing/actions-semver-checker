@@ -141,6 +141,47 @@ function Test-GitHubActionVersioning
     # Initialize State
     #############################################################################
     
+    # Filter out GitHub Actions workflow commands (::debug::, etc.) from output
+    # The library modules emit these for GitHub Actions, but they're not appropriate for CLI
+    $originalInformationPreference = $InformationPreference
+    $script:cliMode = $true
+    
+    # Create a wrapper for Write-Host to filter workflow commands in CLI mode
+    $writeHostOverride = Get-Command Write-Host
+    function global:Write-Host {
+        [CmdletBinding()]
+        param(
+            [Parameter(Position=0, ValueFromPipeline)]
+            [object]$Object,
+            [switch]$NoNewline,
+            [object]$Separator,
+            [System.ConsoleColor]$ForegroundColor,
+            [System.ConsoleColor]$BackgroundColor
+        )
+        
+        # Filter out GitHub Actions workflow commands in CLI mode
+        # Matches patterns like ::debug::, ::warning::, ::error::, ::notice::, etc.
+        if ($script:cliMode -and $Object -match '^::([a-z-]+)::') {
+            # Convert ::debug:: to Write-Verbose, suppress others
+            if ($Object -match '^::debug::') {
+                $message = $Object -replace '^::debug::', ''
+                Write-Verbose $message
+            }
+            # Suppress all other workflow commands (::warning::, ::error::, ::group::, etc.)
+            return
+        }
+        
+        # Pass through to original Write-Host
+        $params = @{}
+        if ($PSBoundParameters.ContainsKey('Object')) { $params['Object'] = $Object }
+        if ($NoNewline) { $params['NoNewline'] = $true }
+        if ($PSBoundParameters.ContainsKey('Separator')) { $params['Separator'] = $Separator }
+        if ($PSBoundParameters.ContainsKey('ForegroundColor')) { $params['ForegroundColor'] = $ForegroundColor }
+        if ($PSBoundParameters.ContainsKey('BackgroundColor')) { $params['BackgroundColor'] = $BackgroundColor }
+        
+        & $writeHostOverride @params
+    }
+    
     $state = [RepositoryState]::new()
     
     #############################################################################
@@ -239,21 +280,39 @@ function Test-GitHubActionVersioning
     Write-Host "Fetching repository data for $Repository..."
     
     try {
-        # Fetch tags
+        # Fetch tags - only get semver tags (vX, vX.Y, vX.Y.Z) and 'latest'
         Write-Verbose "Fetching tags..."
-        $tagRefs = Get-GitHubTags -State $state
+        $tagRefs = Get-GitHubTags -State $state -Pattern "^v\d+(\.\d+){0,2}$"
         foreach ($tagRef in $tagRefs) {
-            $state.Tags += $tagRef
+            $vr = [VersionRef]::new($tagRef.name, "refs/tags/$($tagRef.name)", $tagRef.sha, "tag")
+            $state.Tags += $vr
         }
+        
+        # Also fetch 'latest' tag if it exists
+        $latestTagRefs = Get-GitHubTags -State $state -Pattern "^latest$"
+        foreach ($tagRef in $latestTagRefs) {
+            $vr = [VersionRef]::new($tagRef.name, "refs/tags/$($tagRef.name)", $tagRef.sha, "tag")
+            $state.Tags += $vr
+        }
+        
         Write-Host "Found $($state.Tags.Count) version tags"
         
         # Fetch branches if needed
         if ($FloatingVersionsUse -eq 'branches') {
             Write-Verbose "Fetching branches..."
-            $branchRefs = Get-GitHubBranches -State $state
+            $branchRefs = Get-GitHubBranches -State $state -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
             foreach ($branchRef in $branchRefs) {
-                $state.Branches += $branchRef
+                $vr = [VersionRef]::new($branchRef.name, "refs/heads/$($branchRef.name)", $branchRef.sha, "branch")
+                $state.Branches += $vr
             }
+            
+            # Also fetch 'latest' branch if it exists
+            $latestBranchRefs = Get-GitHubBranches -State $state -Pattern "^latest$"
+            foreach ($branchRef in $latestBranchRefs) {
+                $vr = [VersionRef]::new($branchRef.name, "refs/heads/$($branchRef.name)", $branchRef.sha, "branch")
+                $state.Branches += $vr
+            }
+            
             Write-Host "Found $($state.Branches.Count) version branches"
         }
         
@@ -261,7 +320,18 @@ function Test-GitHubActionVersioning
         Write-Verbose "Fetching releases..."
         $releases = Get-GitHubReleases -State $state
         foreach ($release in $releases) {
-            $state.Releases += $release
+            # Convert the release hashtable to PSCustomObject format expected by ReleaseInfo constructor
+            $releaseData = [PSCustomObject]@{
+                tag_name = $release.tagName
+                id = $release.id
+                draft = $release.isDraft
+                prerelease = $release.isPrerelease
+                html_url = $null  # Not available from GraphQL query
+                target_commitish = $null  # Not available from GraphQL query
+                immutable = $release.immutable
+            }
+            $ri = [ReleaseInfo]::new($releaseData)
+            $state.Releases += $ri
         }
         Write-Host "Found $($state.Releases.Count) releases"
     }
@@ -382,7 +452,21 @@ function Test-GitHubActionVersioning
     # Return Results
     #############################################################################
     
+    # Restore original Write-Host
+    Remove-Item Function:\Write-Host -ErrorAction SilentlyContinue
+    $script:cliMode = $false
+    
+    # Calculate return code - if AutoFix is disabled, pending issues should cause failure
+    # If AutoFix is enabled, only unresolved issues after fixing should cause failure
     $returnCode = $state.GetReturnCode()
+    
+    # When AutoFix is disabled, pending issues mean validation failed
+    if (-not $AutoFix) {
+        $pendingCount = ($state.Issues | Where-Object { $_.Status -eq "pending" }).Count
+        if ($pendingCount -gt 0) {
+            $returnCode = 1
+        }
+    }
     
     if ($PassThru) {
         return @{
