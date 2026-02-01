@@ -20,9 +20,21 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `check-release-immutability` | `error` or `warning` | Enforces that releases are truly immutable |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `check-release-immutability` | `error` or `warning` | Enables this rule |
+
+**Note:** If `check-release-immutability` is `none`, this rule is disabled.
+
+### Settings That Affect Severity
+
+| check-release-immutability | Issue Severity |
+|---------------------------|----------------|
+| `error` | **error** |
+| `warning` | **warning** |
+| `none` | (rule disabled) |
 
 ## Automatic Remediation
 

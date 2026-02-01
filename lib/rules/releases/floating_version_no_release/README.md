@@ -18,12 +18,31 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `check-releases` | `error` or `warning` | Enables checking for inappropriate releases |
-| `check-release-immutability` | `error` or `warning` | Enables checking for inappropriate releases |
+### Settings That Enable This Rule
 
-**Note:** Either setting being enabled will trigger this rule.
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `check-releases` | `error` or `warning` | Enables this rule |
+| `check-release-immutability` | `error` or `warning` | Enables this rule |
+
+**Note:** Either setting being enabled will trigger this rule. If both are `none`, this rule is disabled.
+
+### Settings That Affect Severity
+
+For **mutable (draft) releases**, this rule uses **most-severe-wins** logic:
+
+| check-releases | check-release-immutability | Issue Severity |
+|---------------|---------------------------|----------------|
+| `error` | `error` | **error** |
+| `error` | `warning` | **error** |
+| `warning` | `error` | **error** |
+| `warning` | `warning` | **warning** |
+| `error` | `none` | **error** |
+| `none` | `error` | **error** |
+| `warning` | `none` | **warning** |
+| `none` | `warning` | **warning** |
+
+For **immutable (published) releases**, severity is always **error** (unfixable).
 
 ## Required Permissions
 

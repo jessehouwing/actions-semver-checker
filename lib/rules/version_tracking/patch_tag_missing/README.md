@@ -23,10 +23,27 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `check-releases` | `none` | Patches are tracked without releases |
-| `floating-versions-use` | `tags` or `branches` | Where to look for floating versions |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `check-releases` | `none` | Rule is enabled (patches tracked without releases) |
+
+**Note:** When `check-releases` is `error` or `warning`, this rule is **disabled** because `patch_release_required` handles both release and tag creation.
+
+### Settings That Affect Severity
+
+Patch version tracking is **always** reported as **error** (not configurable). Patch versions are fundamental to semantic versioning.
+
+| Severity | Always |
+|----------|--------|
+| **error** | ✓ |
+
+### Other Relevant Settings
+
+| Input | Effect |
+|-------|--------|
+| `floating-versions-use` | Determines whether to look for floating versions in tags or branches |
 
 ## Manual Remediation
 

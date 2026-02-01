@@ -62,13 +62,14 @@ $Rule_ReleaseShouldBePublished = [ValidationRule]@{
     CreateIssue = { param([ReleaseInfo]$ReleaseInfo, [RepositoryState]$State, [hashtable]$Config)
         $version = $ReleaseInfo.TagName
         
-        # Determine severity based on which check is enabled (prioritize immutability check level)
+        # Determine severity based on which check is enabled (most severe wins)
         $checkReleases = $Config.'check-releases'
         $checkImmutability = $Config.'check-release-immutability'
         
-        $severity = 'error'
-        if ($checkImmutability -eq 'warning' -or $checkReleases -eq 'warning') {
-            $severity = 'warning'
+        # Most severe level wins: error > warning
+        $severity = 'warning'
+        if ($checkImmutability -eq 'error' -or $checkReleases -eq 'error') {
+            $severity = 'error'
         }
         
         $issue = [ValidationIssue]::new(

@@ -18,7 +18,21 @@ This rule runs when:
 
 ## Configuration
 
-This rule behavior is **not configurable** - patch versions must always be tags. The branch will always be deleted.
+### Settings That Enable This Rule
+
+This rule is **always enabled** when duplicates exist. Duplicate patch version references are always structural errors.
+
+### Settings That Affect Behavior
+
+Patch versions **must always be tags**. The branch will always be deleted regardless of `floating-versions-use` setting.
+
+### Settings That Affect Severity
+
+Duplicate patch version references are **always** reported as **error** (not configurable). Patch versions must be immutable tags linked to GitHub Releases.
+
+| Severity | Always |
+|----------|--------|
+| **error** | ✓ |
 
 ## Manual Remediation
 

@@ -18,10 +18,28 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `check-releases` | `error` or `warning` | Enforces that releases exist for patch versions |
-| `check-release-immutability` | `error` or `warning` | When enabled, created releases will be automatically published (immutable) |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `check-releases` | `error` or `warning` | Enables this rule |
+
+**Note:** If `check-releases` is `none`, this rule is disabled.
+
+### Settings That Affect Severity
+
+| check-releases | Issue Severity |
+|---------------|----------------|
+| `error` | **error** |
+| `warning` | **warning** |
+| `none` | (rule disabled) |
+
+### Settings That Affect Behavior
+
+| Input | Value | Effect |
+|-------|-------|--------|
+| `check-release-immutability` | `error` or `warning` | Created releases are published immediately (immutable) |
+| `check-release-immutability` | `none` | Created releases are saved as drafts |
 
 ## Required Permissions
 

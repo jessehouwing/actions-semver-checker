@@ -205,7 +205,7 @@ Describe "floating_version_no_release" {
     }
     
     Context "CreateIssue - Mutable releases" {
-        It "should create warning for mutable (draft) floating release" {
+        It "should create error for mutable (draft) floating release when check-releases is error" {
             $releaseData = [PSCustomObject]@{
                 tag_name = "v1"
                 id = 123
@@ -225,11 +225,57 @@ Describe "floating_version_no_release" {
             $issue = & $Rule_FloatingVersionNoRelease.CreateIssue $releaseInfo $state $config
             
             $issue.Type | Should -Be "mutable_floating_release"
-            $issue.Severity | Should -Be "warning"
+            $issue.Severity | Should -Be "error"
             $issue.Message | Should -BeLike "*v1*"
             $issue.RemediationAction | Should -Not -BeNullOrEmpty
             $issue.RemediationAction.GetType().Name | Should -Be "DeleteReleaseAction"
             $issue.Status | Should -Not -Be "unfixable"
+        }
+        
+        It "should create warning for mutable floating release when both checks are warning" {
+            $releaseData = [PSCustomObject]@{
+                tag_name = "v1"
+                id = 123
+                draft = $true
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($releaseData)
+            $state = [RepositoryState]::new()
+            $config = @{ 
+                'check-releases' = 'warning'
+                'check-release-immutability' = 'warning'
+            }
+            
+            $issue = & $Rule_FloatingVersionNoRelease.CreateIssue $releaseInfo $state $config
+            
+            $issue.Type | Should -Be "mutable_floating_release"
+            $issue.Severity | Should -Be "warning"
+            $issue.Message | Should -BeLike "*v1*"
+        }
+        
+        It "should use most-severe-wins logic (error + warning = error)" {
+            $releaseData = [PSCustomObject]@{
+                tag_name = "v1"
+                id = 123
+                draft = $true
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1"
+                target_commitish = "abc123"
+                immutable = $false
+            }
+            $releaseInfo = [ReleaseInfo]::new($releaseData)
+            $state = [RepositoryState]::new()
+            $config = @{ 
+                'check-releases' = 'error'
+                'check-release-immutability' = 'warning'
+            }
+            
+            $issue = & $Rule_FloatingVersionNoRelease.CreateIssue $releaseInfo $state $config
+            
+            $issue.Severity | Should -Be "error"
         }
         
         It "should configure DeleteReleaseAction with release ID" {
