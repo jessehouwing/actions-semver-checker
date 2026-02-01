@@ -105,7 +105,7 @@ Describe "RemediationAction Classes" {
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 1
-            $commands[0] | Should -Match "gh release create v1.0.0 --draft"
+            $commands[0] | Should -Match 'gh release create v1\.0\.0.*--draft'
             $commands[0] | Should -Not -Match "^#"
         }
         
@@ -114,7 +114,7 @@ Describe "RemediationAction Classes" {
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 1
-            $commands[0] | Should -Match "gh release create v1.0.0"
+            $commands[0] | Should -Match 'gh release create v1\.0\.0'
             $commands[0] | Should -Not -Match "--draft"
             $commands[0] | Should -Not -Match "^#"
         }
