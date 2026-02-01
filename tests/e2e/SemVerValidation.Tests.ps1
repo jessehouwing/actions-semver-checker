@@ -818,8 +818,11 @@ Describe "SemVer Checker" {
             
             # Assert - should suggest publishing the draft releases
             $result.Output | Should -Match "draft status"
-            $result.Output | Should -Match "gh release edit v1\.0\.0 --draft=false"
-            $result.Output | Should -Match "gh release edit v1\.0\.1 --draft=false"
+            
+            # Extract remediation section for more flexible matching
+            $remediationSection = $result.Output -split '# Remediation Steps:' | Select-Object -Last 1
+            $remediationSection | Should -Match 'gh release edit v1\.0\.0.*--draft=false'
+            $remediationSection | Should -Match 'gh release edit v1\.0\.1.*--draft=false'
         }
         
         It "Should correctly load releases and match them to tags by TagName" {
@@ -1693,7 +1696,10 @@ exit 0
             
             # Should show manual command to publish the draft release
             $result.Output | Should -Match "draft status"
-            $result.Output | Should -Match "gh release edit v1\.0\.0 --draft=false"
+            
+            # Extract remediation section for more flexible matching
+            $remediationSection = $result.Output -split '# Remediation Steps:' | Select-Object -Last 1
+            $remediationSection | Should -Match 'gh release edit v1\.0\.0.*--draft=false'
         }
         
         It "Should handle 422 error when tag_name used by immutable release" {

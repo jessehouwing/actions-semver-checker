@@ -121,8 +121,8 @@ Describe "Test-GitHubActionVersioning" {
                 $env:GITHUB_REPOSITORY = "test-owner/test-repo"
                 
                 # Mock API calls to prevent actual API requests
-                Mock -ModuleName GitHubActionVersioning Get-GitHubTags { return @() }
-                Mock -ModuleName GitHubActionVersioning Get-GitHubReleases { return @() }
+                Mock -ModuleName GitHubActionVersioning Get-GitHubTag { return @() }
+                Mock -ModuleName GitHubActionVersioning Get-GitHubRelease { return @() }
                 
                 $result = Test-GitHubActionVersioning -PassThru
                 
@@ -152,8 +152,8 @@ Describe "Test-GitHubActionVersioning" {
                 Mock -ModuleName GitHubActionVersioning gh { throw "gh not found" }
                 
                 # Mock API calls
-                Mock -ModuleName GitHubActionVersioning Get-GitHubTags { return @() }
-                Mock -ModuleName GitHubActionVersioning Get-GitHubReleases { return @() }
+                Mock -ModuleName GitHubActionVersioning Get-GitHubTag { return @() }
+                Mock -ModuleName GitHubActionVersioning Get-GitHubRelease { return @() }
                 
                 { Test-GitHubActionVersioning -Repository "owner/repo" -WarningVariable warnings } | Should -Not -Throw
             }
@@ -166,8 +166,8 @@ Describe "Test-GitHubActionVersioning" {
     Context "PassThru parameter" {
         It "Should return hashtable with expected properties when PassThru is used" {
             # Mock API calls
-            Mock -ModuleName GitHubActionVersioning Get-GitHubTags { return @() }
-            Mock -ModuleName GitHubActionVersioning Get-GitHubReleases { return @() }
+            Mock -ModuleName GitHubActionVersioning Get-GitHubTag { return @() }
+            Mock -ModuleName GitHubActionVersioning Get-GitHubRelease { return @() }
             
             $result = Test-GitHubActionVersioning -Repository "owner/repo" -PassThru
             

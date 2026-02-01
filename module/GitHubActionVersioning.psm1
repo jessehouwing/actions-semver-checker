@@ -16,6 +16,7 @@
 . "$PSScriptRoot/../lib/Remediation.ps1"
 . "$PSScriptRoot/../lib/ValidationRules.ps1"
 . "$PSScriptRoot/../lib/InputValidation.ps1"
+. "$PSScriptRoot/../lib/rules/releases/ReleaseRulesHelper.ps1"
 
 function Test-GitHubActionVersioning
 {
@@ -147,7 +148,6 @@ function Test-GitHubActionVersioning
     $script:cliMode = $true
     
     # Create a wrapper for Write-Host to filter workflow commands in CLI mode
-    $writeHostOverride = Get-Command Write-Host
     function global:Write-Host {
         [CmdletBinding()]
         param(
@@ -171,7 +171,7 @@ function Test-GitHubActionVersioning
             return
         }
         
-        # Pass through to original Write-Host
+        # Pass through to original Write-Host using fully qualified name to avoid recursion
         $params = @{}
         if ($PSBoundParameters.ContainsKey('Object')) { $params['Object'] = $Object }
         if ($NoNewline) { $params['NoNewline'] = $true }
@@ -179,7 +179,7 @@ function Test-GitHubActionVersioning
         if ($PSBoundParameters.ContainsKey('ForegroundColor')) { $params['ForegroundColor'] = $ForegroundColor }
         if ($PSBoundParameters.ContainsKey('BackgroundColor')) { $params['BackgroundColor'] = $BackgroundColor }
         
-        & $writeHostOverride @params
+        Microsoft.PowerShell.Utility\Write-Host @params
     }
     
     $state = [RepositoryState]::new()
@@ -282,14 +282,14 @@ function Test-GitHubActionVersioning
     try {
         # Fetch tags - only get semver tags (vX, vX.Y, vX.Y.Z) and 'latest'
         Write-Verbose "Fetching tags..."
-        $tagRefs = Get-GitHubTags -State $state -Pattern "^v\d+(\.\d+){0,2}$"
+        $tagRefs = Get-GitHubTag -State $state -Pattern "^v\d+(\.\d+){0,2}$"
         foreach ($tagRef in $tagRefs) {
             $vr = [VersionRef]::new($tagRef.name, "refs/tags/$($tagRef.name)", $tagRef.sha, "tag")
             $state.Tags += $vr
         }
         
         # Also fetch 'latest' tag if it exists
-        $latestTagRefs = Get-GitHubTags -State $state -Pattern "^latest$"
+        $latestTagRefs = Get-GitHubTag -State $state -Pattern "^latest$"
         foreach ($tagRef in $latestTagRefs) {
             $vr = [VersionRef]::new($tagRef.name, "refs/tags/$($tagRef.name)", $tagRef.sha, "tag")
             $state.Tags += $vr
@@ -300,14 +300,14 @@ function Test-GitHubActionVersioning
         # Fetch branches if needed
         if ($FloatingVersionsUse -eq 'branches') {
             Write-Verbose "Fetching branches..."
-            $branchRefs = Get-GitHubBranches -State $state -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
+            $branchRefs = Get-GitHubBranch -State $state -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
             foreach ($branchRef in $branchRefs) {
                 $vr = [VersionRef]::new($branchRef.name, "refs/heads/$($branchRef.name)", $branchRef.sha, "branch")
                 $state.Branches += $vr
             }
             
             # Also fetch 'latest' branch if it exists
-            $latestBranchRefs = Get-GitHubBranches -State $state -Pattern "^latest$"
+            $latestBranchRefs = Get-GitHubBranch -State $state -Pattern "^latest$"
             foreach ($branchRef in $latestBranchRefs) {
                 $vr = [VersionRef]::new($branchRef.name, "refs/heads/$($branchRef.name)", $branchRef.sha, "branch")
                 $state.Branches += $vr
@@ -318,7 +318,7 @@ function Test-GitHubActionVersioning
         
         # Fetch releases
         Write-Verbose "Fetching releases..."
-        $releases = Get-GitHubReleases -State $state
+        $releases = Get-GitHubRelease -State $state
         foreach ($release in $releases) {
             # Convert the release hashtable to PSCustomObject format expected by ReleaseInfo constructor
             $releaseData = [PSCustomObject]@{
@@ -377,7 +377,7 @@ function Test-GitHubActionVersioning
     }
     
     # Load all rules or filtered rules
-    $allRules = Get-ValidationRules -Config $config
+    $allRules = Get-ValidationRule -Config $config
     
     if ($Rules -and $Rules.Count -gt 0) {
         Write-Host "Filtering to specified rules: $($Rules -join ', ')"
@@ -392,7 +392,7 @@ function Test-GitHubActionVersioning
     }
     
     # Run validation rules
-    $addedIssues = Invoke-ValidationRules -State $state -Config $config -Rules $rulesToRun
+    $addedIssues = Invoke-ValidationRule -State $state -Config $config -Rules $rulesToRun
     
     Write-Host "Validation complete. Found $($state.Issues.Count) issue(s)."
     
