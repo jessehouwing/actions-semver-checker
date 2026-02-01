@@ -73,7 +73,7 @@ main.ps1 (orchestrator) → lib/*.ps1 (modules) → GitHub REST API
 | `ignore-preview-releases` | Exclude prereleases from floating version calculation | `true` |
 | `floating-versions-use` | Use `tags` or `branches` for floating versions | `tags` |
 | `auto-fix` | Automatically fix issues (requires `contents: write`) | `false` |
-| `ignore-versions` | Comma-separated list of versions to skip | `""` |
+| `ignore-versions` | Comma-separated list of versions to skip (supports wildcards like `v1.*`) | `""` |
 
 ### Input Access Pattern
 
@@ -303,11 +303,14 @@ git tag v1
 6. **PowerShell class reloading** - After editing any PowerShell class (`VersionRef`, `ReleaseInfo`, `ValidationIssue`, `RepositoryState`, `RemediationAction`, `ValidationRule`), **ALWAYS** start a fresh PowerShell terminal before running tests or validation. PowerShell creates new class definitions with different assembly versions when classes are reloaded in the same session, causing type comparison failures (`-is [ClassName]` returns false). Close the existing terminal and open a new one to ensure clean class loading.
 7. **PSScriptAnalyzer TypeNotFound warnings** - TypeNotFound warnings are expected and should be ignored. PSScriptAnalyzer is a static analyzer that examines each file independently and cannot follow dot-sourcing paths or resolve classes defined in other files. When running PSScriptAnalyzer, always filter out TypeNotFound warnings: `Invoke-ScriptAnalyzer ... | Where-Object { $_.RuleName -ne 'TypeNotFound' }`. These warnings don't indicate actual problems - the test suite validates that types are correctly defined and used.
 8. **GraphQL query field validation** - When adding new GraphQL queries or modifying existing ones, **ALWAYS** add or update a unit test in `tests/unit/GitHubApi.Tests.ps1` that validates all required fields are present in the query. This prevents runtime errors from missing fields. See the "Get-GitHubRelease GraphQL query validation" test as an example. When code relies on a GraphQL property (e.g., `IsLatest`, `immutable`), the corresponding test must verify that property is queried.
-9. **GraphQL-to-model field mapping** - When adding a new field to a GraphQL query in `lib/GitHubApi.ps1`, you **MUST** also update all code that maps the API response to domain objects. Specifically:
-   - Update `main.ps1` where `$releaseData` PSCustomObject is created (around line 213-221) to include the new field
-   - Update `lib/StateModel.ps1` if the corresponding class (e.g., `ReleaseInfo`, `VersionRef`) needs to read the new property
+9. **API functions return domain objects directly** - `Get-GitHubTag`, `Get-GitHubBranch`, and `Get-GitHubRelease` return `VersionRef[]` and `ReleaseInfo[]` objects directly, ready to assign to `$script:State`. No manual mapping in `main.ps1` is needed. When adding new fields:
+   - Update the GraphQL query in `lib/GitHubApi.ps1` to include the new field
+   - Update the `$releaseData` PSCustomObject creation within `Get-GitHubRelease` to map the field
    - The GraphQL response returns camelCase properties (e.g., `isLatest`), while REST API uses snake_case (e.g., `is_latest`). The `ReleaseInfo` constructor handles both formats.
-   - **Example**: Adding `isLatest` to GraphQL requires: (1) add to query, (2) add `isLatest = $release.isLatest` to `$releaseData` in main.ps1, (3) ensure `ReleaseInfo` constructor reads it
+10. **Ignore-versions wildcard support** - The `Test-VersionShouldBeIgnored` function in `lib/GitHubApi.ps1` uses PowerShell's `-like` operator for pattern matching. Valid patterns are validated by `Test-ValidVersionPattern` in `lib/VersionParser.ps1`:
+   - Exact versions: `v1`, `v1.0`, `v1.0.0`
+   - Wildcard patterns: `v1.*`, `v1.0.*` (matches `v1.0`, `v1.0.0`, `v1.1.0`, etc.)
+   - Note: `v1.*` does NOT match `v1` (no dot), only versions with a dot after `v1`
 
 ## Adding New Validation Rules
 

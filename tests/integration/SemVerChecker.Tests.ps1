@@ -304,9 +304,11 @@ Describe "SemVer Checker Integration Tests" {
                 NotIgnoredVersion = "v3"
             }
             @{
+                # Wildcard v1.* matches v1.0, v1.0.0, v1.1.0, etc. but NOT v1 itself
+                # So we create v1.0.0 and v1.1.0 tags, ignore with v1.*, and check v1.0.0/v1.1.0 are ignored
                 Format = "Wildcard pattern"
-                IgnoreVersions = "v1.*"
-                IgnoredVersions = @("v1")
+                IgnoreVersions = "v1.0.*,v1.1.*"
+                IgnoredVersions = @("v1.0", "v1.1")  # These map to v1.0.0 and v1.1.0 tags
                 NotIgnoredVersion = "v2"
             }
             @{

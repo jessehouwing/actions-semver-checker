@@ -162,31 +162,31 @@ Describe "Get-GitHubRelease GraphQL query validation" {
         }
     }
     
-    It "Should map GraphQL response fields to hashtable correctly" {
+    It "Should map GraphQL response fields to ReleaseInfo correctly" {
         # Read the GitHubApi.ps1 file to find the response mapping code
         $gitHubApiPath = "$PSScriptRoot/../../lib/GitHubApi.ps1"
         $gitHubApiContent = Get-Content -Path $gitHubApiPath -Raw
         
-        # Extract the hashtable creation code that maps GraphQL response to output
-        if ($gitHubApiContent -match 'foreach\s*\(\$release in \$releases\.nodes\)[^{]*\{[^@]*@\{([^}]+)\}') {
+        # Extract the releaseData creation code that maps GraphQL response to ReleaseInfo
+        if ($gitHubApiContent -match '\$releaseData\s*=\s*\[PSCustomObject\]@\{([^}]+)\}') {
             $mappingCode = $Matches[1]
             
-            # Required mappings that must be present
+            # Required mappings that must be present for ReleaseInfo constructor
             $requiredMappings = @(
+                'tag_name\s*=',
                 'id\s*=',
-                'tagName\s*=',
-                'isPrerelease\s*=',
-                'isDraft\s*=',
+                'draft\s*=',
+                'prerelease\s*=',
                 'immutable\s*=',
                 'isLatest\s*='
             )
             
             # Check each required mapping is present
             foreach ($mapping in $requiredMappings) {
-                $mappingCode | Should -Match $mapping -Because "Response mapping must include all fields returned by GraphQL query"
+                $mappingCode | Should -Match $mapping -Because "Response mapping must include all fields required by ReleaseInfo constructor"
             }
         } else {
-            throw "Could not find response mapping code in Get-GitHubRelease function"
+            throw "Could not find releaseData mapping code in Get-GitHubRelease function"
         }
     }
 }
