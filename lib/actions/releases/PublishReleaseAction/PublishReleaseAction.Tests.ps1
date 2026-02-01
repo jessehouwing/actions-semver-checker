@@ -39,7 +39,8 @@ Describe "PublishReleaseAction" {
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 1
-            $commands[0] | Should -Be "gh release edit v1.0.0 --draft=false"
+            $commands[0] | Should -Match "gh release edit v1.0.0"
+            $commands[0] | Should -Match "--repo test-owner/test-repo"
             $commands[0] | Should -Match "--draft=false"
             $commands[0] | Should -Not -Match "^#"
             $commands[0] | Should -Not -Match "# Or edit at"

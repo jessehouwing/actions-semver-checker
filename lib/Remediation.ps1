@@ -48,6 +48,33 @@ function Get-ManualInstruction {
     
     Write-Host "##[group]Manual Remediation Instructions"
     
+    # Collect all manual commands first to determine if we need clone instructions
+    $allCommands = @()
+    foreach ($issue in $issuesNeedingManualFix) {
+        if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
+            $commands = $issue.RemediationAction.GetManualCommands($State)
+            if ($commands) {
+                $allCommands += $commands
+            }
+        } elseif ($issue.ManualFixCommand) {
+            $allCommands += $issue.ManualFixCommand
+        }
+    }
+    
+    # Stop workflow commands to prevent command injection in output
+    $stopToken = [guid]::NewGuid().ToString()
+    Write-Output "::stop-commands::$stopToken"
+    
+    # If we have manual commands and repo info is available, add clone instructions at the top
+    if ($allCommands.Count -gt 0 -and $State.ServerUrl -and $State.RepoOwner -and $State.RepoName) {
+        Write-Output "# Setup - Clone the repository and fetch all tags and branches:"
+        Write-Output "git clone $($State.ServerUrl)/$($State.RepoOwner)/$($State.RepoName).git"
+        Write-Output "cd $($State.RepoName)"
+        Write-Output "git fetch --all --tags"
+        Write-Output ""
+        Write-Output "# Remediation Steps:"
+    }
+    
     if ($GroupByType) {
         # Group by action type
         $grouped = $issuesNeedingManualFix | Group-Object { 
@@ -83,9 +110,6 @@ function Get-ManualInstruction {
     }
     else {
         # List all issues with their commands - clean format without emojis
-        $stopToken = [guid]::NewGuid().ToString()
-        Write-Output "::stop-commands::$stopToken"
-        
         foreach ($issue in $issuesNeedingManualFix) {
             if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
                 $commands = $issue.RemediationAction.GetManualCommands($State)
@@ -98,9 +122,9 @@ function Get-ManualInstruction {
                 Write-Output "$($issue.ManualFixCommand)"
             }
         }
-        
-        Write-Output "::$stopToken::"
     }
+    
+    Write-Output "::$stopToken::"
     Write-Host "##[endgroup]"
 }
 
@@ -145,6 +169,33 @@ function Write-ManualInstructionsToStepSummary
     # Write to step summary
     "## Manual Remediation Required" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
     "" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+    
+    # Collect all manual commands first to determine if we need clone instructions
+    $allCommands = @()
+    foreach ($issue in $issuesNeedingManualFix) {
+        if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
+            $commands = $issue.RemediationAction.GetManualCommands($State)
+            if ($commands) {
+                $allCommands += $commands
+            }
+        } elseif ($issue.ManualFixCommand) {
+            $allCommands += $issue.ManualFixCommand
+        }
+    }
+    
+    # If we have manual commands and repo info is available, add clone instructions at the top
+    if ($allCommands.Count -gt 0 -and $State.ServerUrl -and $State.RepoOwner -and $State.RepoName) {
+        "### Setup" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        "Clone the repository and fetch all tags and branches:" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        "``````bash" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        "git clone $($State.ServerUrl)/$($State.RepoOwner)/$($State.RepoName).git" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        "cd $($State.RepoName)" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        "git fetch --all --tags" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        "``````" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        "" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        "### Remediation Steps" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+        "" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+    }
     
     foreach ($issue in $issuesNeedingManualFix) {
         $statusEmoji = if ($issue.Status -eq "failed") { "❌" } else { "⚠️" }

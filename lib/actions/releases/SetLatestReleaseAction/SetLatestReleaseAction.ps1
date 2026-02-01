@@ -56,6 +56,10 @@ class SetLatestReleaseAction : ReleaseRemediationAction {
             return @()
         }
         
-        return @("gh release edit $($this.TagName) --latest")
+        $repoArg = ""
+        if ($state.RepoOwner -and $state.RepoName) {
+            $repoArg = " --repo $($state.RepoOwner)/$($state.RepoName)"
+        }
+        return @("gh release edit $($this.TagName)$repoArg --latest")
     }
 }

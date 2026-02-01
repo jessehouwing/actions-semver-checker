@@ -41,11 +41,16 @@ class PublishReleaseAction : ReleaseRemediationAction {
             return @()
         }
         
+        $repoArg = ""
+        if ($state.RepoOwner -and $state.RepoName) {
+            $repoArg = " --repo $($state.RepoOwner)/$($state.RepoName)"
+        }
+        
         $latestArg = ""
         if ($null -ne $this.MakeLatest) {
             $latestArg = if ($this.MakeLatest) { " --latest" } else { " --latest=false" }
         }
         
-        return @("gh release edit $($this.TagName) --draft=false$latestArg")
+        return @("gh release edit $($this.TagName)$repoArg --draft=false$latestArg")
     }
 }

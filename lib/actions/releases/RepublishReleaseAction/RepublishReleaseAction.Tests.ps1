@@ -33,8 +33,13 @@ Describe "RepublishReleaseAction" {
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 2
-            $commands[0] | Should -Be "gh release edit v1.0.0 --draft=true"
-            $commands[1] | Should -Be "gh release edit v1.0.0 --draft=false"
+            $commands[0] | Should -Match "gh release edit v1.0.0"
+            $commands[0] | Should -Match "--repo test-owner/test-repo"
+            $commands[0] | Should -Match "--draft=true"
+            $commands[1] | Should -Match "gh release edit v1.0.0"
+            $commands[1] | Should -Match "--repo test-owner/test-repo"
+            $commands[1] | Should -Match "--draft=false"
+            $commands[1] | Should -Not -Match "--latest"
         }
 
         It "Should include --latest when MakeLatest is true" {
@@ -42,7 +47,9 @@ Describe "RepublishReleaseAction" {
             $action.MakeLatest = $true
             $commands = $action.GetManualCommands($script:state)
 
-            $commands[1] | Should -Be "gh release edit v1.0.0 --draft=false --latest"
+            $commands[1] | Should -Match "gh release edit v1.0.0"
+            $commands[1] | Should -Match "--repo test-owner/test-repo"
+            $commands[1] | Should -Match "--draft=false --latest"
         }
 
         It "Should include --latest=false when MakeLatest is false" {
@@ -50,7 +57,9 @@ Describe "RepublishReleaseAction" {
             $action.MakeLatest = $false
             $commands = $action.GetManualCommands($script:state)
 
-            $commands[1] | Should -Be "gh release edit v1.0.0 --draft=false --latest=false"
+            $commands[1] | Should -Match "gh release edit v1.0.0"
+            $commands[1] | Should -Match "--repo test-owner/test-repo"
+            $commands[1] | Should -Match "--draft=false --latest=false"
         }
         
         It "Should return empty array when issue is unfixable" {
