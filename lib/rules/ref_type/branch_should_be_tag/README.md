@@ -19,9 +19,21 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `floating-versions-use` | `tags` (default) | Use tags for floating version references |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `floating-versions-use` | `tags` (default) or not `branches` | Rule is enabled - versions must be tags |
+
+**Note:** Patch versions (vX.Y.Z) must always be tags. This rule also applies to floating versions (vX, vX.Y) when using tags mode.
+
+### Settings That Affect Severity
+
+Ref type violations are **always** reported as **error** (not configurable). Using the wrong reference type (tag vs branch) is a structural error that prevents the action from working correctly.
+
+| Severity | Always |
+|----------|--------|
+| **error** | ✓ |
 
 ## Manual Remediation
 

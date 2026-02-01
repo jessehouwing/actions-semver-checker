@@ -18,10 +18,27 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `floating-versions-use` | `branches` | Use branches for floating versions |
-| `ignore-preview-releases` | `true`/`false` | Whether to exclude prereleases when finding highest patch |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `floating-versions-use` | `branches` | Rule applies to branches |
+
+**Note:** Major version tracking is **always required** when using branches. This rule cannot be disabled.
+
+### Settings That Affect Severity
+
+Major version tracking is **always** reported as **error** (not configurable). Major versions are fundamental to GitHub Actions versioning - users depend on `uses: owner/repo@v1`.
+
+| Severity | Always |
+|----------|--------|
+| **error** | ✓ |
+
+### Other Relevant Settings
+
+| Input | Effect |
+|-------|--------|
+| `ignore-preview-releases` | When `true`, excludes prerelease versions from highest-patch calculation |
 
 ## Automatic Remediation
 

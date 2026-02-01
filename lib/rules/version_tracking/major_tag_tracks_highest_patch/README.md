@@ -17,10 +17,27 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `floating-versions-use` | `tags` | Use tags for floating versions (default) |
-| `ignore-preview-releases` | `true`/`false` | Whether to exclude prereleases when finding highest patch |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `floating-versions-use` | `tags` (default) or not `branches` | Rule applies to tags |
+
+**Note:** Major version tracking is **always required** when using tags. This rule cannot be disabled.
+
+### Settings That Affect Severity
+
+Major version tracking is **always** reported as **error** (not configurable). Major versions are fundamental to GitHub Actions versioning - users depend on `uses: owner/repo@v1`.
+
+| Severity | Always |
+|----------|--------|
+| **error** | ✓ |
+
+### Other Relevant Settings
+
+| Input | Effect |
+|-------|--------|
+| `ignore-preview-releases` | When `true`, excludes prerelease versions from highest-patch calculation |
 
 ## Automatic Remediation
 

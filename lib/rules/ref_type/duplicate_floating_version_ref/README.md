@@ -17,10 +17,24 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Value | Behavior |
-|-------|-------|----------|
+### Settings That Enable This Rule
+
+This rule is **always enabled** when duplicates exist. Duplicate references are always structural errors.
+
+### Settings That Affect Behavior
+
+| Input | Value | Effect |
+|-------|-------|--------|
 | `floating-versions-use` | `tags` (default) | Deletes the branch, keeps the tag |
 | `floating-versions-use` | `branches` | Deletes the tag, keeps the branch |
+
+### Settings That Affect Severity
+
+Duplicate references are **always** reported as **error** (not configurable). Having both a tag and branch with the same version name is a structural error.
+
+| Severity | Always |
+|----------|--------|
+| **error** | ✓ |
 
 ## Manual Remediation
 

@@ -20,10 +20,27 @@ This rule runs when:
 
 ## Configuration
 
-| Input | Required Value | Description |
-|-------|----------------|-------------|
-| `floating-versions-use` | `tags` | Latest must be tracked as a tag |
-| `ignore-preview-releases` | `true`/`false` | Whether to exclude prereleases when finding highest patch |
+### Settings That Enable This Rule
+
+| Input | Required Value | Effect |
+|-------|----------------|--------|
+| `floating-versions-use` | `tags` (default) or not `branches` | Rule applies to tags |
+
+**Note:** If a `latest` tag exists, this rule is always enabled. Latest tracking is **always required** when using tags.
+
+### Settings That Affect Severity
+
+Latest version tracking is **always** reported as **error** (not configurable). If a `latest` ref exists, it's a contract with users that it points to the globally highest version.
+
+| Severity | Always |
+|----------|--------|
+| **error** | ✓ |
+
+### Other Relevant Settings
+
+| Input | Effect |
+|-------|--------|
+| `ignore-preview-releases` | When `true`, excludes prerelease versions from highest-patch calculation |
 
 ## Manual Remediation
 
