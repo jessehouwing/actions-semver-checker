@@ -74,7 +74,14 @@
         'PSAvoidGlobalVars',
         
         # Some functions are script-scoped for module access
-        'PSAvoidGlobalFunctions'
+        'PSAvoidGlobalFunctions',
+        
+        # Many function names intentionally use collective nouns (Contents, Metadata)
+        # which PSScriptAnalyzer incorrectly flags as plural
+        'PSUseSingularNouns',
+        
+        # OutputType checking has false positives with PSCustomObject[] returns
+        'PSUseOutputTypeCorrectly'
         
         # Note: TypeNotFound parse errors cannot be excluded via this settings file.
         # They must be filtered at invocation time. See .github/workflows/powershell.yml

@@ -156,6 +156,37 @@
                 }
             }
             
+            # Contents API: /repos/{owner}/{repo}/contents/{path}
+            # Return 404 for action.yaml/action.yml and empty array for root directory listing
+            # (marketplace checks are disabled in most tests)
+            if ($Uri -match '/contents/action\.ya?ml') {
+                # Simulate 404 - file not found
+                $errorResponse = @{ message = "Not Found"; documentation_url = "https://docs.github.com" } | ConvertTo-Json
+                $exception = [System.Net.WebException]::new("The remote server returned an error: (404) Not Found.")
+                # Add a mock Response property
+                $exception | Add-Member -NotePropertyName Response -NotePropertyValue ([PSCustomObject]@{
+                    StatusCode = [PSCustomObject]@{ value__ = 404 }
+                }) -Force
+                throw $exception
+            }
+            
+            if ($Uri -match '/contents(\?|$)') {
+                # Root directory listing - return empty array (README check will fail gracefully)
+                return @{
+                    Content = "[]"
+                    Headers = @{}
+                }
+            }
+            
+            # Marketplace URL check (public web page, not API)
+            if ($Uri -match '/marketplace/actions/') {
+                # Return a page that doesn't indicate publication
+                return @{
+                    Content = "<html><body>Use latest version</body></html>"
+                    Headers = @{}
+                }
+            }
+            
             # Default: empty response
             return @{
                 Content = "[]"
@@ -169,6 +200,7 @@
             [string]$CheckMinorVersion = "true",
             [string]$CheckReleases = "none",
             [string]$CheckReleaseImmutability = "none",
+            [string]$CheckMarketplace = "none",
             [string]$IgnorePreviewReleases = "false",
             [string]$FloatingVersionsUse = "tags",
             [string]$AutoFix = "false",
@@ -181,6 +213,7 @@
             'check-minor-version' = $CheckMinorVersion
             'check-releases' = $CheckReleases
             'check-release-immutability' = $CheckReleaseImmutability
+            'check-marketplace' = $CheckMarketplace
             'ignore-preview-releases' = $IgnorePreviewReleases
             'floating-versions-use' = $FloatingVersionsUse
             'auto-fix' = $AutoFix
