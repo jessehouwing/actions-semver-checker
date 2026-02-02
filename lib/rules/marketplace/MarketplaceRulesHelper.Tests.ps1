@@ -42,10 +42,23 @@ Describe "ConvertTo-MarketplaceSlug" {
 }
 
 Describe "Test-MarketplaceVersionPublished" {
+    BeforeAll {
+        # Define the wrapper function so the helper uses it (and we can mock it)
+        function global:Invoke-WebRequestWrapper {
+            param($Uri, $Method, $ErrorAction, $TimeoutSec)
+            throw "Invoke-WebRequestWrapper should be mocked in tests"
+        }
+    }
+    
+    AfterAll {
+        # Clean up global function
+        Remove-Item -Path "Function:\global:Invoke-WebRequestWrapper" -ErrorAction SilentlyContinue
+    }
+    
     Context "Successful marketplace query" {
         It "should return IsPublished=true when version is published" {
-            # Mock Invoke-WebRequest to return a page showing "Use v1.0.0"
-            Mock Invoke-WebRequest {
+            # Mock Invoke-WebRequestWrapper to return a page showing "Use v1.0.0"
+            Mock Invoke-WebRequestWrapper {
                 return @{
                     Content = @"
 <html>
@@ -66,8 +79,8 @@ Describe "Test-MarketplaceVersionPublished" {
         }
         
         It "should return IsPublished=false when version shows 'latest'" {
-            # Mock Invoke-WebRequest to return a page showing "Use latest version"
-            Mock Invoke-WebRequest {
+            # Mock Invoke-WebRequestWrapper to return a page showing "Use latest version"
+            Mock Invoke-WebRequestWrapper {
                 return @{
                     Content = @"
 <html>
@@ -89,7 +102,7 @@ Describe "Test-MarketplaceVersionPublished" {
     
     Context "Network errors" {
         It "should return error when request fails with 404" {
-            Mock Invoke-WebRequest {
+            Mock Invoke-WebRequestWrapper {
                 $response = New-Object System.Net.Http.HttpResponseMessage([System.Net.HttpStatusCode]::NotFound)
                 $exception = [System.Net.Http.HttpRequestException]::new("Not Found")
                 $exception | Add-Member -NotePropertyName 'Response' -NotePropertyValue $response -Force
@@ -103,7 +116,7 @@ Describe "Test-MarketplaceVersionPublished" {
         }
         
         It "should return error with null IsPublished for network errors" {
-            Mock Invoke-WebRequest {
+            Mock Invoke-WebRequestWrapper {
                 throw [System.Net.WebException]::new("Network error")
             }
             
@@ -117,7 +130,7 @@ Describe "Test-MarketplaceVersionPublished" {
     
     Context "Custom server URL" {
         It "should use custom server URL when provided" {
-            Mock Invoke-WebRequest {
+            Mock Invoke-WebRequestWrapper {
                 return @{
                     Content = "Use v1.0.0"
                 }

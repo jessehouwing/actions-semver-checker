@@ -196,75 +196,52 @@ function Test-GitHubActionVersioning
         Microsoft.PowerShell.Utility\Write-Host @params
     }
     
-    $state = [RepositoryState]::new()
-    
     #############################################################################
-    # Resolve Repository
+    # Resolve Token (CLI-specific: try gh auth token before environment)
     #############################################################################
     
-    if (-not $Repository) {
-        $Repository = $env:GITHUB_REPOSITORY
-    }
-    
-    if (-not $Repository) {
-        Write-ActionsError -Message "Repository not specified. Provide -Repository parameter or set GITHUB_REPOSITORY environment variable." -State $state
-        if ($PassThru) {
-            return New-ErrorResult -State $state
-        }
-        return 1
-    }
-    
-    # Parse repository owner and name
-    $parts = $Repository -split '/', 2
-    if ($parts.Count -ne 2 -or -not $parts[0] -or -not $parts[1]) {
-        Write-ActionsError -Message "Invalid repository format. Expected 'owner/repo', got '$Repository'" -State $state
-        if ($PassThru) {
-            return New-ErrorResult -State $state
-        }
-        return 1
-    }
-    
-    $state.RepoOwner = $parts[0]
-    $state.RepoName = $parts[1]
-    
-    #############################################################################
-    # Resolve Token
-    #############################################################################
-    
-    if (-not $Token) {
-        # Try gh auth token first
+    $resolvedToken = $Token
+    if (-not $resolvedToken) {
+        # Try gh auth token first (CLI-specific)
         try {
             $ghToken = gh auth token 2>$null
             if ($LASTEXITCODE -eq 0 -and $ghToken) {
-                $Token = $ghToken.Trim()
+                $resolvedToken = $ghToken.Trim()
                 Write-Verbose "Using token from 'gh auth token'"
             }
         }
         catch {
             Write-Verbose "gh auth token not available or failed: $($_.Exception.Message)"
         }
-        
-        # Fallback to environment variable
-        if (-not $Token) {
-            $Token = $env:GITHUB_TOKEN
-            if ($Token) {
-                Write-Verbose "Using token from GITHUB_TOKEN environment variable"
-            }
-        }
     }
     
-    if (-not $Token) {
+    #############################################################################
+    # Initialize State using shared function
+    #############################################################################
+    
+    # Use the shared initialization function (no token masking in CLI mode)
+    $state = Initialize-RepositoryState -Repository $Repository -Token $resolvedToken -ApiUrl $ApiUrl -ServerUrl $ServerUrl -MaskToken $false
+    
+    # Validate repository was provided or resolved
+    if (-not $state.RepoOwner -or -not $state.RepoName) {
+        # Try to provide helpful error based on whether Repository param was provided
+        if (-not $Repository -and -not $env:GITHUB_REPOSITORY) {
+            Write-ActionsError -Message "Repository not specified. Provide -Repository parameter or set GITHUB_REPOSITORY environment variable." -State $state
+        }
+        else {
+            $repoValue = if ($Repository) { $Repository } else { $env:GITHUB_REPOSITORY }
+            Write-ActionsError -Message "Invalid repository format. Expected 'owner/repo', got '$repoValue'" -State $state
+        }
+        if ($PassThru) {
+            return New-ErrorResult -State $state
+        }
+        return 1
+    }
+    
+    # Warn if no token available
+    if (-not $state.Token) {
         Write-ActionsWarning -Message "No GitHub token available. API rate limits will be restrictive. Consider providing -Token or running 'gh auth login'."
     }
-    
-    $state.Token = $Token
-    
-    #############################################################################
-    # Resolve API URLs
-    #############################################################################
-    
-    $state.ApiUrl = if ($ApiUrl) { $ApiUrl } elseif ($env:GITHUB_API_URL) { $env:GITHUB_API_URL } else { "https://api.github.com" }
-    $state.ServerUrl = if ($ServerUrl) { $ServerUrl } elseif ($env:GITHUB_SERVER_URL) { $env:GITHUB_SERVER_URL } else { "https://github.com" }
     
     #############################################################################
     # Configure State
@@ -295,67 +272,19 @@ function Test-GitHubActionVersioning
     Write-Host "Fetching repository data for $Repository..."
     
     try {
-        # Fetch tags - only get semver tags (vX, vX.Y, vX.Y.Z) and 'latest'
-        Write-Verbose "Fetching tags..."
-        $tagRefs = Get-GitHubTag -State $state -Pattern "^v\d+(\.\d+){0,2}$"
-        foreach ($tagRef in $tagRefs) {
-            $vr = [VersionRef]::new($tagRef.name, "refs/tags/$($tagRef.name)", $tagRef.sha, "tag")
-            $state.Tags += $vr
-        }
-        
-        # Also fetch 'latest' tag if it exists
-        $latestTagRefs = Get-GitHubTag -State $state -Pattern "^latest$"
-        foreach ($tagRef in $latestTagRefs) {
-            $vr = [VersionRef]::new($tagRef.name, "refs/tags/$($tagRef.name)", $tagRef.sha, "tag")
-            $state.Tags += $vr
-        }
+        Initialize-RepositoryData -State $state `
+            -IgnoreVersions $IgnoreVersions `
+            -CheckMarketplace $CheckMarketplace `
+            -AutoFix $AutoFix.IsPresent `
+            -ScriptRoot "$PSScriptRoot/.."
         
         Write-Host "Found $($state.Tags.Count) version tags"
-        
-        # Fetch branches if needed
         if ($FloatingVersionsUse -eq 'branches') {
-            Write-Verbose "Fetching branches..."
-            $branchRefs = Get-GitHubBranch -State $state -Pattern "^v\d+(\.\d+){0,2}(-.*)?$"
-            foreach ($branchRef in $branchRefs) {
-                $vr = [VersionRef]::new($branchRef.name, "refs/heads/$($branchRef.name)", $branchRef.sha, "branch")
-                $state.Branches += $vr
-            }
-            
-            # Also fetch 'latest' branch if it exists
-            $latestBranchRefs = Get-GitHubBranch -State $state -Pattern "^latest$"
-            foreach ($branchRef in $latestBranchRefs) {
-                $vr = [VersionRef]::new($branchRef.name, "refs/heads/$($branchRef.name)", $branchRef.sha, "branch")
-                $state.Branches += $vr
-            }
-            
             Write-Host "Found $($state.Branches.Count) version branches"
-        }
-        
-        # Fetch releases
-        Write-Verbose "Fetching releases..."
-        $releases = Get-GitHubRelease -State $state
-        foreach ($release in $releases) {
-            # Convert the release hashtable to PSCustomObject format expected by ReleaseInfo constructor
-            $releaseData = [PSCustomObject]@{
-                tag_name = $release.tagName
-                id = $release.id
-                draft = $release.isDraft
-                prerelease = $release.isPrerelease
-                html_url = $null  # Not available from GraphQL query
-                target_commitish = $null  # Not available from GraphQL query
-                immutable = $release.immutable
-                is_latest = $release.isLatest
-            }
-            $ri = [ReleaseInfo]::new($releaseData)
-            $state.Releases += $ri
         }
         Write-Host "Found $($state.Releases.Count) releases"
         
-        # Fetch marketplace metadata if marketplace checks are enabled
-        if ($CheckMarketplace -ne 'none') {
-            Write-Verbose "Fetching marketplace metadata..."
-            $state.MarketplaceMetadata = Get-ActionMarketplaceMetadata -State $state
-            
+        if ($CheckMarketplace -ne 'none' -and $state.MarketplaceMetadata) {
             if ($state.MarketplaceMetadata.IsValid()) {
                 Write-Host "Marketplace metadata: Valid (name=$($state.MarketplaceMetadata.Name))"
             }
@@ -371,22 +300,6 @@ function Test-GitHubActionVersioning
             return New-ErrorResult -State $state
         }
         return 1
-    }
-    
-    #############################################################################
-    # Mark Ignored Versions
-    #############################################################################
-    
-    if ($IgnoreVersions.Count -gt 0) {
-        Write-Host "Ignoring versions: $($IgnoreVersions -join ', ')"
-        foreach ($versionRef in ($state.Tags + $state.Branches)) {
-            foreach ($pattern in $IgnoreVersions) {
-                if (Test-VersionMatchesPattern -Version $versionRef.Version -Pattern $pattern) {
-                    $versionRef.IsIgnored = $true
-                    break
-                }
-            }
-        }
     }
     
     #############################################################################

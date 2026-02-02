@@ -142,13 +142,6 @@ pwsh -NoProfile ./scripts/convert-to-utf8.ps1
 
 After re-encoding, run PSScriptAnalyzer to validate the repo (filter `TypeNotFound` info when desired):
 
-```powershell
-Import-Module PSScriptAnalyzer -ErrorAction Stop
-Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSScriptAnalyzerSettings.psd1 |
-        Where-Object { $_.RuleName -ne 'TypeNotFound' } |
-        Select-Object Severity,RuleName,ScriptName,Line,Message
-```
-
 ## Quick checklist for contributors
 
 - Create PowerShell files using UTF-8 with BOM encoding.
@@ -168,6 +161,5 @@ Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSScriptAnalyzerSettings.psd1
 To filter expected `TypeNotFound` warnings when invoking from CI or locally, use `Where-Object` to exclude that rule:
 
 ```powershell
-Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSScriptAnalyzerSettings.psd1 |
-    Where-Object { $_.RuleName -ne 'TypeNotFound' }
+Invoke-ScriptAnalyzer -Path "path/to/file.ps1" -Settings "./PSScriptAnalyzerSettings.psd1" | Where-Object { $_.RuleName -ne 'TypeNotFound' } | Format-Table Severity, RuleName, ScriptName, Line, Message -AutoSize
 ```

@@ -261,12 +261,33 @@ function Test-IsHighestNonPrereleaseVersion {
         [ReleaseInfo]$ReleaseInfo
     )
     
-    # Use Get-GlobalHighestPatch from ValidationRules.ps1 with prerelease exclusion
-    $highest = Get-GlobalHighestPatch -State $State -ExcludePrereleases $true
+    # Filter releases to non-draft, non-prerelease, non-ignored
+    $eligibleReleases = $State.Releases | Where-Object {
+        -not $_.IsDraft -and
+        -not $_.IsPrerelease -and
+        -not $_.IsIgnored
+    }
+    
+    if (-not $eligibleReleases -or $eligibleReleases.Count -eq 0) {
+        return $false
+    }
+    
+    # Parse versions and find highest using ConvertTo-Version from VersionParser.ps1
+    $highest = $eligibleReleases | ForEach-Object {
+        # Strip 'v' prefix and convert to version object
+        $versionString = $_.TagName -replace '^v', ''
+        $version = ConvertTo-Version -Value $versionString
+        [PSCustomObject]@{
+            Release = $_
+            Major   = $version.Major
+            Minor   = $version.Minor
+            Patch   = $version.Build  # Version uses Build for third component
+        }
+    } | Sort-Object -Property Major, Minor, Patch -Descending | Select-Object -First 1
     
     if (-not $highest) {
         return $false
     }
     
-    return $highest.Version -eq $ReleaseInfo.TagName
+    return $highest.Release.TagName -eq $ReleaseInfo.TagName
 }
