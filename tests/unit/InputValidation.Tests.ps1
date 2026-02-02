@@ -416,9 +416,10 @@ Describe "Read-ActionInput" {
             $result = Read-ActionInput -State $state
             
             $result | Should -Not -BeNullOrEmpty
-            $result.CheckMinorVersion | Should -Be "error"  # default from "true"
+            $result.CheckMinorVersion | Should -Be "error"
             $result.CheckReleases | Should -Be "error"
             $result.CheckReleaseImmutability | Should -Be "error"
+            $result.CheckMarketplace | Should -Be "error"
             $result.IgnorePreviewReleases | Should -Be $true
             $result.FloatingVersionsUse | Should -Be "tags"
             $result.AutoFix | Should -Be $false

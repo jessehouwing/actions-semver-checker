@@ -3,6 +3,7 @@
 This document provides comprehensive guidance on versioning GitHub Actions following GitHub's official best practices.
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [GitHub's Immutable Release Strategy](#githubs-immutable-release-strategy)
 - [Release Types](#release-types)
@@ -23,12 +24,14 @@ This action implements [GitHub's recommended approach](https://docs.github.com/e
 GitHub's approach uses two types of version references:
 
 ### 1. Patch Versions (v1.0.0, v1.0.1, etc.) - IMMUTABLE
+
 - **Must have a GitHub Release**
 - **Cannot be changed** once published (non-draft)
 - Provides stable, unchangeable reference points
 - Users can pin to exact versions: `uses: org/action@v1.0.0`
 
 ### 2. Floating Versions (v1, v1.0, latest) - MUTABLE
+
 - **Git tags** that point to the latest compatible patch version
 - **Updated via force push** when new patches are released
 - Allow users to get latest compatible updates automatically
@@ -41,17 +44,20 @@ GitHub's approach uses two types of version references:
 **Examples:** `v1.0.0`, `v1.0.1`, `v2.3.4`
 
 **Characteristics:**
+
 - Full semantic version with all three parts (major.minor.patch)
 - Each must have a GitHub Release
 - Releases must be published (not draft) for immutability
 - Once published, the tag cannot be moved to a different commit
 
 **When to create:**
+
 - Every release of your action
 - When you want users to be able to pin to that exact version
 - As the target for your floating version tags
 
 **How to create:**
+
 ```bash
 # Create release (preferred method - creates tag automatically)
 gh release create v1.0.0 --title "v1.0.0" --notes "Release notes here"
@@ -67,17 +73,20 @@ gh release create v1.0.0 --title "v1.0.0" --notes "Release notes here"
 **Examples:** `v1`, `v2`, `v3`
 
 **Characteristics:**
+
 - Git tag (not a release) that can be force-pushed
 - Points to the latest patch version within that major version
 - Updated when you release any new patch in that major version
 - Allows users to get all compatible updates automatically
 
 **When to update:**
+
 - After releasing any new patch version in that major version
 - Example: After releasing `v1.0.1`, update `v1` to point to it
 - Example: After releasing `v1.1.0`, update `v1` to point to it
 
 **How to update:**
+
 ```bash
 # Update v1 to point to v1.0.1
 git push origin <v1.0.1-sha>:refs/tags/v1 --force
@@ -92,17 +101,20 @@ git push origin v1 --force
 **Examples:** `v1.0`, `v1.1`, `v2.3`
 
 **Characteristics:**
+
 - Git tag (not a release) that can be force-pushed
 - Points to the latest patch within that minor version
 - Updated when you release a new patch in that minor version
 - Allows users to get bug fixes without feature changes
 
 **When to update:**
+
 - After releasing any new patch version in that minor version
 - Example: After releasing `v1.0.1`, update `v1.0` to point to it
 - Do NOT update when releasing v1.1.0 (different minor version)
 
 **How to update:**
+
 ```bash
 # Update v1.0 to point to v1.0.1
 git push origin <v1.0.1-sha>:refs/tags/v1.0 --force
@@ -113,15 +125,18 @@ git push origin <v1.0.1-sha>:refs/tags/v1.0 --force
 **Example:** `latest`
 
 **Characteristics:**
+
 - Points to the absolute latest stable release
 - Useful for users who always want the newest version
 - Can be a tag or branch depending on configuration
 
 **When to update:**
+
 - After releasing any new stable version
 - Skip if using `ignore-preview-releases` and releasing a preview
 
 **How to update:**
+
 ```bash
 # As a tag
 git push origin <v1.0.1-sha>:refs/tags/latest --force
@@ -164,6 +179,7 @@ gh release create v1.0.1 \
 ```
 
 **Alternative: Create draft first (recommended for review):**
+
 ```bash
 # Create as draft for review
 gh release create v1.0.1 --draft \
@@ -225,6 +241,7 @@ Or let it run automatically on tag push.
 ### ⚖️ The Balance
 
 By combining both:
+
 - Conservative users can pin to `v1.0.0` (never changes)
 - Trusting users can use `v1` (gets compatible updates)
 - Everyone knows what to expect based on their choice
@@ -243,6 +260,7 @@ By combining both:
 ```
 
 **Why not:**
+
 - Users don't get bug fixes automatically
 - Must change workflow for every patch release
 - Defeats the purpose of semantic versioning
@@ -250,6 +268,7 @@ By combining both:
 - Poor user experience
 
 **When it makes sense:**
+
 - Never. Even security-critical actions benefit from floating versions for patches.
 
 ### Strategy 2: Everything Mutable (NOT Recommended)
@@ -263,6 +282,7 @@ By combining both:
 ```
 
 **Why not:**
+
 - No stability guarantees
 - Can't reproduce old behavior
 - Security risk (tag manipulation)
@@ -270,6 +290,7 @@ By combining both:
 - Breaks trust with users
 
 **When it makes sense:**
+
 - Never. Always have immutable releases for patch versions.
 
 ### Strategy 3: Branch-Based Floating Versions
@@ -282,22 +303,26 @@ floating-versions-use: branches
 ```
 
 **Differences:**
+
 - `v1` is a branch instead of a tag
 - Updated via regular push (not force push)
 - Can have unique commits not in any patch version
 
 **Why it's different:**
+
 - Branches can have their own commit history
 - Can apply patches to branch without creating releases
 - Updates don't require force push
 
 **When to use:**
+
 - You need branch-specific patches
 - You want CI to run on floating version updates
 - Your organization prefers branch-based workflows
 - You have strong branch protection requirements
 
 **Trade-offs:**
+
 - More complex mental model (tags AND branches for versions)
 - Potentially confusing for users (is `v1` a tag or branch?)
 - Deviates from GitHub's standard guidance
@@ -317,6 +342,7 @@ floating-versions-use: tags             # Use tags (not branches)
 ```
 
 **Why it's recommended:**
+
 - Clear separation: releases = stable, tags = pointers
 - Aligns with GitHub's official guidance
 - Users get automatic updates when they want them
@@ -330,6 +356,7 @@ floating-versions-use: tags             # Use tags (not branches)
 **Scenario:** You have a tag `v1` but no tags like `v1.0.0`, `v1.0.1`, etc.
 
 **Why this happens:**
+
 - Often occurs when initially setting up the action
 - Tag was created manually without a corresponding release
 - Testing with sample tags
@@ -338,6 +365,7 @@ floating-versions-use: tags             # Use tags (not branches)
 
 1. Decide what commit `v1` should reference
 2. Create a proper patch version:
+
    ```bash
    # Get the SHA from the v1 tag
    SHA=$(git rev-parse v1)
@@ -351,6 +379,7 @@ floating-versions-use: tags             # Use tags (not branches)
 3. The action will now validate that `v1` points to the latest patch
 
 **Prevention:**
+
 - Always create patch versions (with releases) first
 - Then create/update floating version tags to point to them
 - Use auto-fix mode to handle this automatically

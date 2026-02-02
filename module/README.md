@@ -124,7 +124,7 @@ Test-GitHubActionVersioning -Repository 'owner/repo' `
     -CheckMinorVersion 'error' `          # error, warning, none
     -CheckReleases 'error' `              # error, warning, none
     -CheckReleaseImmutability 'error' `   # error, warning, none
-    -CheckMarketplace 'none' `            # error, warning, none
+    -CheckMarketplace 'error' `           # error, warning, none (default: error)
     -IgnorePreviewReleases $true `        # true, false
     -FloatingVersionsUse 'tags'           # tags, branches
 ```

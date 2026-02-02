@@ -167,10 +167,10 @@ function Read-ActionInput {
     }
     
     # Parse check levels
-    $checkMinorVersion = ConvertTo-CheckLevel -Value (($inputs.'check-minor-version' ?? "true") -as [string]) -Default "error"
+    $checkMinorVersion = ConvertTo-CheckLevel -Value (($inputs.'check-minor-version' ?? "error") -as [string]) -Default "error"
     $checkReleases = ConvertTo-CheckLevel -Value (($inputs.'check-releases' ?? "error") -as [string]) -Default "error"
     $checkReleaseImmutability = ConvertTo-CheckLevel -Value (($inputs.'check-release-immutability' ?? "error") -as [string]) -Default "error"
-    $checkMarketplace = ConvertTo-CheckLevel -Value (($inputs.'check-marketplace' ?? "none") -as [string]) -Default "none"
+    $checkMarketplace = ConvertTo-CheckLevel -Value (($inputs.'check-marketplace' ?? "error") -as [string]) -Default "error"
     
     # Parse boolean inputs
     $ignorePreviewReleases = (($inputs.'ignore-preview-releases' ?? "true") -as [string]).Trim() -eq "true"

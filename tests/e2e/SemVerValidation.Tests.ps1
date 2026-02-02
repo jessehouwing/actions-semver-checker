@@ -173,6 +173,7 @@
             [string]$CheckMinorVersion = "true",
             [string]$CheckReleases = "none",
             [string]$CheckReleaseImmutability = "none",
+            [string]$CheckMarketplace = "none",
             [string]$IgnorePreviewReleases = "false",
             [string]$FloatingVersionsUse = "tags",
             [string]$AutoFix = "false",
@@ -185,6 +186,7 @@
             'check-minor-version' = $CheckMinorVersion
             'check-releases' = $CheckReleases
             'check-release-immutability' = $CheckReleaseImmutability
+            'check-marketplace' = $CheckMarketplace
             'ignore-preview-releases' = $IgnorePreviewReleases
             'floating-versions-use' = $FloatingVersionsUse
             'auto-fix' = $AutoFix

@@ -66,7 +66,7 @@ The following tests are SLOW and should be run less frequently, for example befo
  Invoke-Pester -Path tests/unit -Output Detailed
  ```
 
-When ruinning the tests fom the commandline, ALWAYS use a clean PowerShell session to avoid any interference from previously loaded modules or variables.
+When running the tests fom the commandline, ALWAYS use a clean PowerShell session to avoid any interference from previously loaded modules or variables.
 
 ```powershell
 pwsh -NoProfile -Command "Invoke-Pester -Path './tests/cli/GitHubActionVersioning.Tests.ps1' -Output Detailed"

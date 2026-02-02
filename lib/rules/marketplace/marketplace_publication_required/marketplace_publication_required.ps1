@@ -60,8 +60,8 @@ $Rule_MarketplacePublicationRequired = [ValidationRule]@{
     Check = { param([ReleaseInfo]$ReleaseInfo, [RepositoryState]$State, [hashtable]$Config)
         # Query the public GitHub Marketplace to verify publication status
         $metadata = $State.MarketplaceMetadata
-        if (-not $metadata -or -not $metadata.HasName) {
-            # Can't check without the action name - skip (metadata rule will catch this)
+        if (-not $metadata -or -not $metadata.IsValid()) {
+            # Can't check without valid metadata - skip (metadata rule will catch this)
             return $true
         }
         

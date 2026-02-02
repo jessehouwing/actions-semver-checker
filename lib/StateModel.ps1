@@ -542,7 +542,7 @@ function Initialize-RepositoryData {
     [void] The function modifies the State object in place.
     
     .EXAMPLE
-    Initialize-RepositoryData -State $state -IgnoreVersions @() -CheckMarketplace 'none' -AutoFix $false
+    Initialize-RepositoryData -State $state -IgnoreVersions @() -CheckMarketplace 'error' -AutoFix $false
     #>
     [CmdletBinding()]
     [OutputType([void])]
@@ -554,7 +554,7 @@ function Initialize-RepositoryData {
         [string[]]$IgnoreVersions = @(),
         
         [Parameter()]
-        [string]$CheckMarketplace = 'none',
+        [string]$CheckMarketplace = 'error',
         
         [Parameter()]
         [bool]$AutoFix = $false,

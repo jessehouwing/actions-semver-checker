@@ -9,7 +9,7 @@ inputs:
     required: false
     default: ""
   check-minor-version:
-    description: "Configures warnings for minor versions (options: [error, warning, none, true, false], default: true maps to error)."
+    description: "Configures warnings for minor versions (options: [error, warning, none, true, false], default: error)."
     required: false
     default: "error"
   check-releases:
@@ -37,9 +37,9 @@ inputs:
     required: false
     default: ""
   check-marketplace:
-    description: "Check that action.yaml has required marketplace metadata (name, description, branding) and README.md exists (options: [error, warning, none, true, false], default: none)."
+    description: "Check that action.yaml has required marketplace metadata (name, description, branding) and README.md exists (options: [error, warning, none, true, false], default: error)."
     required: false
-    default: "none"
+    default: "error"
 
 runs:
   using: "composite"
