@@ -98,8 +98,7 @@ function Test-MarketplaceVersionPublished {
         $patterns = @(
             "data-version=[`"']$escapedVersion[`"']",     # data-version="v1.0.9" or data-version='v1.0.9'
             "value=[`"']$escapedVersion[`"']",            # value="v1.0.9"
-            "version=[`"']$escapedVersion[`"']",          # version="v1.0.9"
-            "\?version=$escapedVersion",                   # URL param ?version=v1.0.9
+            "version=[`"']$escapedVersion[`"']",          # version="v1.0.9"  
             "<option[^>]*>$escapedVersion</option>"       # <option>v1.0.9</option>
         )
         

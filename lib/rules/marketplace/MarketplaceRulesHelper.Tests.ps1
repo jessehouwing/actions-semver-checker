@@ -57,14 +57,16 @@ Describe "Test-MarketplaceVersionPublished" {
     
     Context "Successful marketplace query" {
         It "should return IsPublished=true when version is published" {
-            # Mock Invoke-WebRequestWrapper to return a page showing "Use v1.0.0"
+            # Mock Invoke-WebRequestWrapper to return a page with version in option value
             Mock Invoke-WebRequestWrapper {
                 return @{
                     Content = @"
 <html>
 <head><title>Test Action</title></head>
 <body>
-<span>Use v1.0.0</span>
+<select>
+<option value="v1.0.0">v1.0.0</option>
+</select>
 </body>
 </html>
 "@
