@@ -66,6 +66,12 @@ The following tests are SLOW and should be run less frequently, for example befo
  Invoke-Pester -Path tests/unit -Output Detailed
  ```
 
+When ruinning the tests fom the commandline, ALWAYS use a clean PowerShell session to avoid any interference from previously loaded modules or variables.
+
+```powershell
+pwsh -NoProfile -Command "Invoke-Pester -Path './tests/cli/GitHubActionVersioning.Tests.ps1' -Output Detailed"
+```
+
  **Note:** `-PassThru` must be set via `$config.Run.PassThru = $true` when using configuration objects, not as a separate parameter.
 
  Rely on the XML/JSON output files to find failing tests without having to run tests again. Instead of running the tests twice to get additional details, use result files to find the failing tests and then optionally rerun only those tests if needed.
