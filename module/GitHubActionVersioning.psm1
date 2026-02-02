@@ -47,7 +47,7 @@ function Test-GitHubActionVersioning
     
     .PARAMETER CheckMarketplace
     Check that the action has valid marketplace metadata (name, description, branding, README) and
-    that the latest release is published to the GitHub Marketplace. Values: error, warning, none. Default: none
+    that the latest release is published to the GitHub Marketplace. Values: error, warning, none. Default: error
     
     .PARAMETER IgnorePreviewReleases
     Ignore preview/pre-release versions when calculating floating versions. Default: true
@@ -125,7 +125,7 @@ function Test-GitHubActionVersioning
         
         [Parameter()]
         [ValidateSet('error', 'warning', 'none')]
-        [string]$CheckMarketplace = 'none',
+        [string]$CheckMarketplace = 'error',
         
         [Parameter()]
         [bool]$IgnorePreviewReleases = $true,

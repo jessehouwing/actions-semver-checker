@@ -30,6 +30,12 @@ You can run this action for your GitHub Action's repository to ensure the correc
     # Default: error
     check-release-immutability: 'error'
     
+    # Validate GitHub Marketplace metadata and publication
+    # Checks action.yaml has name, description, branding; README.md exists
+    # Options: error, warning, none, true, false
+    # Default: error
+    check-marketplace: 'error'
+    
     # Exclude preview/pre-release versions from floating version calculations
     # Options: true, false
     # Default: true
@@ -75,6 +81,8 @@ This strategy balances **stability** (pinned versions never change) with **conve
 - ✅ Ignore specific versions from validation (useful for legacy versions)
 - ✅ Auto-fix automatically republishes non-immutable releases to make them immutable (when `check-release-immutability` is enabled)
 - ✅ Retry logic with exponential backoff for better reliability
+- ✅ Validates GitHub Marketplace metadata (action name, description, branding, README)
+- ✅ Checks that releases are published to the GitHub Marketplace
 
 Example output:
 
@@ -143,6 +151,13 @@ The action uses a modular rule-based validation system. Each rule can be configu
 | --- | --- | --- |
 | `latest_tag_tracks_global_highest` | Ensures 'latest' tag points to the globally highest patch | [📖 Details](lib/rules/latest/latest_tag_tracks_global_highest/README.md) |
 | `latest_branch_tracks_global_highest` | Ensures 'latest' branch points to the globally highest patch | [📖 Details](lib/rules/latest/latest_branch_tracks_global_highest/README.md) |
+
+### Marketplace Rules
+
+| Rule | Description | Documentation |
+| --- | --- | --- |
+| `action_metadata_required` | Validates action.yaml has required marketplace metadata (name, description, branding) and README.md exists | [📖 Details](lib/rules/marketplace/action_metadata_required/README.md) |
+| `marketplace_publication_required` | Verifies the latest release has been published to the GitHub Marketplace | [📖 Details](lib/rules/marketplace/marketplace_publication_required/README.md) |
 
 ## Supported Auto-Fix Actions
 

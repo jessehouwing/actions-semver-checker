@@ -71,7 +71,7 @@ main.ps1 (orchestrator) → lib/*.ps1 (modules) → GitHub REST API
 | `check-minor-version` | Validate minor version tags | `error` |
 | `check-releases` | Require releases for patch versions | `error` |
 | `check-release-immutability` | Require releases to be published (not draft) | `error` |
-| `check-marketplace` | Validate marketplace metadata (name, description, branding, README) | `none` |
+| `check-marketplace` | Validate marketplace metadata (name, description, branding, README) | `error` |
 | `ignore-preview-releases` | Exclude prereleases from floating version calculation | `true` |
 | `floating-versions-use` | Use `tags` or `branches` for floating versions | `tags` |
 | `auto-fix` | Automatically fix issues (requires `contents: write`) | `false` |
@@ -294,6 +294,13 @@ git tag v1
         Invoke-Pester -Path ./tests -Output Detailed
         ```
 - Reuse the same log paths across runs so Copilot can read previous failures directly.
+
+
+IMPORTANT: When running the tests fom the commandline, ALWAYS use a clean PowerShell session to avoid any interference from previously loaded modules or variables.
+
+```powershell
+pwsh -NoProfile -Command "Invoke-Pester -Path './tests/cli/GitHubActionVersioning.Tests.ps1' -Output Detailed"
+```
 
 ## Critical Conventions
 
