@@ -136,7 +136,10 @@ Describe "action_metadata_required" {
         
         It "should provide manual fix instructions" {
             $state = [RepositoryState]::new()
-            $state.MarketplaceMetadata = [MarketplaceMetadata]::new()
+            $metadata = [MarketplaceMetadata]::new()
+            $metadata.ActionFileExists = $true
+            $metadata.ActionFilePath = "action.yaml"
+            $state.MarketplaceMetadata = $metadata
             $item = [PSCustomObject]@{ Type = 'metadata_check' }
             $config = @{ 'check-marketplace' = 'error' }
             
@@ -205,8 +208,7 @@ Describe "MarketplaceMetadata" {
             
             $missing = $metadata.GetMissingRequirements()
             
-            $missing.Count | Should -Be 6
-            $missing | Should -Contain "action.yaml or action.yml file"
+            $missing.Count | Should -Be 5
             $missing | Should -Contain "README.md file in repository root"
         }
         

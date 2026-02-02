@@ -68,48 +68,35 @@ $Rule_ActionMetadataRequired = [ValidationRule]@{
 # Missing marketplace metadata. Please add the following to your repository:
 
 "@
-        
-        if (-not $metadata.ActionFileExists) {
+
+
+        if (-not $metadata.HasName) {
+            $issue.ManualFixCommand += "`n# Add 'name' property to $($metadata.ActionFilePath)"
+        }
+        if (-not $metadata.HasDescription) {
+            $issue.ManualFixCommand += "`n# Add 'description' property to $($metadata.ActionFilePath)"
+        }
+        if (-not $metadata.HasBrandingIcon -or -not $metadata.HasBrandingColor) {
             $issue.ManualFixCommand += @"
 
-# Create action.yaml with required fields:
-cat > action.yaml << 'EOF'
-name: 'Your Action Name'
-description: 'A brief description of what your action does'
-branding:
-  icon: 'check-circle'  # See: https://feathericons.com/
-  color: 'blue'         # Options: white, yellow, blue, green, orange, red, purple, gray-dark
-
-# ... rest of your action configuration
-EOF
-"@
-        } else {
-            if (-not $metadata.HasName) {
-                $issue.ManualFixCommand += "`n# Add 'name' property to $($metadata.ActionFilePath)"
-            }
-            if (-not $metadata.HasDescription) {
-                $issue.ManualFixCommand += "`n# Add 'description' property to $($metadata.ActionFilePath)"
-            }
-            if (-not $metadata.HasBrandingIcon -or -not $metadata.HasBrandingColor) {
-                $issue.ManualFixCommand += @"
-
 # Add branding section to $($metadata.ActionFilePath):
-branding:
-  icon: 'check-circle'  # See: https://feathericons.com/
-  color: 'blue'         # Options: white, yellow, blue, green, orange, red, purple, gray-dark
+# branding:
+#   icon: 'check-circle'  # See: https://feathericons.com/
+#   color: 'blue'         # Options: white, yellow, blue, green, orange, red, purple, gray-dark
 "@
-            }
         }
-        
+
+
         if (-not $metadata.ReadmeExists) {
             $issue.ManualFixCommand += @"
 
 # Create README.md in the repository root with documentation for your action
 "@
         }
-        
+
         return $issue
     }
+
 }
 
 # Export the rule
