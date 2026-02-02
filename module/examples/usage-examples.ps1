@@ -106,14 +106,33 @@ Write-Host "Configuration options:" -ForegroundColor Yellow
 Write-Host "  - CheckMinorVersion: error, warning, none"
 Write-Host "  - CheckReleases: error, warning, none"
 Write-Host "  - CheckReleaseImmutability: error, warning, none"
+Write-Host "  - CheckMarketplace: error, warning, none"
 Write-Host "  - IgnorePreviewReleases: true, false"
 Write-Host "  - FloatingVersionsUse: tags, branches"
 Write-Host ""
 
 #############################################################################
-# Example 7: CI/CD Integration
+# Example 7: Marketplace Validation
 #############################################################################
-Write-Host "Example 7: CI/CD pipeline integration" -ForegroundColor Green
+Write-Host "Example 7: Validate marketplace publication" -ForegroundColor Green
+Write-Host @"
+Command:
+  Test-GitHubActionVersioning -Repository 'owner/repo' -CheckMarketplace 'warning'
+"@ -ForegroundColor Gray
+Write-Host ""
+
+Write-Host "Marketplace validation checks:" -ForegroundColor Yellow
+Write-Host "  - action.yaml exists with: name, description, branding.icon, branding.color"
+Write-Host "  - README.md exists in repository root"
+Write-Host "  - Latest release is published to GitHub Marketplace"
+Write-Host ""
+Write-Host "Note: Publishing to the marketplace must be done manually via GitHub UI." -ForegroundColor Red
+Write-Host ""
+
+#############################################################################
+# Example 8: CI/CD Integration
+#############################################################################
+Write-Host "Example 8: CI/CD pipeline integration" -ForegroundColor Green
 Write-Host @"
 # In a CI/CD script:
 `$result = Test-GitHubActionVersioning -Repository `$env:GITHUB_REPOSITORY -PassThru
@@ -134,9 +153,9 @@ Write-Host "✅ All validations passed!"
 Write-Host ""
 
 #############################################################################
-# Example 8: Token Authentication
+# Example 9: Token Authentication
 #############################################################################
-Write-Host "Example 8: Token authentication options" -ForegroundColor Green
+Write-Host "Example 9: Token authentication options" -ForegroundColor Green
 Write-Host ""
 
 Write-Host "Option 1: Explicit token parameter" -ForegroundColor Yellow

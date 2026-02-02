@@ -36,6 +36,10 @@ inputs:
     description: "Comma-separated list of versions to ignore during validation (e.g., 'v1.0.0,v2.0.0'). Useful for skipping legacy or problematic versions."
     required: false
     default: ""
+  check-marketplace:
+    description: "Check that action.yaml has required marketplace metadata (name, description, branding) and README.md exists (options: [error, warning, none, true, false], default: none)."
+    required: false
+    default: "none"
 
 runs:
   using: "composite"

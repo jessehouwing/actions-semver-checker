@@ -124,9 +124,27 @@ Test-GitHubActionVersioning -Repository 'owner/repo' `
     -CheckMinorVersion 'error' `          # error, warning, none
     -CheckReleases 'error' `              # error, warning, none
     -CheckReleaseImmutability 'error' `   # error, warning, none
+    -CheckMarketplace 'none' `            # error, warning, none
     -IgnorePreviewReleases $true `        # true, false
     -FloatingVersionsUse 'tags'           # tags, branches
 ```
+
+### Marketplace Validation
+
+Check that the action has valid marketplace metadata and is published:
+
+```powershell
+# Validate marketplace requirements (as warnings)
+Test-GitHubActionVersioning -Repository 'owner/repo' -CheckMarketplace 'warning'
+
+# Fail if marketplace requirements are not met
+Test-GitHubActionVersioning -Repository 'owner/repo' -CheckMarketplace 'error'
+```
+
+Marketplace validation checks:
+- `action.yaml` exists with required fields: name, description, branding.icon, branding.color
+- `README.md` exists in the repository root
+- Latest release is published to GitHub Marketplace
 
 ## Examples
 

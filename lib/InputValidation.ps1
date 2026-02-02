@@ -170,6 +170,7 @@ function Read-ActionInput {
     $checkMinorVersion = ConvertTo-CheckLevel -Value (($inputs.'check-minor-version' ?? "true") -as [string]) -Default "error"
     $checkReleases = ConvertTo-CheckLevel -Value (($inputs.'check-releases' ?? "error") -as [string]) -Default "error"
     $checkReleaseImmutability = ConvertTo-CheckLevel -Value (($inputs.'check-release-immutability' ?? "error") -as [string]) -Default "error"
+    $checkMarketplace = ConvertTo-CheckLevel -Value (($inputs.'check-marketplace' ?? "none") -as [string]) -Default "none"
     
     # Parse boolean inputs
     $ignorePreviewReleases = (($inputs.'ignore-preview-releases' ?? "true") -as [string]).Trim() -eq "true"
@@ -191,6 +192,7 @@ function Read-ActionInput {
         CheckMinorVersion        = $checkMinorVersion
         CheckReleases            = $checkReleases
         CheckReleaseImmutability = $checkReleaseImmutability
+        CheckMarketplace         = $checkMarketplace
         IgnorePreviewReleases    = $ignorePreviewReleases
         FloatingVersionsUse      = $floatingVersionsUse
         AutoFix                  = $autoFix
@@ -232,6 +234,10 @@ function Test-ActionInput {
         $errors += "::error title=Invalid configuration::check-release-immutability must be 'error', 'warning', 'none', 'true', or 'false', got '$($Config.CheckReleaseImmutability)'"
     }
     
+    if ($Config.CheckMarketplace -notin @("error", "warning", "none")) {
+        $errors += "::error title=Invalid configuration::check-marketplace must be 'error', 'warning', 'none', 'true', or 'false', got '$($Config.CheckMarketplace)'"
+    }
+    
     if ($Config.FloatingVersionsUse -notin @("tags", "branches")) {
         $errors += "::error title=Invalid configuration::floating-versions-use must be either 'tags' or 'branches', got '$($Config.FloatingVersionsUse)'"
     }
@@ -257,6 +263,7 @@ function Write-InputDebugInfo {
     Write-Host "::debug::check-minor-version: $($Config.CheckMinorVersion)"
     Write-Host "::debug::check-releases: $($Config.CheckReleases)"
     Write-Host "::debug::check-release-immutability: $($Config.CheckReleaseImmutability)"
+    Write-Host "::debug::check-marketplace: $($Config.CheckMarketplace)"
     Write-Host "::debug::ignore-preview-releases: $($Config.IgnorePreviewReleases)"
     Write-Host "::debug::floating-versions-use: $($Config.FloatingVersionsUse)"
     Write-Host "::debug::ignore-versions: $($Config.IgnoreVersions -join ', ')"

@@ -251,4 +251,66 @@ Describe "Helper functions" {
             $result.Version | Should -Be "v3.1"
         }
     }
+
+    Context "Get-GlobalHighestPatch" {
+        It "returns highest patch across all major versions" {
+            $state = [RepositoryState]::new()
+            $v100 = [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "sha100", "tag")
+            $v150 = [VersionRef]::new("v1.5.0", "refs/tags/v1.5.0", "sha150", "tag")
+            $v200 = [VersionRef]::new("v2.0.0", "refs/tags/v2.0.0", "sha200", "tag")
+            $v211 = [VersionRef]::new("v2.1.1", "refs/tags/v2.1.1", "sha211", "tag")
+            
+            $state.Tags = @($v100, $v150, $v200, $v211)
+            
+            $result = Get-GlobalHighestPatch -State $state
+            $result.Version | Should -Be "v2.1.1"
+        }
+
+        It "excludes prereleases when requested" {
+            $state = [RepositoryState]::new()
+            $v100 = [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "sha100", "tag")
+            $v200 = [VersionRef]::new("v2.0.0", "refs/tags/v2.0.0", "sha200", "tag")
+            $v300 = [VersionRef]::new("v3.0.0", "refs/tags/v3.0.0", "sha300", "tag")
+            
+            # Mark v3.0.0 as prerelease via its release
+            $release300 = [ReleaseInfo]::new([PSCustomObject]@{
+                    tag_name = "v3.0.0"
+                    id = 300
+                    draft = $false
+                    prerelease = $true
+                    html_url = "https://example.com"
+                    immutable = $false
+                })
+            
+            $state.Tags = @($v100, $v200, $v300)
+            $state.Releases = @($release300)
+            
+            $result = Get-GlobalHighestPatch -State $state -ExcludePrereleases $true
+            $result.Version | Should -Be "v2.0.0"
+            
+            $result = Get-GlobalHighestPatch -State $state -ExcludePrereleases $false
+            $result.Version | Should -Be "v3.0.0"
+        }
+
+        It "returns null when no patches exist" {
+            $state = [RepositoryState]::new()
+            $v1 = [VersionRef]::new("v1", "refs/tags/v1", "sha1", "tag")
+            $state.Tags = @($v1)
+            
+            $result = Get-GlobalHighestPatch -State $state
+            $result | Should -BeNull
+        }
+
+        It "skips ignored versions" {
+            $state = [RepositoryState]::new()
+            $v100 = [VersionRef]::new("v1.0.0", "refs/tags/v1.0.0", "sha100", "tag")
+            $v200 = [VersionRef]::new("v2.0.0", "refs/tags/v2.0.0", "sha200", "tag")
+            $v200.IsIgnored = $true
+            
+            $state.Tags = @($v100, $v200)
+            
+            $result = Get-GlobalHighestPatch -State $state
+            $result.Version | Should -Be "v1.0.0"
+        }
+    }
 }

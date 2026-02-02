@@ -238,6 +238,7 @@ Describe "Test-ActionInput" {
                 CheckMinorVersion        = "error"
                 CheckReleases            = "warning"
                 CheckReleaseImmutability = "none"
+                CheckMarketplace         = "none"
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
@@ -255,6 +256,7 @@ Describe "Test-ActionInput" {
                 CheckMinorVersion        = $Value
                 CheckReleases            = "error"
                 CheckReleaseImmutability = "error"
+                CheckMarketplace         = "none"
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
@@ -267,6 +269,7 @@ Describe "Test-ActionInput" {
                 CheckMinorVersion        = "error"
                 CheckReleases            = "error"
                 CheckReleaseImmutability = "error"
+                CheckMarketplace         = "none"
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
@@ -279,6 +282,7 @@ Describe "Test-ActionInput" {
                 CheckMinorVersion        = "error"
                 CheckReleases            = "error"
                 CheckReleaseImmutability = "error"
+                CheckMarketplace         = "none"
                 FloatingVersionsUse      = "branches"
             }
             # Force array context to handle PowerShell's scalar unboxing
@@ -293,6 +297,7 @@ Describe "Test-ActionInput" {
                 CheckMinorVersion        = "invalid"
                 CheckReleases            = "error"
                 CheckReleaseImmutability = "error"
+                CheckMarketplace         = "none"
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
@@ -308,6 +313,7 @@ Describe "Test-ActionInput" {
                 CheckMinorVersion        = "error"
                 CheckReleases            = "bad"
                 CheckReleaseImmutability = "error"
+                CheckMarketplace         = "none"
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
@@ -323,6 +329,7 @@ Describe "Test-ActionInput" {
                 CheckMinorVersion        = "error"
                 CheckReleases            = "error"
                 CheckReleaseImmutability = "invalid"
+                CheckMarketplace         = "none"
                 FloatingVersionsUse      = "tags"
             }
             # Force array context to handle PowerShell's scalar unboxing
@@ -338,6 +345,7 @@ Describe "Test-ActionInput" {
                 CheckMinorVersion        = "error"
                 CheckReleases            = "error"
                 CheckReleaseImmutability = "error"
+                CheckMarketplace         = "none"
                 FloatingVersionsUse      = "invalid"
             }
             # Force array context to handle PowerShell's scalar unboxing
@@ -353,11 +361,12 @@ Describe "Test-ActionInput" {
                 CheckMinorVersion        = "bad1"
                 CheckReleases            = "bad2"
                 CheckReleaseImmutability = "bad3"
-                FloatingVersionsUse      = "bad4"
+                CheckMarketplace         = "bad4"
+                FloatingVersionsUse      = "bad5"
             }
             # Force array context to handle PowerShell's scalar unboxing
             $errors = @(Test-ActionInput -Config $config)
-            $errors.Count | Should -Be 4
+            $errors.Count | Should -Be 5
         }
     }
 }
