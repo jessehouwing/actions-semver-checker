@@ -90,23 +90,24 @@ function Test-MarketplaceVersionPublished {
         # Get content - handle both raw response and wrapped response
         $content = if ($response.Content) { $response.Content } else { $response }
         
-        # Check if the page shows "Use {version}" which indicates the version is published
-        # When not published, it shows "Use latest version" instead
-        $escapedVersion = [regex]::Escape($Version)
-        
-        # Try multiple patterns to match different GitHub Marketplace UI formats
-        $patterns = @(
-            "data-version=[`"']$escapedVersion[`"']",     # data-version="v1.0.9" or data-version='v1.0.9'
-            "value=[`"']$escapedVersion[`"']",            # value="v1.0.9"
-            "version=[`"']$escapedVersion[`"']",          # version="v1.0.9"  
-            "<option[^>]*>$escapedVersion</option>"       # <option>v1.0.9</option>
-        )
-        
+        # Primary method: Parse the embedded JSON data from the React app
+        # The page contains: <script type="application/json" data-target="react-app.embeddedData">
+        # with releaseData.releases[] containing all published versions
         $isPublished = $false
-        foreach ($pattern in $patterns) {
-            if ($content -match $pattern) {
-                $isPublished = $true
-                break
+        
+        if ($content -match '<script[^>]+data-target="react-app\.embeddedData"[^>]*>([^<]+)</script>') {
+            try {
+                $embeddedJson = $Matches[1]
+                $embeddedData = $embeddedJson | ConvertFrom-Json
+                $releases = $embeddedData.payload.releaseData.releases
+                
+                if ($releases) {
+                    # Check if the version appears in the releases array
+                    $isPublished = ($releases | Where-Object { $_.tagName -eq $Version }).Count -gt 0
+                }
+            }
+            catch {
+                Write-Host "::debug::Failed to parse embedded JSON: $_"
             }
         }
         
