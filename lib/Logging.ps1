@@ -5,6 +5,28 @@
 # injection protection for GitHub Actions.
 #############################################################################
 
+function Write-DebugLog
+{
+    <#
+    .SYNOPSIS
+    Writes a debug message that works both locally and in GitHub Actions.
+    
+    .PARAMETER Message
+    The debug message to output.
+    #>
+    param(
+        [string]$Message
+    )
+    
+    # In GitHub Actions, use ::debug:: prefix
+    # Locally, always show the message for troubleshooting
+    if ($env:GITHUB_ACTIONS -eq 'true') {
+        Write-Host "::debug::$Message"
+    } else {
+        Write-Host "[DEBUG] $Message" -ForegroundColor Cyan
+    }
+}
+
 function Write-SafeOutput
 {
     param(

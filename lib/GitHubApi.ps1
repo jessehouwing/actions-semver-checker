@@ -1545,7 +1545,6 @@ function Get-GitHubDirectoryContents {
         if ($content -isnot [array]) {
             # Single item returned - might be a file, not a directory
             if ($content.type -eq 'file') {
-                Write-Host "::debug::Path $Path is a file, not a directory"
                 return @()
             }
             $content = @($content)

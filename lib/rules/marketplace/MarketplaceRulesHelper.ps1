@@ -78,8 +78,6 @@ function Test-MarketplaceVersionPublished {
     $marketplaceUrl = "$ServerUrl/marketplace/actions/$slug"
     $versionUrl = "$marketplaceUrl`?version=$Version"
     
-    Write-Host "::debug::Checking marketplace publication: $versionUrl"
-    
     try {
         # Use Invoke-WebRequestWrapper if available (for testability)
         $response = $null
@@ -95,9 +93,23 @@ function Test-MarketplaceVersionPublished {
         # Check if the page shows "Use {version}" which indicates the version is published
         # When not published, it shows "Use latest version" instead
         $escapedVersion = [regex]::Escape($Version)
-        $isPublished = $content -match "Use\s+$escapedVersion\b"
         
-        Write-Host "::debug::Marketplace check result: IsPublished=$isPublished for $Version"
+        # Try multiple patterns to match different GitHub Marketplace UI formats
+        $patterns = @(
+            "data-version=[`"']$escapedVersion[`"']",     # data-version="v1.0.9" or data-version='v1.0.9'
+            "value=[`"']$escapedVersion[`"']",            # value="v1.0.9"
+            "version=[`"']$escapedVersion[`"']",          # version="v1.0.9"
+            "\?version=$escapedVersion",                   # URL param ?version=v1.0.9
+            "<option[^>]*>$escapedVersion</option>"       # <option>v1.0.9</option>
+        )
+        
+        $isPublished = $false
+        foreach ($pattern in $patterns) {
+            if ($content -match $pattern) {
+                $isPublished = $true
+                break
+            }
+        }
         
         return [PSCustomObject]@{
             IsPublished = $isPublished
@@ -110,8 +122,6 @@ function Test-MarketplaceVersionPublished {
         if ($_.Exception.Response) {
             $statusCode = [int]$_.Exception.Response.StatusCode
         }
-        
-        Write-Host "::debug::Marketplace check failed: $($_.Exception.Message) (StatusCode: $statusCode)"
         
         # If we get a 404, the action is not in the marketplace at all
         if ($statusCode -eq 404) {
@@ -207,29 +217,38 @@ function Get-ActionMarketplaceMetadata {
         }
         
         # Extract 'branding.icon' property
-        # Look for branding section followed by icon property
-        if ($actionContent -match '(?ms)^branding:\s*[\r\n]+\s+icon:\s*[''"]?([^''"#\r\n]+)[''"]?') {
-            $metadata.BrandingIcon = $matches[1].Trim()
-            $metadata.HasBrandingIcon = $metadata.BrandingIcon.Length -gt 0
-        }
-        
-        # Extract 'branding.color' property
-        if ($actionContent -match '(?ms)^branding:\s*[\r\n]+(?:.*[\r\n]+)*?\s+color:\s*[''"]?([^''"#\r\n]+)[''"]?') {
-            $metadata.BrandingColor = $matches[1].Trim()
-            $metadata.HasBrandingColor = $metadata.BrandingColor.Length -gt 0
+        # Split into lines and look for icon after branding section
+        $lines = $actionContent -split '[\r\n]+'
+        $inBranding = $false
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^\s*branding:\s*$') {
+                $inBranding = $true
+                continue
+            }
+            if ($inBranding) {
+                # Check if we're still in branding section (indented lines)
+                if ($lines[$i] -match '^\s{2,}icon:\s*[''"]?([^''"#]+)[''"]?\s*$') {
+                    $metadata.BrandingIcon = $matches[1].Trim()
+                    $metadata.HasBrandingIcon = $metadata.BrandingIcon.Length -gt 0
+                }
+                elseif ($lines[$i] -match '^\s{2,}color:\s*[''"]?([^''"#]+)[''"]?\s*$') {
+                    $metadata.BrandingColor = $matches[1].Trim()
+                    $metadata.HasBrandingColor = $metadata.BrandingColor.Length -gt 0
+                }
+                elseif ($lines[$i] -match '^\S' -and $lines[$i] -notmatch '^\s*$') {
+                    # Non-indented non-empty line = end of branding section
+                    break
+                }
+            }
         }
     }
     
     # Check for README.md using directory listing (single API call with case-insensitive local match)
-    Write-Host "::debug::Listing root directory to find README..."
     $rootContents = Get-GitHubDirectoryContents -State $State -Ref $Ref
     $readmeFile = $rootContents | Where-Object { $_.Type -eq 'file' -and $_.Name -match '^readme(\.md)?$' } | Select-Object -First 1
     if ($readmeFile) {
         $metadata.ReadmeExists = $true
-        Write-Host "::debug::Found $($readmeFile.Name)"
     }
-    
-    Write-Host "::debug::Marketplace metadata: $($metadata.ToString())"
     
     return $metadata
 }
