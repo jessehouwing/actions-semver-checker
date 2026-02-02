@@ -110,8 +110,8 @@ class MarketplaceMetadata {
     }
     
     [bool] IsValid() {
-        return $this.ActionFileExists -and $this.HasName -and $this.HasDescription -and 
-               $this.HasBrandingIcon -and $this.HasBrandingColor -and $this.ReadmeExists
+        return $this.ActionFileExists -and $this.HasName -and $this.HasDescription `
+            -and $this.HasBrandingIcon -and $this.HasBrandingColor -and $this.ReadmeExists
     }
     
     [string[]] GetMissingRequirements() {
@@ -381,6 +381,274 @@ class RepositoryState {
     
     [ReleaseInfo]FindRelease([string]$tagName) {
         return $this.Releases | Where-Object { $_.TagName -eq $tagName } | Select-Object -First 1
+    }
+}
+
+#############################################################################
+# State Initialization Functions
+#############################################################################
+
+function Initialize-RepositoryState {
+    <#
+    .SYNOPSIS
+    Initializes a RepositoryState object with common configuration from environment variables.
+    
+    .DESCRIPTION
+    Creates and configures a RepositoryState object with:
+    - API URLs from environment variables (GITHUB_API_URL, GITHUB_SERVER_URL) or defaults
+    - Token from environment variable (GITHUB_TOKEN)
+    - Repository owner/name parsed from GITHUB_REPOSITORY
+    
+    This function consolidates initialization logic shared between the GitHub Action 
+    entry point (main.ps1) and the CLI module (GitHubActionVersioning.psm1).
+    
+    .PARAMETER Repository
+    Optional repository in format 'owner/repo'. If not provided, uses GITHUB_REPOSITORY 
+    environment variable.
+    
+    .PARAMETER Token
+    Optional GitHub token for API access. If not provided, uses GITHUB_TOKEN environment 
+    variable. For CLI usage, the caller may also try 'gh auth token' before calling this.
+    
+    .PARAMETER ApiUrl
+    Optional GitHub API URL. If not provided, uses GITHUB_API_URL environment variable 
+    or defaults to https://api.github.com.
+    
+    .PARAMETER ServerUrl
+    Optional GitHub server URL. If not provided, uses GITHUB_SERVER_URL environment 
+    variable or defaults to https://github.com.
+    
+    .PARAMETER MaskToken
+    If true (default for GitHub Actions context), emits ::add-mask:: for the token.
+    Set to false for CLI usage where workflow commands aren't appropriate.
+    
+    .OUTPUTS
+    [RepositoryState] A new RepositoryState instance with basic configuration applied.
+    
+    .EXAMPLE
+    # GitHub Actions context (uses environment variables)
+    $state = Initialize-RepositoryState
+    
+    .EXAMPLE
+    # CLI context with explicit parameters
+    $state = Initialize-RepositoryState -Repository 'owner/repo' -Token $myToken -MaskToken:$false
+    #>
+    [CmdletBinding()]
+    [OutputType([RepositoryState])]
+    param(
+        [Parameter()]
+        [string]$Repository,
+        
+        [Parameter()]
+        [string]$Token,
+        
+        [Parameter()]
+        [string]$ApiUrl,
+        
+        [Parameter()]
+        [string]$ServerUrl,
+        
+        [Parameter()]
+        [bool]$MaskToken = $true
+    )
+    
+    # Create new state instance
+    $state = [RepositoryState]::new()
+    
+    # Set API URLs (parameter > environment > default)
+    if ($ApiUrl) {
+        $state.ApiUrl = $ApiUrl
+    }
+    elseif ($env:GITHUB_API_URL) {
+        $state.ApiUrl = $env:GITHUB_API_URL
+    }
+    else {
+        $state.ApiUrl = "https://api.github.com"
+    }
+    
+    if ($ServerUrl) {
+        $state.ServerUrl = $ServerUrl
+    }
+    elseif ($env:GITHUB_SERVER_URL) {
+        $state.ServerUrl = $env:GITHUB_SERVER_URL
+    }
+    else {
+        $state.ServerUrl = "https://github.com"
+    }
+    
+    # Set token (parameter > environment > empty)
+    if ($Token) {
+        $state.Token = $Token
+    }
+    elseif ($env:GITHUB_TOKEN) {
+        $state.Token = $env:GITHUB_TOKEN
+    }
+    else {
+        $state.Token = ""
+    }
+    
+    # SECURITY: Mask the token to prevent accidental exposure in logs
+    # Only do this in GitHub Actions context (MaskToken = true)
+    if ($MaskToken -and $state.Token) {
+        Write-Host "::add-mask::$($state.Token)"
+    }
+    
+    # Parse repository owner and name
+    $repoToUse = if ($Repository) { $Repository } else { $env:GITHUB_REPOSITORY }
+    
+    if ($repoToUse) {
+        $parts = $repoToUse -split '/', 2
+        if ($parts.Count -eq 2 -and $parts[0] -and $parts[1]) {
+            $state.RepoOwner = $parts[0]
+            $state.RepoName = $parts[1]
+        }
+    }
+    
+    return $state
+}
+
+function Initialize-RepositoryData {
+    <#
+    .SYNOPSIS
+    Populates a RepositoryState object with repository data (tags, branches, releases, marketplace metadata).
+    
+    .DESCRIPTION
+    Fetches and populates the RepositoryState with:
+    - Version tags and 'latest' tag from GitHub API
+    - Version branches and 'latest' branch from GitHub API
+    - GitHub releases with prerelease/draft/immutability metadata
+    - Marketplace metadata (action.yaml, README) when marketplace checks are enabled
+    
+    This function consolidates data fetching logic from main.ps1 to enable reuse
+    and keep the main script focused on validation logic.
+    
+    .PARAMETER State
+    The RepositoryState object to populate with data.
+    
+    .PARAMETER IgnoreVersions
+    Array of version patterns to ignore (supports wildcards like 'v1.*').
+    
+    .PARAMETER CheckMarketplace
+    The marketplace check level ('none', 'warn', 'error'). When not 'none', 
+    marketplace metadata will be fetched.
+    
+    .PARAMETER AutoFix
+    If true, outputs debug information about required permissions.
+    
+    .PARAMETER ScriptRoot
+    The root path for loading additional modules (e.g., MarketplaceRulesHelper.ps1).
+    Required when CheckMarketplace is not 'none'.
+    
+    .OUTPUTS
+    [void] The function modifies the State object in place.
+    
+    .EXAMPLE
+    Initialize-RepositoryData -State $state -IgnoreVersions @() -CheckMarketplace 'none' -AutoFix $false
+    #>
+    [CmdletBinding()]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        
+        [Parameter()]
+        [string[]]$IgnoreVersions = @(),
+        
+        [Parameter()]
+        [string]$CheckMarketplace = 'none',
+        
+        [Parameter()]
+        [bool]$AutoFix = $false,
+        
+        [Parameter()]
+        [string]$ScriptRoot
+    )
+    
+    #############################################################################
+    # Fetch tags and branches via GitHub API
+    #############################################################################
+    
+    Write-Host "::debug::Fetching tags from GitHub API..."
+    $apiTags = Get-GitHubTag -State $State -Pattern "^v\d+(\.\d+){0,2}$" -IgnoreVersions $IgnoreVersions
+    $tags = $apiTags | ForEach-Object { $_.Version }
+    Write-Host "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
+    
+    Write-Host "::debug::Fetching branches from GitHub API..."
+    $apiBranches = Get-GitHubBranch -State $State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$" -IgnoreVersions $IgnoreVersions
+    $branches = $apiBranches | ForEach-Object { $_.Version }
+    Write-Host "::debug::Found $($branches.Count) version branches: $($branches -join ', ')"
+    
+    # Also fetch latest tag and branch via API (for 'latest' alias validation)
+    $apiLatestTag = Get-GitHubTag -State $State -Pattern "^latest$"
+    $apiLatestBranch = Get-GitHubBranch -State $State -Pattern "^latest$"
+    
+    #############################################################################
+    # Fetch releases
+    #############################################################################
+    
+    # Get repository info for URLs
+    $repoInfo = Get-GitHubRepoInfo -State $State
+    
+    if ($AutoFix -and $repoInfo) {
+        Write-Host "::debug::Auto-fix is enabled. Ensure your workflow has 'contents: write' permission."
+        Write-Host "::debug::Example workflow permissions:"
+        Write-Host "::debug::  permissions:"
+        Write-Host "::debug::    contents: write"
+    }
+    
+    # Get GitHub releases - returns ReleaseInfo[] directly with IsIgnored set
+    $releases = @()
+    if ($repoInfo) {
+        $releases = Get-GitHubRelease -State $State -IgnoreVersions $IgnoreVersions
+        Write-Host "::debug::Found $($releases.Count) releases: $(($releases | ForEach-Object { $_.TagName + $(if ($_.IsDraft) { ' (draft)' } else { '' }) }) -join ', ')"
+    }
+    
+    #############################################################################
+    # Populate State Model
+    #############################################################################
+    
+    # Populate State.Tags from API response (already VersionRef objects)
+    $State.Tags = $apiTags
+    foreach ($tag in $State.Tags) {
+        Write-Host "::debug::Added tag $($tag.Version) to State (ignored=$($tag.IsIgnored))"
+    }
+    
+    # Add 'latest' tag to State if it exists
+    if ($apiLatestTag -and $apiLatestTag.Count -gt 0) {
+        $State.Tags += $apiLatestTag | Select-Object -First 1
+    }
+    
+    # Populate State.Branches from API response (already VersionRef objects)
+    $State.Branches = $apiBranches
+    
+    # Add 'latest' branch to State if it exists
+    if ($apiLatestBranch -and $apiLatestBranch.Count -gt 0) {
+        $State.Branches += $apiLatestBranch | Select-Object -First 1
+    }
+    
+    # Populate State.Releases from API response (already ReleaseInfo objects)
+    $State.Releases = $releases
+    
+    Write-Host "::debug::State.Releases contains $($State.Releases.Count) releases"
+    if ($State.Releases.Count -gt 0) {
+        $draftReleases = $State.Releases | Where-Object { $_.IsDraft }
+        Write-Host "::debug::Draft releases in State: $(($draftReleases | ForEach-Object { $_.TagName }) -join ', ')"
+    }
+    
+    #############################################################################
+    # Marketplace metadata
+    #############################################################################
+    
+    if ($CheckMarketplace -ne 'none') {
+        Write-Host "::debug::Fetching marketplace metadata..."
+        
+        # Load the marketplace helper to get metadata
+        if ($ScriptRoot) {
+            . "$ScriptRoot/lib/rules/marketplace/MarketplaceRulesHelper.ps1"
+        }
+        
+        $State.MarketplaceMetadata = Get-ActionMarketplaceMetadata -State $State
+        Write-Host "::debug::Marketplace metadata: $($State.MarketplaceMetadata.ToString())"
     }
 }
 

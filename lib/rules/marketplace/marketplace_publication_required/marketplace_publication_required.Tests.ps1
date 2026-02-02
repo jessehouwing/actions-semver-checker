@@ -5,6 +5,7 @@
 BeforeAll {
     . "$PSScriptRoot/../../../StateModel.ps1"
     . "$PSScriptRoot/../../../ValidationRules.ps1"
+    . "$PSScriptRoot/../../../VersionParser.ps1"
     . "$PSScriptRoot/../MarketplaceRulesHelper.ps1"
     . "$PSScriptRoot/marketplace_publication_required.ps1"
 }

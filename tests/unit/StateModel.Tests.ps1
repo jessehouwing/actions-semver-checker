@@ -862,3 +862,177 @@ Describe "RepositoryState" {
         }
     }
 }
+
+#############################################################################
+# Initialize-RepositoryState Tests
+#############################################################################
+
+Describe "Initialize-RepositoryState" {
+    BeforeEach {
+        # Save original environment variables
+        $script:originalGitHubRepository = $env:GITHUB_REPOSITORY
+        $script:originalGitHubToken = $env:GITHUB_TOKEN
+        $script:originalGitHubApiUrl = $env:GITHUB_API_URL
+        $script:originalGitHubServerUrl = $env:GITHUB_SERVER_URL
+        
+        # Clear environment variables for clean tests
+        $env:GITHUB_REPOSITORY = $null
+        $env:GITHUB_TOKEN = $null
+        $env:GITHUB_API_URL = $null
+        $env:GITHUB_SERVER_URL = $null
+    }
+    
+    AfterEach {
+        # Restore original environment variables
+        $env:GITHUB_REPOSITORY = $script:originalGitHubRepository
+        $env:GITHUB_TOKEN = $script:originalGitHubToken
+        $env:GITHUB_API_URL = $script:originalGitHubApiUrl
+        $env:GITHUB_SERVER_URL = $script:originalGitHubServerUrl
+    }
+    
+    Context "Default behavior" {
+        It "returns a RepositoryState object" {
+            $state = Initialize-RepositoryState -MaskToken $false
+            
+            $state.GetType().Name | Should -Be "RepositoryState"
+        }
+        
+        It "initializes empty collections" {
+            $state = Initialize-RepositoryState -MaskToken $false
+            
+            $state.Tags | Should -Be @()
+            $state.Branches | Should -Be @()
+            $state.Releases | Should -Be @()
+            $state.Issues | Should -Be @()
+        }
+        
+        It "sets default API URLs when environment variables not set" {
+            $state = Initialize-RepositoryState -MaskToken $false
+            
+            $state.ApiUrl | Should -Be "https://api.github.com"
+            $state.ServerUrl | Should -Be "https://github.com"
+        }
+        
+        It "sets empty token when environment variable not set" {
+            $state = Initialize-RepositoryState -MaskToken $false
+            
+            $state.Token | Should -Be ""
+        }
+    }
+    
+    Context "Environment variable resolution" {
+        It "reads GITHUB_REPOSITORY from environment" {
+            $env:GITHUB_REPOSITORY = "testowner/testrepo"
+            
+            $state = Initialize-RepositoryState -MaskToken $false
+            
+            $state.RepoOwner | Should -Be "testowner"
+            $state.RepoName | Should -Be "testrepo"
+        }
+        
+        It "reads GITHUB_TOKEN from environment" {
+            $env:GITHUB_TOKEN = "ghp_testtoken123"
+            
+            $state = Initialize-RepositoryState -MaskToken $false
+            
+            $state.Token | Should -Be "ghp_testtoken123"
+        }
+        
+        It "reads GITHUB_API_URL from environment" {
+            $env:GITHUB_API_URL = "https://api.github.example.com"
+            
+            $state = Initialize-RepositoryState -MaskToken $false
+            
+            $state.ApiUrl | Should -Be "https://api.github.example.com"
+        }
+        
+        It "reads GITHUB_SERVER_URL from environment" {
+            $env:GITHUB_SERVER_URL = "https://github.example.com"
+            
+            $state = Initialize-RepositoryState -MaskToken $false
+            
+            $state.ServerUrl | Should -Be "https://github.example.com"
+        }
+    }
+    
+    Context "Parameter override of environment variables" {
+        It "Repository parameter overrides GITHUB_REPOSITORY" {
+            $env:GITHUB_REPOSITORY = "envowner/envrepo"
+            
+            $state = Initialize-RepositoryState -Repository "paramowner/paramrepo" -MaskToken $false
+            
+            $state.RepoOwner | Should -Be "paramowner"
+            $state.RepoName | Should -Be "paramrepo"
+        }
+        
+        It "Token parameter overrides GITHUB_TOKEN" {
+            $env:GITHUB_TOKEN = "ghp_envtoken"
+            
+            $state = Initialize-RepositoryState -Token "ghp_paramtoken" -MaskToken $false
+            
+            $state.Token | Should -Be "ghp_paramtoken"
+        }
+        
+        It "ApiUrl parameter overrides GITHUB_API_URL" {
+            $env:GITHUB_API_URL = "https://api.env.example.com"
+            
+            $state = Initialize-RepositoryState -ApiUrl "https://api.param.example.com" -MaskToken $false
+            
+            $state.ApiUrl | Should -Be "https://api.param.example.com"
+        }
+        
+        It "ServerUrl parameter overrides GITHUB_SERVER_URL" {
+            $env:GITHUB_SERVER_URL = "https://env.example.com"
+            
+            $state = Initialize-RepositoryState -ServerUrl "https://param.example.com" -MaskToken $false
+            
+            $state.ServerUrl | Should -Be "https://param.example.com"
+        }
+    }
+    
+    Context "Repository parsing" {
+        It "parses owner/repo format correctly" {
+            $state = Initialize-RepositoryState -Repository "myorg/myrepo" -MaskToken $false
+            
+            $state.RepoOwner | Should -Be "myorg"
+            $state.RepoName | Should -Be "myrepo"
+        }
+        
+        It "handles repository with organization that has special characters" {
+            $state = Initialize-RepositoryState -Repository "my-org/my-repo" -MaskToken $false
+            
+            $state.RepoOwner | Should -Be "my-org"
+            $state.RepoName | Should -Be "my-repo"
+        }
+        
+        It "handles repository name with multiple parts" {
+            $state = Initialize-RepositoryState -Repository "owner/repo/with/slashes" -MaskToken $false
+            
+            $state.RepoOwner | Should -Be "owner"
+            $state.RepoName | Should -Be "repo/with/slashes"
+        }
+        
+        It "leaves RepoOwner and RepoName empty for invalid format" {
+            $state = Initialize-RepositoryState -Repository "invalidformat" -MaskToken $false
+            
+            $state.RepoOwner | Should -BeNullOrEmpty
+            $state.RepoName | Should -BeNullOrEmpty
+        }
+        
+        It "leaves RepoOwner and RepoName empty when not provided" {
+            $state = Initialize-RepositoryState -MaskToken $false
+            
+            $state.RepoOwner | Should -BeNullOrEmpty
+            $state.RepoName | Should -BeNullOrEmpty
+        }
+    }
+    
+    Context "MaskToken parameter" {
+        It "does not emit mask command when MaskToken is false" {
+            $output = Initialize-RepositoryState -Token "testtoken" -MaskToken $false *>&1
+            
+            # Should not contain mask command
+            $output | Should -Not -Contain "::add-mask::testtoken"
+        }
+    }
+}
