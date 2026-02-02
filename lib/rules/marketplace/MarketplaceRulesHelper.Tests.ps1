@@ -57,16 +57,16 @@ Describe "Test-MarketplaceVersionPublished" {
     
     Context "Successful marketplace query" {
         It "should return IsPublished=true when version is published" {
-            # Mock Invoke-WebRequestWrapper to return a page with version in option value
+            # Mock Invoke-WebRequestWrapper to return a page with embedded JSON containing the version
             Mock Invoke-WebRequestWrapper {
                 return @{
                     Content = @"
 <html>
 <head><title>Test Action</title></head>
 <body>
-<select>
-<option value="v1.0.0">v1.0.0</option>
-</select>
+<script type="application/json" data-target="react-app.embeddedData">
+{"payload":{"releaseData":{"selectedRelease":{"tagName":"v1.0.0"},"releases":[{"tagName":"v1.0.0","name":"v1.0.0","isPrerelease":false}]}}}
+</script>
 </body>
 </html>
 "@
@@ -80,15 +80,17 @@ Describe "Test-MarketplaceVersionPublished" {
             $result.MarketplaceUrl | Should -Match "marketplace/actions/test-action.*version=v1.0.0"
         }
         
-        It "should return IsPublished=false when version shows 'latest'" {
-            # Mock Invoke-WebRequestWrapper to return a page showing "Use latest version"
+        It "should return IsPublished=false when version is not in releases" {
+            # Mock Invoke-WebRequestWrapper to return a page with embedded JSON NOT containing the version
             Mock Invoke-WebRequestWrapper {
                 return @{
                     Content = @"
 <html>
 <head><title>Test Action</title></head>
 <body>
-<span>Use latest version</span>
+<script type="application/json" data-target="react-app.embeddedData">
+{"payload":{"releaseData":{"selectedRelease":{"tagName":"v1.0.0"},"releases":[{"tagName":"v1.0.0","name":"v1.0.0","isPrerelease":false}]}}}
+</script>
 </body>
 </html>
 "@
@@ -132,9 +134,18 @@ Describe "Test-MarketplaceVersionPublished" {
     
     Context "Custom server URL" {
         It "should use custom server URL when provided" {
+            # Mock to return embedded JSON with version
             Mock Invoke-WebRequestWrapper {
                 return @{
-                    Content = "Use v1.0.0"
+                    Content = @"
+<html>
+<body>
+<script type="application/json" data-target="react-app.embeddedData">
+{"payload":{"releaseData":{"releases":[{"tagName":"v1.0.0","name":"v1.0.0","isPrerelease":false}]}}}
+</script>
+</body>
+</html>
+"@
                 }
             }
             

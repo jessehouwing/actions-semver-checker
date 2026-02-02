@@ -75,3 +75,73 @@ pwsh -NoProfile -Command "Invoke-Pester -Path './tests/cli/GitHubActionVersionin
  **Note:** `-PassThru` must be set via `$config.Run.PassThru = $true` when using configuration objects, not as a separate parameter.
 
  Rely on the XML/JSON output files to find failing tests without having to run tests again. Instead of running the tests twice to get additional details, use result files to find the failing tests and then optionally rerun only those tests if needed.
+
+# Mocking Functions in Pester
+
+**CRITICAL:** Always use Pester's built-in `Mock` command instead of defining global wrapper functions with global variables. Global functions and variables have scoping issues in Pester that cause mocks to be ignored.
+
+## ❌ WRONG: Global function with global variable (DO NOT USE)
+
+```powershell
+BeforeAll {
+    $global:MockResponse = $null
+    
+    function global:Invoke-WebRequestWrapper {
+        if ($global:MockResponse) { return $global:MockResponse }
+        return @{ Content = "default" }
+    }
+    
+    . "$PSScriptRoot/MyModule.ps1"
+}
+
+It "should use mock" {
+    $global:MockResponse = @{ Content = "mocked" }  # This won't work reliably!
+    $result = Get-Something
+    # ...
+}
+```
+
+This approach fails because:
+- Pester runs tests in isolated scopes where global variables may not be visible
+- The global function captures variable references at definition time
+- Scriptblocks in loaded modules bind to the original function, not the mock
+
+## ✅ CORRECT: Use Pester's Mock command
+
+```powershell
+BeforeAll {
+    . "$PSScriptRoot/MyModule.ps1"
+}
+
+It "should return true when published" {
+    Mock -CommandName Test-MarketplaceVersionPublished -MockWith {
+        return [PSCustomObject]@{
+            IsPublished = $true
+            Error = $null
+        }
+    }
+    
+    $result = & $Rule.Check $item $state $config
+    $result | Should -Be $true
+}
+
+It "should return false when not published" {
+    Mock -CommandName Test-MarketplaceVersionPublished -MockWith {
+        return [PSCustomObject]@{
+            IsPublished = $false
+            Error = $null
+        }
+    }
+    
+    $result = & $Rule.Check $item $state $config
+    $result | Should -Be $false
+}
+```
+
+## Key Mocking Guidelines
+
+1. **Mock the highest-level function possible** - Mock `Test-MarketplaceVersionPublished` rather than `Invoke-WebRequest`
+2. **Define mocks inside each `It` block** when different tests need different mock behavior
+3. **Use `BeforeEach` for shared mocks** only when ALL tests in a Context need the same mock behavior
+4. **Pester automatically cleans up mocks** after each `It` block - no manual cleanup needed
+5. **Mock parameters are available** via `$ActionName`, `$Version`, etc. inside the `-MockWith` scriptblock
