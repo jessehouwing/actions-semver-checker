@@ -116,7 +116,6 @@ class MarketplaceMetadata {
     
     [string[]] GetMissingRequirements() {
         $missing = @()
-        if (-not $this.ActionFileExists) { $missing += "action.yaml or action.yml file" }
         if (-not $this.HasName) { $missing += "name property in action.yaml" }
         if (-not $this.HasDescription) { $missing += "description property in action.yaml" }
         if (-not $this.HasBrandingIcon) { $missing += "branding.icon property in action.yaml" }
