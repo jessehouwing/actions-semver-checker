@@ -26,6 +26,7 @@
 . "$PSScriptRoot/lib/RemediationActions.ps1"
 . "$PSScriptRoot/lib/Remediation.ps1"
 . "$PSScriptRoot/lib/rules/releases/ReleaseRulesHelper.ps1"
+. "$PSScriptRoot/lib/rules/marketplace/MarketplaceRulesHelper.ps1"
 . "$PSScriptRoot/lib/ValidationRules.ps1"
 . "$PSScriptRoot/lib/InputValidation.ps1"
 
