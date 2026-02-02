@@ -69,8 +69,8 @@ Write-InputDebugInfo -Config $inputConfig
 # Validate inputs
 $validationErrors = Test-ActionInput -Config $inputConfig
 if ($validationErrors.Count -gt 0) {
-    foreach ($error in $validationErrors) {
-        Write-Output $error
+    foreach ($validationError in $validationErrors) {
+        Write-Output $validationError
     }
     exit 1
 }
