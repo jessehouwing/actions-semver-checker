@@ -81,6 +81,61 @@ class VersionRef {
 }
 
 #############################################################################
+# Marketplace Metadata Class
+# Represents action.yaml/action.yml metadata required for GitHub Marketplace
+#############################################################################
+
+class MarketplaceMetadata {
+    [bool]$ActionFileExists       # action.yaml or action.yml exists
+    [string]$ActionFilePath       # Which file was found (action.yaml or action.yml)
+    [bool]$HasName                # 'name' property exists and is non-empty
+    [bool]$HasDescription         # 'description' property exists and is non-empty
+    [bool]$HasBrandingIcon        # 'branding.icon' property exists and is non-empty
+    [bool]$HasBrandingColor       # 'branding.color' property exists and is non-empty
+    [bool]$ReadmeExists           # README.md exists (case-insensitive check)
+    [string]$Name                 # Value of 'name' property
+    [string]$Description          # Value of 'description' property
+    [string]$BrandingIcon         # Value of 'branding.icon' property
+    [string]$BrandingColor        # Value of 'branding.color' property
+    [string[]]$ValidationErrors   # List of validation issues found
+    
+    MarketplaceMetadata() {
+        $this.ActionFileExists = $false
+        $this.HasName = $false
+        $this.HasDescription = $false
+        $this.HasBrandingIcon = $false
+        $this.HasBrandingColor = $false
+        $this.ReadmeExists = $false
+        $this.ValidationErrors = @()
+    }
+    
+    [bool] IsValid() {
+        return $this.ActionFileExists -and $this.HasName -and $this.HasDescription -and 
+               $this.HasBrandingIcon -and $this.HasBrandingColor -and $this.ReadmeExists
+    }
+    
+    [string[]] GetMissingRequirements() {
+        $missing = @()
+        if (-not $this.ActionFileExists) { $missing += "action.yaml or action.yml file" }
+        if (-not $this.HasName) { $missing += "name property in action.yaml" }
+        if (-not $this.HasDescription) { $missing += "description property in action.yaml" }
+        if (-not $this.HasBrandingIcon) { $missing += "branding.icon property in action.yaml" }
+        if (-not $this.HasBrandingColor) { $missing += "branding.color property in action.yaml" }
+        if (-not $this.ReadmeExists) { $missing += "README.md file in repository root" }
+        return $missing
+    }
+    
+    [string]ToString() {
+        if ($this.IsValid()) {
+            return "Marketplace metadata: Valid (name=$($this.Name))"
+        } else {
+            $missing = $this.GetMissingRequirements()
+            return "Marketplace metadata: Invalid (missing: $($missing -join ', '))"
+        }
+    }
+}
+
+#############################################################################
 # Release Information Class
 # Represents a GitHub Release with immutability and prerelease status
 #############################################################################
@@ -216,6 +271,7 @@ class RepositoryState {
     [VersionRef[]]$Tags
     [VersionRef[]]$Branches
     [ReleaseInfo[]]$Releases
+    [MarketplaceMetadata]$MarketplaceMetadata  # Action metadata for marketplace validation
     [string]$RepoOwner
     [string]$RepoName
     [string]$ApiUrl
@@ -227,6 +283,7 @@ class RepositoryState {
     [bool]$CheckMinorVersion
     [string]$CheckReleases       # "error", "warning", "none"
     [string]$CheckImmutability   # "error", "warning", "none"
+    [string]$CheckMarketplace    # "error", "warning", "none"
     [bool]$IgnorePreviewReleases
     [string]$FloatingVersionsUse # "tags", "branches", "both"
     [string[]]$IgnoreVersions    # List of versions to ignore
@@ -239,6 +296,7 @@ class RepositoryState {
         $this.Branches = @()
         $this.Releases = @()
         $this.Issues = @()
+        $this.MarketplaceMetadata = [MarketplaceMetadata]::new()
     }
     
     [void]AddIssue([ValidationIssue]$issue) {

@@ -154,3 +154,18 @@ function Get-HighestMinorForMajor {
     $minorCandidates = $candidates | Where-Object { $_.IsMinor }
     return $minorCandidates | Sort-Object -Property Minor -Descending | Select-Object -First 1
 }
+
+function Get-GlobalHighestPatch {
+    param(
+        [Parameter(Mandatory)][RepositoryState]$State,
+        [bool]$ExcludePrereleases = $false
+    )
+
+    $patches = ($State.Tags + $State.Branches) | Where-Object {
+        $_.IsPatch -and
+        -not $_.IsIgnored -and
+        (-not $ExcludePrereleases -or -not (Test-IsPrerelease -State $State -VersionRef $_))
+    }
+
+    return $patches | Sort-Object -Property Major, Minor, Patch -Descending | Select-Object -First 1
+}

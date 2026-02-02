@@ -1341,6 +1341,244 @@ function New-GitHubRef
     }
 }
 
+function Get-GitHubFileContents {
+    <#
+    .SYNOPSIS
+    Fetches the contents of a file from a GitHub repository.
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER Path
+    The path to the file in the repository (e.g., "action.yaml" or "README.md").
+    
+    .PARAMETER Ref
+    Optional. The commit, branch, or tag to get the file from. Defaults to the default branch.
+    
+    .OUTPUTS
+    Returns the file content as a string, or $null if the file doesn't exist.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        
+        [Parameter(Mandatory)]
+        [string]$Path,
+        
+        [string]$Ref
+    )
+    
+    try {
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return $null
+        }
+        
+        $headers = Get-ApiHeader -Token $State.Token
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/contents/$Path"
+        
+        if ($Ref) {
+            $url += "?ref=$Ref"
+        }
+        
+        $response = Invoke-WithRetry -OperationDescription "Fetch file $Path" -ScriptBlock {
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+            } else {
+                Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+            }
+        }
+        
+        $content = $response.Content | ConvertFrom-Json
+        
+        # GitHub returns base64-encoded content for files
+        if ($content.encoding -eq 'base64' -and $content.content) {
+            $decodedContent = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($content.content))
+            return $decodedContent
+        }
+        
+        return $null
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception -and $_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
+        
+        if ($statusCode -eq 404) {
+            Write-Host "::debug::File $Path not found in repository"
+            return $null
+        }
+        
+        Throw-GitHubApiFailure -Operation "fetching file $Path" -ErrorRecord $_
+    }
+}
+
+function Test-GitHubFileExists {
+    <#
+    .SYNOPSIS
+    Checks if a file exists in a GitHub repository without fetching its contents.
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER Path
+    The path to the file in the repository.
+    
+    .PARAMETER Ref
+    Optional. The commit, branch, or tag to check. Defaults to the default branch.
+    
+    .OUTPUTS
+    Returns $true if the file exists, $false otherwise.
+    #>
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        
+        [Parameter(Mandatory)]
+        [string]$Path,
+        
+        [string]$Ref
+    )
+    
+    try {
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return $false
+        }
+        
+        $headers = Get-ApiHeader -Token $State.Token
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/contents/$Path"
+        
+        if ($Ref) {
+            $url += "?ref=$Ref"
+        }
+        
+        # Use HEAD request to check existence without fetching content
+        $response = Invoke-WithRetry -OperationDescription "Check file $Path exists" -ScriptBlock {
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Head -ErrorAction Stop -TimeoutSec 10
+            } else {
+                Invoke-WebRequest -Uri $url -Headers $headers -Method Head -ErrorAction Stop -TimeoutSec 10
+            }
+        }
+        
+        return $response.StatusCode -eq 200
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception -and $_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
+        
+        if ($statusCode -eq 404) {
+            return $false
+        }
+        
+        Write-Host "::debug::Error checking file $Path exists: $_"
+        return $false
+    }
+}
+
+function Get-GitHubDirectoryContents {
+    <#
+    .SYNOPSIS
+    Lists the contents of a directory in a GitHub repository.
+    
+    .DESCRIPTION
+    Uses the GitHub Contents API to list files and subdirectories in a given path.
+    This is more efficient than checking individual files when you need to find
+    one of several possible filenames (e.g., README.md with different cases).
+    
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+    
+    .PARAMETER Path
+    The directory path in the repository. Use empty string or "/" for root.
+    
+    .PARAMETER Ref
+    Optional. The commit, branch, or tag to list from. Defaults to the default branch.
+    
+    .OUTPUTS
+    Returns an array of objects with Name, Path, Type (file/dir), and Sha properties.
+    Returns empty array if the directory doesn't exist.
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        
+        [string]$Path = "",
+        
+        [string]$Ref
+    )
+    
+    try {
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return @()
+        }
+        
+        $headers = Get-ApiHeader -Token $State.Token
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/contents"
+        
+        if ($Path -and $Path -ne "/" -and $Path -ne ".") {
+            $url += "/$Path"
+        }
+        
+        if ($Ref) {
+            $url += "?ref=$Ref"
+        }
+        
+        $response = Invoke-WithRetry -OperationDescription "List directory $Path" -ScriptBlock {
+            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+                Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+            } else {
+                Invoke-WebRequest -Uri $url -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
+            }
+        }
+        
+        $content = $response.Content | ConvertFrom-Json
+        
+        # Ensure we have an array (single file returns object, directory returns array)
+        if ($content -isnot [array]) {
+            # Single item returned - might be a file, not a directory
+            if ($content.type -eq 'file') {
+                Write-Host "::debug::Path $Path is a file, not a directory"
+                return @()
+            }
+            $content = @($content)
+        }
+        
+        # Map to simplified objects
+        $results = $content | ForEach-Object {
+            [PSCustomObject]@{
+                Name = $_.name
+                Path = $_.path
+                Type = $_.type
+                Sha  = $_.sha
+            }
+        }
+        
+        return $results
+    }
+    catch {
+        $statusCode = $null
+        if ($_.Exception -and $_.Exception.Response) {
+            $statusCode = $_.Exception.Response.StatusCode.value__
+        }
+        
+        if ($statusCode -eq 404) {
+            Write-Host "::debug::Directory $Path not found in repository"
+            return @()
+        }
+        
+        Write-Host "::debug::Error listing directory $Path : $_"
+        return @()
+    }
+}
+
 function Remove-GitHubRef
 {
     <#

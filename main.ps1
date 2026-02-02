@@ -81,6 +81,7 @@ $script:State.Token = $inputConfig.Token
 $script:State.CheckMinorVersion = ($inputConfig.CheckMinorVersion -ne "none")
 $script:State.CheckReleases = $inputConfig.CheckReleases
 $script:State.CheckImmutability = $inputConfig.CheckReleaseImmutability
+$script:State.CheckMarketplace = $inputConfig.CheckMarketplace
 $script:State.IgnorePreviewReleases = $inputConfig.IgnorePreviewReleases
 $script:State.FloatingVersionsUse = $inputConfig.FloatingVersionsUse
 $script:State.AutoFix = $inputConfig.AutoFix
@@ -191,6 +192,21 @@ if ($script:State.Releases.Count -gt 0) {
 }
 
 #############################################################################
+# MARKETPLACE METADATA
+# Fetch action.yaml and README.md to validate marketplace requirements
+#############################################################################
+
+if ($inputConfig.CheckMarketplace -ne 'none') {
+    Write-Host "::debug::Fetching marketplace metadata..."
+    
+    # Load the marketplace helper to get metadata
+    . "$PSScriptRoot/lib/rules/marketplace/MarketplaceRulesHelper.ps1"
+    
+    $script:State.MarketplaceMetadata = Get-ActionMarketplaceMetadata -State $script:State
+    Write-Host "::debug::Marketplace metadata: $($script:State.MarketplaceMetadata.ToString())"
+}
+
+#############################################################################
 # VALIDATION ENGINE (Rule-Based)
 # Execute validation rules to detect issues. Results are stored in State.Issues.
 #############################################################################
@@ -202,6 +218,7 @@ $ruleConfig = @{
     'check-minor-version'          = $inputConfig.CheckMinorVersion
     'check-releases'               = $inputConfig.CheckReleases
     'check-release-immutability'   = $inputConfig.CheckReleaseImmutability
+    'check-marketplace'            = $inputConfig.CheckMarketplace
     'ignore-preview-releases'      = $inputConfig.IgnorePreviewReleases
     'floating-versions-use'        = $inputConfig.FloatingVersionsUse
     'auto-fix'                     = $inputConfig.AutoFix

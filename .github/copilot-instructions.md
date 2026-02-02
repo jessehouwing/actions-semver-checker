@@ -58,6 +58,7 @@ main.ps1 (orchestrator) → lib/*.ps1 (modules) → GitHub REST API
 
 - **`VersionRef`**: Tag or branch with parsed semantic version (`Major`, `Minor`, `Patch`, `IsPatch`, `IsIgnored`). **Does NOT support semver suffixes** like `-beta` or `-rc`.
 - **`ReleaseInfo`**: GitHub release with immutability and prerelease status. **`IsPrerelease` comes from GitHub Release API only** - never from tag name parsing.
+- **`MarketplaceMetadata`**: Action metadata required for GitHub Marketplace publication (name, description, branding, README).
 - **`ValidationIssue`**: Problem found during validation with status (`pending` → `fixed`/`failed`/`unfixable`)
 - **`RepositoryState`**: Central state container with calculated methods (`GetFixedIssuesCount()`, `GetReturnCode()`)
 - **`RemediationAction`**: Base class for auto-fix actions (see `lib/RemediationActions.ps1` for implementations)
@@ -70,6 +71,7 @@ main.ps1 (orchestrator) → lib/*.ps1 (modules) → GitHub REST API
 | `check-minor-version` | Validate minor version tags | `error` |
 | `check-releases` | Require releases for patch versions | `error` |
 | `check-release-immutability` | Require releases to be published (not draft) | `error` |
+| `check-marketplace` | Validate marketplace metadata (name, description, branding, README) | `none` |
 | `ignore-preview-releases` | Exclude prereleases from floating version calculation | `true` |
 | `floating-versions-use` | Use `tags` or `branches` for floating versions | `tags` |
 | `auto-fix` | Automatically fix issues (requires `contents: write`) | `false` |

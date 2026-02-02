@@ -17,6 +17,7 @@
 . "$PSScriptRoot/../lib/ValidationRules.ps1"
 . "$PSScriptRoot/../lib/InputValidation.ps1"
 . "$PSScriptRoot/../lib/rules/releases/ReleaseRulesHelper.ps1"
+. "$PSScriptRoot/../lib/rules/marketplace/MarketplaceRulesHelper.ps1"
 
 function Test-GitHubActionVersioning
 {
@@ -43,6 +44,10 @@ function Test-GitHubActionVersioning
     
     .PARAMETER CheckReleaseImmutability
     Check that releases are immutable (published, not draft). Values: error, warning, none. Default: error
+    
+    .PARAMETER CheckMarketplace
+    Check that the action has valid marketplace metadata (name, description, branding, README) and
+    that the latest release is published to the GitHub Marketplace. Values: error, warning, none. Default: none
     
     .PARAMETER IgnorePreviewReleases
     Ignore preview/pre-release versions when calculating floating versions. Default: true
@@ -88,6 +93,11 @@ function Test-GitHubActionVersioning
     
     Runs only the specified validation rules.
     
+    .EXAMPLE
+    Test-GitHubActionVersioning -Repository 'owner/repo' -CheckMarketplace 'warning'
+    
+    Validates marketplace metadata and publication status, reporting issues as warnings.
+    
     .OUTPUTS
     By default, returns exit code (0 = success, 1 = validation errors).
     With -PassThru, returns a hashtable with Issues, FixedCount, FailedCount, UnfixableCount, and ReturnCode.
@@ -112,6 +122,10 @@ function Test-GitHubActionVersioning
         [Parameter()]
         [ValidateSet('error', 'warning', 'none')]
         [string]$CheckReleaseImmutability = 'error',
+        
+        [Parameter()]
+        [ValidateSet('error', 'warning', 'none')]
+        [string]$CheckMarketplace = 'none',
         
         [Parameter()]
         [bool]$IgnorePreviewReleases = $true,
@@ -259,6 +273,7 @@ function Test-GitHubActionVersioning
     $state.CheckMinorVersion = ($CheckMinorVersion -ne "none")
     $state.CheckReleases = $CheckReleases
     $state.CheckImmutability = $CheckReleaseImmutability
+    $state.CheckMarketplace = $CheckMarketplace
     $state.IgnorePreviewReleases = $IgnorePreviewReleases
     $state.FloatingVersionsUse = $FloatingVersionsUse
     $state.AutoFix = $AutoFix.IsPresent
@@ -329,11 +344,26 @@ function Test-GitHubActionVersioning
                 html_url = $null  # Not available from GraphQL query
                 target_commitish = $null  # Not available from GraphQL query
                 immutable = $release.immutable
+                is_latest = $release.isLatest
             }
             $ri = [ReleaseInfo]::new($releaseData)
             $state.Releases += $ri
         }
         Write-Host "Found $($state.Releases.Count) releases"
+        
+        # Fetch marketplace metadata if marketplace checks are enabled
+        if ($CheckMarketplace -ne 'none') {
+            Write-Verbose "Fetching marketplace metadata..."
+            $state.MarketplaceMetadata = Get-ActionMarketplaceMetadata -State $state
+            
+            if ($state.MarketplaceMetadata.IsValid()) {
+                Write-Host "Marketplace metadata: Valid (name=$($state.MarketplaceMetadata.Name))"
+            }
+            else {
+                $missing = $state.MarketplaceMetadata.GetMissingRequirements()
+                Write-Host "Marketplace metadata: Missing requirements - $($missing -join ', ')"
+            }
+        }
     }
     catch {
         Write-ActionsError -Message "Failed to fetch repository data: $_" -State $state
@@ -371,6 +401,7 @@ function Test-GitHubActionVersioning
         'check-minor-version' = $CheckMinorVersion
         'check-releases' = $CheckReleases
         'check-release-immutability' = $CheckReleaseImmutability
+        'check-marketplace' = $CheckMarketplace
         'ignore-preview-releases' = $IgnorePreviewReleases
         'floating-versions-use' = $FloatingVersionsUse
         'auto-fix' = $AutoFix.IsPresent
