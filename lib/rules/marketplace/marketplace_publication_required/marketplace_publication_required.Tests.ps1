@@ -3,11 +3,34 @@
 #############################################################################
 
 BeforeAll {
+    # Define a script-scoped variable that tests can override to control mock behavior
+    $script:MockMarketplaceResponse = $null
+    
+    # Define the wrapper function BEFORE loading helper scripts so they can detect it
+    # This wrapper returns a controllable response - tests set $script:MockMarketplaceResponse
+    function global:Invoke-WebRequestWrapper {
+        param($Uri, $Method, $ErrorAction, $TimeoutSec)
+        
+        if ($script:MockMarketplaceResponse) {
+            return $script:MockMarketplaceResponse
+        }
+        
+        # Default: return empty page (no version matches)
+        return @{
+            Content = "<html><body>Default test response</body></html>"
+        }
+    }
+    
     . "$PSScriptRoot/../../../StateModel.ps1"
     . "$PSScriptRoot/../../../ValidationRules.ps1"
     . "$PSScriptRoot/../../../VersionParser.ps1"
     . "$PSScriptRoot/../MarketplaceRulesHelper.ps1"
     . "$PSScriptRoot/marketplace_publication_required.ps1"
+}
+
+AfterAll {
+    # Clean up global function
+    Remove-Item -Path "Function:\global:Invoke-WebRequestWrapper" -ErrorAction SilentlyContinue
 }
 
 Describe "marketplace_publication_required" {
@@ -141,34 +164,50 @@ Describe "marketplace_publication_required" {
         }
         
         It "should return true when version is published to marketplace" {
+            # Control the mock to return a page WITH the version
+            $script:MockMarketplaceResponse = @{
+                Content = @"
+<html>
+<head><title>Marketplace</title></head>
+<body>
+<select name="version" class="version-picker">
+  <option value="v1.0.9" selected>v1.0.9</option>
+  <option value="v1.0.8">v1.0.8</option>
+</select>
+</body>
+</html>
+"@
+            }
+            
             $state = [RepositoryState]::new()
             $state.ServerUrl = "https://github.com"
             
-            # Valid metadata with name
+            # Valid metadata with ALL required fields
             $metadata = [MarketplaceMetadata]::new()
+            $metadata.ActionFileExists = $true
+            $metadata.ActionFilePath = "action.yaml"
             $metadata.HasName = $true
             $metadata.Name = "Test Action"
+            $metadata.HasDescription = $true
+            $metadata.Description = "Test description"
+            $metadata.HasBrandingIcon = $true
+            $metadata.BrandingIcon = "check"
+            $metadata.HasBrandingColor = $true
+            $metadata.BrandingColor = "blue"
+            $metadata.ReadmeExists = $true
             $state.MarketplaceMetadata = $metadata
             
             $releaseData = [PSCustomObject]@{
-                tag_name = "v1.0.0"
+                tag_name = "v1.0.9"  # Version that IS in the mock HTML
                 id = 123
                 draft = $false
                 prerelease = $false
-                html_url = "https://github.com/owner/repo/releases/tag/v1.0.0"
+                html_url = "https://github.com/owner/repo/releases/tag/v1.0.9"
                 target_commitish = "abc123"
                 is_latest = $true
             }
             $release = [ReleaseInfo]::new($releaseData)
             $config = @{ 'check-marketplace' = 'error' }
-            
-            Mock -CommandName Test-MarketplaceVersionPublished -MockWith {
-                return [PSCustomObject]@{
-                    IsPublished = $true
-                    MarketplaceUrl = "https://github.com/marketplace/actions/test-action?version=v1.0.0"
-                    Error = $null
-                }
-            }
             
             $result = & $Rule_MarketplacePublicationRequired.Check $release $state $config
             
@@ -176,34 +215,58 @@ Describe "marketplace_publication_required" {
         }
         
         It "should return false when version is not published to marketplace" {
+            # This test actually calls the GitHub Marketplace to verify behavior.
+            # The marketplace_publication_required rule's Check function calls Test-MarketplaceVersionPublished
+            # which performs a real HTTP request. The mocking approach doesn't work because the
+            # scriptblock binds functions at definition time, not call time.
+            #
+            # Test-MarketplaceVersionPublished is independently tested in MarketplaceRulesHelper.Tests.ps1
+            # with proper mocking, so we test the rule integration here using an unpublished version.
+            
+            # Control the mock to return a page without the version
+            $script:MockMarketplaceResponse = @{
+                Content = @"
+<html>
+<head><title>Marketplace</title></head>
+<body>
+<select name="version" class="version-picker">
+  <option value="v1.0.8">v1.0.8</option>
+  <option value="v1.0.7">v1.0.7</option>
+</select>
+</body>
+</html>
+"@
+            }
+            
             $state = [RepositoryState]::new()
             $state.ServerUrl = "https://github.com"
             
-            # Valid metadata with name
+            # Valid metadata with ALL required fields
             $metadata = [MarketplaceMetadata]::new()
+            $metadata.ActionFileExists = $true
+            $metadata.ActionFilePath = "action.yaml"
             $metadata.HasName = $true
             $metadata.Name = "Test Action"
+            $metadata.HasDescription = $true
+            $metadata.Description = "Test description"
+            $metadata.HasBrandingIcon = $true
+            $metadata.BrandingIcon = "check"
+            $metadata.HasBrandingColor = $true
+            $metadata.BrandingColor = "blue"
+            $metadata.ReadmeExists = $true
             $state.MarketplaceMetadata = $metadata
             
             $releaseData = [PSCustomObject]@{
-                tag_name = "v1.0.0"
+                tag_name = "v1.0.9"  # Version NOT in the mock HTML
                 id = 123
                 draft = $false
                 prerelease = $false
-                html_url = "https://github.com/owner/repo/releases/tag/v1.0.0"
+                html_url = "https://github.com/owner/repo/releases/tag/v1.0.9"
                 target_commitish = "abc123"
                 is_latest = $true
             }
             $release = [ReleaseInfo]::new($releaseData)
             $config = @{ 'check-marketplace' = 'error' }
-            
-            Mock -CommandName Test-MarketplaceVersionPublished -MockWith {
-                return [PSCustomObject]@{
-                    IsPublished = $false
-                    MarketplaceUrl = "https://github.com/marketplace/actions/test-action?version=v1.0.0"
-                    Error = $null
-                }
-            }
             
             $result = & $Rule_MarketplacePublicationRequired.Check $release $state $config
             
@@ -214,10 +277,19 @@ Describe "marketplace_publication_required" {
             $state = [RepositoryState]::new()
             $state.ServerUrl = "https://github.com"
             
-            # Valid metadata with name
+            # Valid metadata with ALL required fields
             $metadata = [MarketplaceMetadata]::new()
+            $metadata.ActionFileExists = $true
+            $metadata.ActionFilePath = "action.yaml"
             $metadata.HasName = $true
             $metadata.Name = "Test Action"
+            $metadata.HasDescription = $true
+            $metadata.Description = "Test description"
+            $metadata.HasBrandingIcon = $true
+            $metadata.BrandingIcon = "check"
+            $metadata.HasBrandingColor = $true
+            $metadata.BrandingColor = "blue"
+            $metadata.ReadmeExists = $true
             $state.MarketplaceMetadata = $metadata
             
             $releaseData = [PSCustomObject]@{
@@ -232,12 +304,9 @@ Describe "marketplace_publication_required" {
             $release = [ReleaseInfo]::new($releaseData)
             $config = @{ 'check-marketplace' = 'error' }
             
-            Mock -CommandName Test-MarketplaceVersionPublished -MockWith {
-                return [PSCustomObject]@{
-                    IsPublished = $null  # Unknown
-                    MarketplaceUrl = "https://github.com/marketplace/actions/test-action"
-                    Error = "Network error"
-                }
+            # Mock the web request to throw an error (simulating network failure)
+            Mock Invoke-WebRequestWrapper {
+                throw "Network connection error"
             }
             
             $result = & $Rule_MarketplacePublicationRequired.Check $release $state $config
