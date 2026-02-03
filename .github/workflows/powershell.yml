@@ -63,11 +63,33 @@ jobs:
           # Convert to SARIF format
           $filteredResults | ConvertTo-SARIF -FilePath 'results.sarif'
           
+          # Output issues using GitHub Actions workflow commands
+          foreach ($issue in $filteredResults) {
+            $file = $issue.ScriptPath -replace [regex]::Escape($PWD.Path + [IO.Path]::DirectorySeparatorChar), ''
+            $line = $issue.Line
+            $col = $issue.Column
+            $msg = $issue.Message -replace '%', '%25' -replace "`r", '%0D' -replace "`n", '%0A'
+            $rule = $issue.RuleName
+            
+            switch ($issue.Severity) {
+              'Error' {
+                Write-Host "::error file=$file,line=$line,col=$col,title=$rule::$msg"
+              }
+              'Warning' {
+                Write-Host "::warning file=$file,line=$line,col=$col,title=$rule::$msg"
+              }
+              'Information' {
+                Write-Host "::notice file=$file,line=$line,col=$col,title=$rule::$msg"
+              }
+            }
+          }
+          
           # Report summary
           $errorCount = ($filteredResults | Where-Object { $_.Severity -eq 'Error' }).Count
           $warningCount = ($filteredResults | Where-Object { $_.Severity -eq 'Warning' }).Count
           $infoCount = ($filteredResults | Where-Object { $_.Severity -eq 'Information' }).Count
           
+          Write-Host ""
           Write-Host "PSScriptAnalyzer Results (TypeNotFound warnings excluded):"
           Write-Host "  Errors: $errorCount"
           Write-Host "  Warnings: $warningCount"
