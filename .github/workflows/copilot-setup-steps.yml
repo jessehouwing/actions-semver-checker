@@ -33,6 +33,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-            Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
-            Install-Module -Name Pester -MinimumVersion 5 -Scope CurrentUser
+            Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -AllowClobber
+            Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser -AllowClobber
+            Install-Module -Name ConvertToSARIF -Force -Scope CurrentUser -AllowClobber
         shell: pwsh
