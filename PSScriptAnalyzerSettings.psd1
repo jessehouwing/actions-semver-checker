@@ -42,7 +42,7 @@
         'PSUseApprovedVerbs',
         'PSUseBOMForUnicodeEncodedFile',
         'PSUseCmdletCorrectly',
-        'PSUseCompatibleCmdlets',
+        # NOTE: PSUseCompatibleCmdlets is excluded - see Rules section for details
         'PSUseConsistentIndentation',
         'PSUseConsistentWhitespace',
         'PSUseCorrectCasing',
@@ -113,13 +113,12 @@
         }
 
         # Compatible cmdlets for cross-platform
+        # NOTE: PSUseCompatibleCmdlets is DISABLED because the compatibility profile
+        # data files for older PowerShell versions (core-6.1.0-linux, desktop-5.1.14393.206-windows)
+        # can cause "Get-Command is not recognized" errors on GitHub-hosted runners.
+        # This project targets PowerShell 7.x which is the default on all modern runners.
         PSUseCompatibleCmdlets = @{
-            Enable = $true
-            # Target PowerShell Core on Linux (GitHub Actions runner)
-            Compatibility = @(
-                'core-6.1.0-linux',
-                'desktop-5.1.14393.206-windows'
-            )
+            Enable = $false
         }
 
         # Correct casing
