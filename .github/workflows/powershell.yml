@@ -33,7 +33,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run PSScriptAnalyzer
-        uses: microsoft/psscriptanalyzer-action@7a0da25f33985767f15f93140306528900744195
+        uses: microsoft/psscriptanalyzer-action@6b2948b1944407914a58661c49941824d149734f # v1.1
         with:
           path: .\
           recurse: true
