@@ -32,33 +32,48 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Run PSScriptAnalyzer
-        uses: microsoft/psscriptanalyzer-action@6b2948b1944407914a58661c49941824d149734f # v1.1
-        with:
-          path: .\
-          recurse: true
-          output: results.sarif
-          settings: PSScriptAnalyzerSettings.psd1
-
-      - name: Filter TypeNotFound warnings from SARIF
+      - name: Install PSScriptAnalyzer and ConvertToSARIF
         shell: pwsh
         run: |
-          # Load SARIF file
-          $sarif = Get-Content results.sarif -Raw | ConvertFrom-Json
+          # Install modules in CurrentUser scope to avoid permission issues
+          # Use -Force and -AllowClobber to ensure clean installation
+          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -AllowClobber
+          Install-Module -Name ConvertToSARIF -Force -Scope CurrentUser -AllowClobber
           
-          # Filter out TypeNotFound warnings
+          # Verify installation
+          Get-Module -ListAvailable -Name PSScriptAnalyzer, ConvertToSARIF | 
+            Select-Object Name, Version | 
+            Format-Table -AutoSize
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          # Import modules explicitly in fresh session
+          Import-Module -Name PSScriptAnalyzer -Force
+          Import-Module -Name ConvertToSARIF -Force
+          
+          # Run analysis and generate SARIF
+          $results = Invoke-ScriptAnalyzer -Path './' -Recurse -Settings 'PSScriptAnalyzerSettings.psd1'
+          
+          # Filter out TypeNotFound warnings before conversion
           # PSScriptAnalyzer analyzes files independently and cannot resolve 
           # classes defined in dot-sourced files, causing false TypeNotFound warnings
-          foreach ($run in $sarif.runs) {
-            $run.results = @($run.results | Where-Object { 
-              $_.ruleId -ne 'TypeNotFound' 
-            })
-          }
+          $filteredResults = $results | Where-Object { $_.RuleName -ne 'TypeNotFound' }
           
-          # Save filtered SARIF
-          $sarif | ConvertTo-Json -Depth 100 | Set-Content results.sarif
+          # Convert to SARIF format
+          $filteredResults | ConvertTo-SARIF -FilePath 'results.sarif'
           
-          Write-Host "Filtered SARIF file saved (TypeNotFound warnings removed)"
+          # Report summary
+          $errorCount = ($filteredResults | Where-Object { $_.Severity -eq 'Error' }).Count
+          $warningCount = ($filteredResults | Where-Object { $_.Severity -eq 'Warning' }).Count
+          $infoCount = ($filteredResults | Where-Object { $_.Severity -eq 'Information' }).Count
+          
+          Write-Host "PSScriptAnalyzer Results (TypeNotFound warnings excluded):"
+          Write-Host "  Errors: $errorCount"
+          Write-Host "  Warnings: $warningCount"
+          Write-Host "  Information: $infoCount"
+          Write-Host ""
+          Write-Host "SARIF file generated: results.sarif"
 
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file
