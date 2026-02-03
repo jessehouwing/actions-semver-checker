@@ -119,6 +119,48 @@ Example of correct parameter attributes:
 [Parameter(Position=0, ValueFromPipeline)]
 ```
 
+### Common Indentation Pitfalls
+
+#### Nested hashtables in method calls
+
+When passing a hashtable to a method or cmdlet that spans multiple lines, the hashtable contents must be indented relative to the opening `@{`, NOT relative to the start of the line:
+
+```powershell
+# CORRECT - hashtable contents indented 4 spaces from @{
+$object | Add-Member -NotePropertyName Property -NotePropertyValue ([PSCustomObject]@{
+        StatusCode = [PSCustomObject]@{ value__ = 404 }
+    }) -Force
+
+# WRONG - hashtable contents aligned with method call start
+$object | Add-Member -NotePropertyName Property -NotePropertyValue ([PSCustomObject]@{
+    StatusCode = [PSCustomObject]@{ value__ = 404 }
+}) -Force
+```
+
+The key rule: **Each `@{` opening brace establishes a new indentation level. Content inside must be indented exactly 4 spaces deeper than the `@{`, regardless of where the `@{` appears on the line.**
+
+#### Pipeline indentation with hashtables
+
+When using hashtables in pipeline operations:
+
+```powershell
+# CORRECT - consistent 4-space indent from each opening brace
+Get-Item | ForEach-Object {
+    [PSCustomObject]@{
+        Name = $_.Name
+        Size = $_.Length
+    }
+}
+
+# WRONG - inconsistent indentation
+Get-Item | ForEach-Object {
+    [PSCustomObject]@{
+    Name = $_.Name
+    Size = $_.Length
+}
+}
+```
+
 ## File encoding and editor settings
 
 All PowerShell source files in this repository MUST be encoded as UTF-8 with a BOM (Byte Order Mark). PSScriptAnalyzer and some Windows tools expect the BOM for correct parsing of non-ASCII characters.
