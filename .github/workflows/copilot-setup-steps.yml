@@ -33,6 +33,6 @@ jobs:
 
       - name: Install dependencies
         run: |
-            Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
-            Install-Module -Name Pester -MinimumVersion 5.0.0 -Scope CurrentUser
+            pwsh -NoProfile -Command "Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -AllowClobber"
+            pwsh -NoProfile -Command "Install-Module -Name Pester -MinimumVersion 5.0.0 -Force -Scope CurrentUser -AllowClobber"
         shell: pwsh
