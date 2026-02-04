@@ -6,18 +6,18 @@
 #############################################################################
 
 # Import CLI-specific logging module
-. "$PSScriptRoot/CliLogging.ps1"
+. "$PSScriptRoot/module/CliLogging.ps1"
 
 # Import core library modules
-. "$PSScriptRoot/../lib/StateModel.ps1"
-. "$PSScriptRoot/../lib/VersionParser.ps1"
-. "$PSScriptRoot/../lib/GitHubApi.ps1"
-. "$PSScriptRoot/../lib/RemediationActions.ps1"
-. "$PSScriptRoot/../lib/Remediation.ps1"
-. "$PSScriptRoot/../lib/ValidationRules.ps1"
-. "$PSScriptRoot/../lib/InputValidation.ps1"
-. "$PSScriptRoot/../lib/rules/releases/ReleaseRulesHelper.ps1"
-. "$PSScriptRoot/../lib/rules/marketplace/MarketplaceRulesHelper.ps1"
+. "$PSScriptRoot/lib/StateModel.ps1"
+. "$PSScriptRoot/lib/VersionParser.ps1"
+. "$PSScriptRoot/lib/GitHubApi.ps1"
+. "$PSScriptRoot/lib/RemediationActions.ps1"
+. "$PSScriptRoot/lib/Remediation.ps1"
+. "$PSScriptRoot/lib/ValidationRules.ps1"
+. "$PSScriptRoot/lib/InputValidation.ps1"
+. "$PSScriptRoot/lib/rules/releases/ReleaseRulesHelper.ps1"
+. "$PSScriptRoot/lib/rules/marketplace/MarketplaceRulesHelper.ps1"
 
 function Test-GitHubActionVersioning
 {
@@ -276,7 +276,7 @@ function Test-GitHubActionVersioning
             -IgnoreVersions $IgnoreVersions `
             -CheckMarketplace $CheckMarketplace `
             -AutoFix $AutoFix.IsPresent `
-            -ScriptRoot "$PSScriptRoot/.."
+            -ScriptRoot "$PSScriptRoot"
         
         Write-Host "Found $($state.Tags.Count) version tags"
         if ($FloatingVersionsUse -eq 'branches') {

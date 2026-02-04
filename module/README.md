@@ -7,14 +7,14 @@ A PowerShell module for validating GitHub Action semantic versioning from the co
 ### From Local Files
 
 ```powershell
-Import-Module ./module/GitHubActionVersioning.psd1
+Import-Module ./GitHubActionVersioning.psd1
 ```
 
 ### For Development
 
 ```powershell
 # Import and force reload
-Import-Module ./module/GitHubActionVersioning.psd1 -Force
+Import-Module ./GitHubActionVersioning.psd1 -Force
 ```
 
 ## Usage

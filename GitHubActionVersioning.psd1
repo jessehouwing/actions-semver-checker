@@ -11,7 +11,7 @@
     RootModule        = 'GitHubActionVersioning.psm1'
 
     # Version number of this module.
-    ModuleVersion     = '1.0.0'
+    ModuleVersion     = '2.0.2'
 
     # Supported PSEditions
     # CompatiblePSEditions = @()
@@ -23,7 +23,7 @@
     Author            = 'Jesse Houwing'
 
     # Company or vendor of this module
-    CompanyName       = 'Unknown'
+    CompanyName       = 'Xebia'
 
     # Copyright statement for this module
     Copyright         = '(c) Jesse Houwing. All rights reserved.'
@@ -119,7 +119,7 @@
     }
 
     # HelpInfo URI of this module
-    # HelpInfoURI = ''
+    HelpInfoURI = 'https://github.com/jessehouwing/actions-semver-checker/blob/main/module/README.md'
 
     # Default prefix for commands exported from this module. Override the default prefix using Import-Module -Prefix.
     # DefaultCommandPrefix = ''
