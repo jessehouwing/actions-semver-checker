@@ -45,20 +45,18 @@ class RepublishReleaseAction : ReleaseRemediationAction {
         }
         
         $commands = @()
-        $hasImmutableReleases = ($state.Releases | Where-Object { $_.IsImmutable }) | Select-Object -First 1
         
-        # Case 1: Auto-fix was attempted, republish succeeded, but release is still mutable
-        # This happens when repository settings don't have immutable releases enabled
-        if ($this.IsIssueManualFixRequired($state, "non_immutable_release")) {
-            $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "non_immutable_release" } | Select-Object -First 1
-            if ($issue -and $issue.Message -match "republished but is still mutable" -and -not $hasImmutableReleases) {
-                $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
-                $commands += "# Enable 'Release immutability' in repository settings: $settingsUrl"
-            }
-        }
-        # Case 2: Auto-fix not attempted (auto-fix: false) and no immutable releases exist
-        # Add a hint that the feature likely isn't enabled
-        elseif (-not $hasImmutableReleases) {
+        # Check if the repository has immutable releases enabled
+        # This is true if either:
+        # 1. Any existing release is already immutable (from initial state)
+        # 2. Any non_immutable_release issue was successfully fixed (auto-fix worked, meaning feature is enabled)
+        $hasImmutableReleases = ($state.Releases | Where-Object { $_.IsImmutable }) | Select-Object -First 1
+        $anyImmutabilityFixSucceeded = ($state.Issues | Where-Object { 
+            $_.Type -eq "non_immutable_release" -and $_.Status -eq "fixed" 
+        }) | Select-Object -First 1
+        
+        # If no immutable releases exist AND no auto-fix succeeded, add a comment about enabling the feature
+        if (-not $hasImmutableReleases -and -not $anyImmutabilityFixSucceeded) {
             $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
             $commands += "# Enable 'Release immutability' in repository settings: $settingsUrl"
         }

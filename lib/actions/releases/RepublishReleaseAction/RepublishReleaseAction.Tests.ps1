@@ -212,6 +212,34 @@ Describe "RepublishReleaseAction" {
             $commands[1] | Should -Match "gh release edit v1.0.0"
             $commands[1] | Should -Match "--draft=false"
         }
+        
+        It "Should not show settings URL when another immutability fix already succeeded" {
+            # If auto-fix succeeded for one release (status=fixed), the feature is enabled
+            # So we shouldn't show the settings URL for subsequent failed fixes
+            $action = [RepublishReleaseAction]::new("v1.0.7")
+            
+            # v1.0.8 was successfully fixed (status=fixed)
+            $fixedIssue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.8 was fixed")
+            $fixedIssue.Version = "v1.0.8"
+            $fixedIssue.Status = "fixed"
+            
+            # v1.0.7 failed to fix
+            $failedIssue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.7 failed")
+            $failedIssue.Version = "v1.0.7"
+            $failedIssue.Status = "failed"
+            
+            $script:state.Issues = @($fixedIssue, $failedIssue)
+            $script:state.Releases = @()  # No immutable releases in original state
+            
+            $commands = $action.GetManualCommands($script:state)
+            
+            # Should NOT show settings URL since another fix succeeded (feature is enabled)
+            $commands.Count | Should -Be 2
+            $commands[0] | Should -Match "gh release edit v1.0.7"
+            $commands[0] | Should -Match "--draft=true"
+            $commands[1] | Should -Match "gh release edit v1.0.7"
+            $commands[1] | Should -Match "--draft=false"
+        }
     }
     
     Context "Execute" {

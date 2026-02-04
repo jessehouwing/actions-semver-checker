@@ -175,15 +175,20 @@ if ($inputConfig.AutoFix)
     Write-Output "⚠ Manual fix required: $($State.GetManualFixRequiredCount())"
     Write-Output "⛔ Unfixable issues: $($State.GetUnfixableIssuesCount())"
     
-    # Only fail if there are failed fixes, manual fixes required, or unfixable issues
-    if ($State.GetFailedFixesCount() -gt 0 -or $State.GetManualFixRequiredCount() -gt 0 -or $State.GetUnfixableIssuesCount() -gt 0)
+    # Only fail if there are ERROR-severity issues that are failed, manual fixes required, or unfixable
+    # Warning-severity issues should not cause failure even with auto-fix
+    $errorFailedCount = ($State.Issues | Where-Object { $_.Severity -eq "error" -and $_.Status -eq "failed" }).Count
+    $errorManualFixCount = ($State.Issues | Where-Object { $_.Severity -eq "error" -and $_.Status -eq "manual_fix_required" }).Count
+    $errorUnfixableCount = ($State.Issues | Where-Object { $_.Severity -eq "error" -and $_.Status -eq "unfixable" }).Count
+    
+    if ($errorFailedCount -gt 0 -or $errorManualFixCount -gt 0 -or $errorUnfixableCount -gt 0)
     {
         $exitCode = 1
         Write-Output ""
-        if ($State.GetManualFixRequiredCount() -gt 0) {
+        if ($errorManualFixCount -gt 0) {
             Write-Output "::error::Some issues require manual intervention (e.g., workflow permission issues). Please fix manually."
         }
-        if ($State.GetUnfixableIssuesCount() -gt 0) {
+        if ($errorUnfixableCount -gt 0) {
             Write-Output "::error::Some issues cannot be fixed (e.g., immutable release conflicts). Consider adding affected versions to the ignore-versions list."
         }
     }
@@ -192,6 +197,12 @@ if ($inputConfig.AutoFix)
         # Issues were found and all were fixed successfully
         Write-Output ""
         Write-Output "::notice::All issues were successfully fixed!"
+    }
+    elseif ($State.GetManualFixRequiredCount() -gt 0 -or $State.GetUnfixableIssuesCount() -gt 0)
+    {
+        # Only warning-severity issues remain that need manual attention
+        Write-Output ""
+        Write-Output "::notice::Some warning-level issues require manual attention. See remediation steps below."
     }
     else
     {
