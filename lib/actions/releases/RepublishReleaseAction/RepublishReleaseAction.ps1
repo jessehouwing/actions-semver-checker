@@ -44,12 +44,23 @@ class RepublishReleaseAction : ReleaseRemediationAction {
             return @()
         }
         
-        # Check if the repository has ANY immutable releases - if not, the feature isn't enabled
-        # In this case, show a comment about enabling the feature instead of republish commands
+        $commands = @()
         $hasImmutableReleases = ($state.Releases | Where-Object { $_.IsImmutable }) | Select-Object -First 1
-        if (-not $hasImmutableReleases) {
+        
+        # Case 1: Auto-fix was attempted, republish succeeded, but release is still mutable
+        # This happens when repository settings don't have immutable releases enabled
+        if ($this.IsIssueManualFixRequired($state, "non_immutable_release")) {
+            $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "non_immutable_release" } | Select-Object -First 1
+            if ($issue -and $issue.Message -match "republished but is still mutable" -and -not $hasImmutableReleases) {
+                $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
+                $commands += "# Enable 'Release immutability' in repository settings: $settingsUrl"
+            }
+        }
+        # Case 2: Auto-fix not attempted (auto-fix: false) and no immutable releases exist
+        # Add a hint that the feature likely isn't enabled
+        elseif (-not $hasImmutableReleases) {
             $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
-            return @("# Enable 'Release immutability' in repository settings: $settingsUrl")
+            $commands += "# Enable 'Release immutability' in repository settings: $settingsUrl"
         }
 
         $repoArg = ""
@@ -61,9 +72,10 @@ class RepublishReleaseAction : ReleaseRemediationAction {
         if ($null -ne $this.MakeLatest) {
             $latestArg = if ($this.MakeLatest) { " --latest" } else { " --latest=false" }
         }
-        return @(
-            "gh release edit $($this.TagName)$repoArg --draft=true",
-            "gh release edit $($this.TagName)$repoArg --draft=false$latestArg"
-        )
+        
+        $commands += "gh release edit $($this.TagName)$repoArg --draft=true"
+        $commands += "gh release edit $($this.TagName)$repoArg --draft=false$latestArg"
+        
+        return $commands
     }
 }
