@@ -74,18 +74,73 @@ Describe "RepublishReleaseAction" {
             $commands.Count | Should -Be 0
         }
         
-        It "Should return settings URL when manual_fix_required" {
+        It "Should return settings URL only when manual_fix_required AND message indicates repo settings need configuration" {
+            # This tests the case where Execute() was run, republish succeeded but release is still mutable
+            # (repository settings not enabled) - this is detected by the special message
             $action = [RepublishReleaseAction]::new("v1.0.0")
-            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release not immutable")
+            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 was republished but is still mutable. Enable 'Release immutability' in repository settings")
             $issue.Version = "v1.0.0"
             $issue.Status = "manual_fix_required"
             $script:state.Issues = @($issue)
+            $script:state.Releases = @()  # No immutable releases exist
             
             $commands = $action.GetManualCommands($script:state)
             
             $commands.Count | Should -Be 1
             $commands[0] | Should -Match "^# Enable 'Release immutability'"
             $commands[0] | Should -Match "settings#releases-settings"
+        }
+        
+        It "Should return gh release edit commands when repo already has immutable releases" {
+            # If the repo already has immutable releases, the feature is enabled - no need for settings URL
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 was republished but is still mutable. Enable 'Release immutability' in repository settings")
+            $issue.Version = "v1.0.0"
+            $issue.Status = "manual_fix_required"
+            $script:state.Issues = @($issue)
+            
+            # Add an immutable release to the state - feature is already enabled
+            $immutableRelease = [PSCustomObject]@{
+                tag_name = "v2.0.0"
+                id = 456
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/test-owner/test-repo/releases/tag/v2.0.0"
+                target_commitish = "def456"
+                immutable = $true
+            }
+            $script:state.Releases = @([ReleaseInfo]::new($immutableRelease))
+            
+            $commands = $action.GetManualCommands($script:state)
+            
+            # Should return gh release edit commands since feature is already enabled
+            $commands.Count | Should -Be 2
+            $commands[0] | Should -Match "gh release edit v1.0.0"
+            $commands[0] | Should -Match "--draft=true"
+            $commands[1] | Should -Match "gh release edit v1.0.0"
+            $commands[1] | Should -Match "--draft=false"
+        }
+        
+        It "Should return gh release edit commands when manual_fix_required due to auto-fix disabled" {
+            # Bug fix test: When auto-fix: false, Invoke-AutoFix marks ALL pending issues as
+            # manual_fix_required before GetManualCommands is called. In this case, we should
+            # still return the gh release edit commands, not the settings URL.
+            # The settings URL should ONLY be returned when the message indicates that
+            # republishing succeeded but the release is still mutable (repo settings not enabled).
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 is published but not immutable (repository 'Release immutability' setting may not be enabled)")
+            $issue.Version = "v1.0.0"
+            $issue.Status = "manual_fix_required"  # Set by Invoke-AutoFix when auto-fix: false
+            $script:state.Issues = @($issue)
+            
+            $commands = $action.GetManualCommands($script:state)
+            
+            # Should return gh release edit commands, NOT the settings URL
+            $commands.Count | Should -Be 2
+            $commands[0] | Should -Match "gh release edit v1.0.0"
+            $commands[0] | Should -Match "--draft=true"
+            $commands[1] | Should -Match "gh release edit v1.0.0"
+            $commands[1] | Should -Match "--draft=false"
         }
     }
     
