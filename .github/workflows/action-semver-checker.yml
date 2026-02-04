@@ -28,4 +28,4 @@ jobs:
           ignore-preview-releases: true
           check-releases: true
           token: ${{ secrets.GITHUB_TOKEN }}
-          auto-fix: false
+          auto-fix: true
