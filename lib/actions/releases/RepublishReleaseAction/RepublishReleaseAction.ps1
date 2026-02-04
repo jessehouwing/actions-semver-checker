@@ -43,10 +43,18 @@ class RepublishReleaseAction : ReleaseRemediationAction {
         if ($this.IsIssueUnfixable($state, "non_immutable_release")) {
             return @()
         }
-        # Check if manual fix is required (repository settings need configuration)
+        
+        # Check if manual fix is required specifically because the repository settings need configuration
+        # This happens when Execute() was run, republish succeeded, but release is still mutable
+        # We detect this by checking if the message indicates the release was republished but still mutable
+        # However, if ANY releases in the repo are already immutable, the feature is enabled and we don't need the comment
         if ($this.IsIssueManualFixRequired($state, "non_immutable_release")) {
-            $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
-            return @("# Enable 'Release immutability' in repository settings: $settingsUrl")
+            $issue = $state.Issues | Where-Object { $_.Version -eq $this.TagName -and $_.Type -eq "non_immutable_release" } | Select-Object -First 1
+            $hasImmutableReleases = ($state.Releases | Where-Object { $_.IsImmutable }) | Select-Object -First 1
+            if ($issue -and $issue.Message -match "republished but is still mutable" -and -not $hasImmutableReleases) {
+                $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
+                return @("# Enable 'Release immutability' in repository settings: $settingsUrl")
+            }
         }
 
         $repoArg = ""
