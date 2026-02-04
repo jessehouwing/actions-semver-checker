@@ -110,9 +110,8 @@ Describe "RepublishReleaseAction" {
             $commands.Count | Should -Be 0
         }
         
-        It "Should return settings URL only when manual_fix_required AND message indicates repo settings need configuration" {
-            # This tests the case where Execute() was run, republish succeeded but release is still mutable
-            # (repository settings not enabled) - now we always show settings URL when no immutable releases exist
+        It "Should return settings URL comment AND remediation commands when no immutable releases exist" {
+            # When no immutable releases exist, show both the settings URL comment AND the gh release edit commands
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 was republished but is still mutable. Enable 'Release immutability' in repository settings")
             $issue.Version = "v1.0.0"
@@ -122,13 +121,17 @@ Describe "RepublishReleaseAction" {
             
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 1
+            $commands.Count | Should -Be 3
             $commands[0] | Should -Match "^# Enable 'Release immutability'"
             $commands[0] | Should -Match "settings#releases-settings"
+            $commands[1] | Should -Match "gh release edit v1.0.0"
+            $commands[1] | Should -Match "--draft=true"
+            $commands[2] | Should -Match "gh release edit v1.0.0"
+            $commands[2] | Should -Match "--draft=false"
         }
         
-        It "Should return settings URL when no immutable releases exist regardless of issue status" {
-            # New behavior: show settings URL when no immutable releases exist in the repo
+        It "Should return settings URL comment AND remediation commands when auto-fix is false" {
+            # Show settings URL AND remediation commands when no immutable releases exist
             # This ensures users see the comment even in non-autofix mode
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 is published but not immutable")
@@ -139,9 +142,13 @@ Describe "RepublishReleaseAction" {
             
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 1
+            $commands.Count | Should -Be 3
             $commands[0] | Should -Match "^# Enable 'Release immutability'"
             $commands[0] | Should -Match "settings#releases-settings"
+            $commands[1] | Should -Match "gh release edit v1.0.0"
+            $commands[1] | Should -Match "--draft=true"
+            $commands[2] | Should -Match "gh release edit v1.0.0"
+            $commands[2] | Should -Match "--draft=false"
         }
         
         It "Should return gh release edit commands when repo already has immutable releases" {
