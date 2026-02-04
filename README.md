@@ -106,6 +106,36 @@ And a set of suggested Git commands to fix this:
 > git push origin 1a13fd188ebef96fb179faedfabcc8de5cb6189d:latest --force
 > ```
 
+## CLI / PowerShell Module
+
+In addition to running as a GitHub Action, you can use this tool from the command line via the **GitHubActionVersioning** PowerShell module.
+
+### Installation
+
+Install from the [PowerShell Gallery](https://www.powershellgallery.com/packages/GitHubActionVersioning/):
+
+```powershell
+Install-Module -Name GitHubActionVersioning -Scope CurrentUser
+```
+
+### Quick Start
+
+```powershell
+# Import the module
+Import-Module GitHubActionVersioning
+
+# Validate a repository (uses GitHub CLI token automatically)
+Test-GitHubActionVersioning -Owner 'owner' -Repo 'repo'
+
+# Validate with auto-fix enabled
+Test-GitHubActionVersioning -Owner 'owner' -Repo 'repo' -AutoFix
+
+# Use a specific token
+Test-GitHubActionVersioning -Owner 'owner' -Repo 'repo' -Token $env:GITHUB_TOKEN
+```
+
+📖 **[Full CLI documentation](module/README.md)** for detailed usage, parameters, and examples.
+
 ## Supported Validation Rules
 
 The action uses a modular rule-based validation system. Each rule can be configured independently via action inputs.
