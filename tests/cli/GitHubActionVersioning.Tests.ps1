@@ -3,7 +3,7 @@
     $global:ProgressPreference = 'SilentlyContinue'
 
     # Import the module
-    Import-Module "$PSScriptRoot/../../module/GitHubActionVersioning.psd1" -Force
+    Import-Module "$PSScriptRoot/../../GitHubActionVersioning.psd1" -Force
 }
 
 AfterAll {
