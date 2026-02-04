@@ -145,6 +145,47 @@ Describe "RemediationAction Classes" {
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $commands = $action.GetManualCommands($script:state)
             
+            # Should include comment about enabling immutability + 2 commands
+            $commands.Count | Should -Be 3
+            $commands[0] | Should -Match "^# Enable 'Release immutability'"
+            $commands[1] | Should -Match 'gh release edit v1\.0\.0.*--draft=true'
+            $commands[2] | Should -Match 'gh release edit v1\.0\.0.*--draft=false'
+        }
+        
+        It "Should generate manual commands with latest=true" {
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $action.MakeLatest = $true
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 3
+            $commands[2] | Should -Match 'gh release edit v1\.0\.0.*--draft=false.*--latest'
+        }
+        
+        It "Should generate manual commands with latest=false" {
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $action.MakeLatest = $false
+            $commands = $action.GetManualCommands($script:state)
+            
+            $commands.Count | Should -Be 3
+            $commands[2] | Should -Match 'gh release edit v1\.0\.0.*--draft=false.*--latest=false'
+        }
+        
+        It "Should not include immutability comment when repo already has immutable releases" {
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $state = [RepositoryState]::new()
+            $state.RepoOwner = "owner"
+            $state.RepoName = "repo"
+            $state.ServerUrl = "https://github.com"
+            
+            # Add an existing immutable release
+            $existingRelease = [ReleaseInfo]::new()
+            $existingRelease.TagName = "v0.9.0"
+            $existingRelease.IsImmutable = $true
+            $state.Releases = @($existingRelease)
+            
+            $commands = $action.GetManualCommands($state)
+            
+            # Should only have 2 commands (no comment)
             $commands.Count | Should -Be 2
             $commands[0] | Should -Match 'gh release edit v1\.0\.0.*--draft=true'
             $commands[1] | Should -Match 'gh release edit v1\.0\.0.*--draft=false'
