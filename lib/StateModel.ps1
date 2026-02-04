@@ -336,13 +336,14 @@ class RepositoryState {
     }
     
     [int]GetReturnCode() {
-        # Return 1 if there are unresolved issues (failed, manual_fix_required, or unfixable), 0 otherwise
-        # Fixed issues should not cause a failure
-        $failedCount = ($this.Issues | Where-Object { $_.Status -eq "failed" }).Count
-        $manualFixCount = ($this.Issues | Where-Object { $_.Status -eq "manual_fix_required" }).Count
-        $unfixableCount = ($this.Issues | Where-Object { $_.Status -eq "unfixable" }).Count
+        # Return 1 if there are unresolved ERROR-severity issues (failed, manual_fix_required, or unfixable)
+        # Fixed issues and WARNING-severity issues should not cause a failure
+        $errorIssues = $this.Issues | Where-Object { 
+            $_.Severity -eq "error" -and 
+            $_.Status -in @("failed", "manual_fix_required", "unfixable") 
+        }
         
-        if ($failedCount -gt 0 -or $manualFixCount -gt 0 -or $unfixableCount -gt 0) {
+        if ($errorIssues.Count -gt 0) {
             return 1
         } else {
             return 0
