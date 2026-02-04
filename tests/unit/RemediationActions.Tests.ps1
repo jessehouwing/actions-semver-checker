@@ -179,14 +179,14 @@ Describe "RemediationAction Classes" {
             
             # Add an existing immutable release
             $existingRelease = [ReleaseInfo]::new([PSCustomObject]@{
-                tag_name = "v0.9.0"
-                id = 123
-                draft = $false
-                prerelease = $false
-                html_url = "https://github.com/owner/repo/releases/tag/v0.9.0"
-                target_commitish = "abc123"
-                immutable = $true
-            })
+                    tag_name = "v0.9.0"
+                    id = 123
+                    draft = $false
+                    prerelease = $false
+                    html_url = "https://github.com/owner/repo/releases/tag/v0.9.0"
+                    target_commitish = "abc123"
+                    immutable = $true
+                })
             $state.Releases = @($existingRelease)
             
             $commands = $action.GetManualCommands($state)

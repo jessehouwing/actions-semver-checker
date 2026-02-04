@@ -161,7 +161,6 @@
             # (marketplace checks are disabled in most tests)
             if ($Uri -match '/contents/action\.ya?ml') {
                 # Simulate 404 - file not found
-                $errorResponse = @{ message = "Not Found"; documentation_url = "https://docs.github.com" } | ConvertTo-Json
                 $exception = [System.Net.WebException]::new("The remote server returned an error: (404) Not Found.")
                 # Add a mock Response property
                 $exception | Add-Member -NotePropertyName Response -NotePropertyValue ([PSCustomObject]@{
