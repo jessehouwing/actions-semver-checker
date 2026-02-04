@@ -318,5 +318,60 @@ Describe "release_should_be_immutable" {
 
             $issue.RemediationAction.MakeLatest | Should -Be $false
         }
+
+        It "should set MakeLatest=true when release is currently latest" {
+            # If a release is currently marked as latest, preserve that when republishing
+            $releaseData = [PSCustomObject]@{
+                tag_name = "v1.0.8"
+                id = 456
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.8"
+                target_commitish = "def789"
+                immutable = $false
+                is_latest = $true  # This release is currently "latest"
+            }
+            $releaseInfo = [ReleaseInfo]::new($releaseData)
+            $state = [RepositoryState]::new()
+            $state.Releases = @($releaseInfo)
+            $config = @{ 'check-release-immutability' = 'error' }
+
+            $issue = & $Rule_ReleaseShouldBeImmutable.CreateIssue $releaseInfo $state $config
+
+            $issue.RemediationAction.MakeLatest | Should -Be $true
+        }
+
+        It "should set MakeLatest=true when release is the highest version" {
+            # If a release is the highest version, it should become latest when republished
+            $olderRelease = [PSCustomObject]@{
+                tag_name = "v1.0.7"
+                id = 455
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.7"
+                target_commitish = "abc123"
+                immutable = $true
+            }
+            $state = [RepositoryState]::new()
+            $state.Releases = @([ReleaseInfo]::new($olderRelease))
+
+            $releaseData = [PSCustomObject]@{
+                tag_name = "v1.0.8"
+                id = 456
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/repo/releases/tag/v1.0.8"
+                target_commitish = "def789"
+                immutable = $false
+                is_latest = $false  # Not currently latest (older release might be)
+            }
+            $releaseInfo = [ReleaseInfo]::new($releaseData)
+            $config = @{ 'check-release-immutability' = 'error' }
+
+            $issue = & $Rule_ReleaseShouldBeImmutable.CreateIssue $releaseInfo $state $config
+
+            # v1.0.8 > v1.0.7, so it should become latest
+            $issue.RemediationAction.MakeLatest | Should -Be $true
+        }
     }
 }

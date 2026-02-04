@@ -84,11 +84,10 @@ $Rule_ReleaseShouldBeImmutable = [ValidationRule]@{
         $action = [RepublishReleaseAction]::new($version)
 
         # Determine if this release should become "latest" when republished
-        # Only set MakeLatest=false explicitly if it should NOT be latest
-        $shouldBeLatest = Test-ShouldBeLatestRelease -State $State -Version $version -ReleaseInfo $ReleaseInfo
-        if (-not $shouldBeLatest) {
-            $action.MakeLatest = $false
-        }
+        # If the release is currently marked as latest, preserve that
+        # If it's the highest non-prerelease version, it should become latest
+        $shouldBeLatest = $ReleaseInfo.IsLatest -or (Test-ShouldBeLatestRelease -State $State -Version $version -ReleaseInfo $ReleaseInfo)
+        $action.MakeLatest = $shouldBeLatest
 
         $issue.RemediationAction = $action
         

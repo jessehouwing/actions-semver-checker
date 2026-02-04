@@ -723,6 +723,74 @@ Describe "RepositoryState" {
             # This is consistent with the implementation in GetReturnCode()
             $state.GetReturnCode() | Should -Be 0
         }
+
+        It "returns 0 when warning-severity issues are manual_fix_required" {
+            $state = [RepositoryState]::new()
+            
+            $warning = [ValidationIssue]::new("warn", "warning", "Warning issue")
+            $warning.Status = "manual_fix_required"
+            
+            $state.AddIssue($warning)
+            
+            # Warning-severity issues should not cause failure
+            $state.GetReturnCode() | Should -Be 0
+        }
+
+        It "returns 0 when warning-severity issues are unfixable" {
+            $state = [RepositoryState]::new()
+            
+            $warning = [ValidationIssue]::new("warn", "warning", "Warning issue")
+            $warning.Status = "unfixable"
+            
+            $state.AddIssue($warning)
+            
+            # Warning-severity issues should not cause failure
+            $state.GetReturnCode() | Should -Be 0
+        }
+
+        It "returns 0 when warning-severity issues are failed" {
+            $state = [RepositoryState]::new()
+            
+            $warning = [ValidationIssue]::new("warn", "warning", "Warning issue")
+            $warning.Status = "failed"
+            
+            $state.AddIssue($warning)
+            
+            # Warning-severity issues should not cause failure
+            $state.GetReturnCode() | Should -Be 0
+        }
+
+        It "returns 1 when there are mixed error and warning issues with error issues unresolved" {
+            $state = [RepositoryState]::new()
+            
+            $warning = [ValidationIssue]::new("warn", "warning", "Warning issue")
+            $warning.Status = "manual_fix_required"
+            
+            $error = [ValidationIssue]::new("err", "error", "Error issue")
+            $error.Status = "manual_fix_required"
+            
+            $state.AddIssue($warning)
+            $state.AddIssue($error)
+            
+            # Error-severity issue should cause failure
+            $state.GetReturnCode() | Should -Be 1
+        }
+
+        It "returns 0 when there are mixed error and warning issues with only warning issues unresolved" {
+            $state = [RepositoryState]::new()
+            
+            $warning = [ValidationIssue]::new("warn", "warning", "Warning issue")
+            $warning.Status = "manual_fix_required"
+            
+            $error = [ValidationIssue]::new("err", "error", "Error issue")
+            $error.Status = "fixed"
+            
+            $state.AddIssue($warning)
+            $state.AddIssue($error)
+            
+            # Error issue is fixed, warning is not - should not cause failure
+            $state.GetReturnCode() | Should -Be 0
+        }
     }
     
     Context "GetPatchVersions" {
