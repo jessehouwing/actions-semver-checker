@@ -24,7 +24,7 @@ jobs:
       - uses: ./
         with:
           check-minor-version: error
-          check-release-immutability: none
+          check-release-immutability: error
           ignore-preview-releases: true
           check-releases: true
           token: ${{ secrets.GITHUB_TOKEN }}
