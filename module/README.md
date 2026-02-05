@@ -88,6 +88,9 @@ Write-Host "Unfixable: $($result.UnfixableCount)"
 foreach ($issue in $result.Issues) {
     Write-Host "$($issue.Severity): $($issue.Message) [Status: $($issue.Status)]"
 }
+
+# Get manual remediation instructions
+Get-ManualInstruction -State $result.State
 ```
 
 ### Run Specific Rules

@@ -63,10 +63,11 @@ Actions are sorted by priority before execution. Use these ranges:
 | 10 | Delete operations | `DeleteTagAction`, `DeleteBranchAction`, `DeleteReleaseAction` |
 | 20 | Create/Update refs | `CreateTagAction`, `UpdateTagAction`, `CreateBranchAction`, `UpdateBranchAction` |
 | 25 | Conversion operations | `ConvertTagToBranchAction`, `ConvertBranchToTagAction` |
+| 27 | Marketplace metadata | `action_metadata_required` |
 | 30 | Create releases | `CreateReleaseAction` |
 | 40 | Publish releases | `PublishReleaseAction` |
 | 45 | Republish releases | `RepublishReleaseAction` |
-| 50 | Default (avoid using) | - |
+| 50 | Set latest, Marketplace publication | `SetLatestReleaseAction`, `marketplace_publication_required` |
 
 ## Issue Status Management
 

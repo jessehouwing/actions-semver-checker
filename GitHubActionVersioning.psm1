@@ -100,7 +100,7 @@ function Test-GitHubActionVersioning
     
     .OUTPUTS
     By default, returns exit code (0 = success, 1 = validation errors).
-    With -PassThru, returns a hashtable with Issues, FixedCount, FailedCount, UnfixableCount, and ReturnCode.
+    With -PassThru, returns a hashtable with Issues, State, FixedCount, FailedCount, UnfixableCount, and ReturnCode.
     #>
     [CmdletBinding()]
     [OutputType([int], [hashtable])]
@@ -415,6 +415,7 @@ function Test-GitHubActionVersioning
     if ($PassThru) {
         return @{
             Issues = $state.Issues
+            State = $state
             FixedCount = $state.GetFixedIssuesCount()
             FailedCount = $state.GetFailedFixesCount()
             UnfixableCount = $state.GetUnfixableIssuesCount()
@@ -425,8 +426,8 @@ function Test-GitHubActionVersioning
     return $returnCode
 }
 
-# Export the cmdlet
-Export-ModuleMember -Function Test-GitHubActionVersioning
+# Export the cmdlets
+Export-ModuleMember -Function Test-GitHubActionVersioning, Get-ManualInstruction
 
 # Helper function for creating error result
 function New-ErrorResult {
@@ -452,6 +453,7 @@ function New-ErrorResult {
     
     return @{
         Issues = $State.Issues
+        State = $State
         FixedCount = 0
         FailedCount = 0
         UnfixableCount = 0
