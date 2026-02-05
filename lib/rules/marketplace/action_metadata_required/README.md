@@ -94,7 +94,7 @@ Ensure a `README.md` file exists in the repository root with:
 
 ## Rule Priority and Coordination
 
-- **Priority 45** - Runs before `marketplace_publication_required` (Priority 50)
+- **Priority 27** - Remediation runs before release creation (Priority 30)
 - If metadata is invalid, the `marketplace_publication_required` rule will skip checking publication status
 - This ensures users fix metadata issues before worrying about publication
 

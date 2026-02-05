@@ -31,16 +31,46 @@ function Get-ManualInstruction {
     )
     
     # Include pending issues (not yet fixed) as well as failed/unfixable ones
-    # Sort by priority (lower number = higher priority, e.g., Delete=10, Create=20, Release=30+)
+    # Sort by priority (lower number = higher priority), then by version for consistent ordering
+    # Priority is taken from: 1) Issue.Priority if set, 2) RemediationAction.Priority, 3) default 100
     $issuesNeedingManualFix = $State.Issues | Where-Object { 
         $_.Status -eq "pending" -or $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
-    } | Sort-Object {
-        if ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
-            $_.RemediationAction.Priority
-        } else {
-            100  # Default priority for issues without RemediationAction
+    } | Sort-Object @(
+        @{
+            Expression = {
+                # Use Issue.Priority if explicitly set (non-default)
+                if ($_.Priority -and $_.Priority -ne 100) {
+                    $_.Priority
+                }
+                # Otherwise use RemediationAction.Priority if available
+                elseif ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
+                    $_.RemediationAction.Priority
+                } else {
+                    100  # Default priority for issues without RemediationAction
+                }
+            }
+            Ascending = $true
+        },
+        @{
+            Expression = {
+                # Parse version for proper sorting using .NET Version object
+                $version = $_.Version
+                if ($version -eq 'latest') {
+                    # Sort 'latest' after all versioned items
+                    return [Version]::new([int]::MaxValue, 0, 0)
+                }
+                if ($version -match '^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?') {
+                    $major = [int]($Matches[1] ?? 0)
+                    $minor = [int]($Matches[2] ?? 0)
+                    $patch = [int]($Matches[3] ?? 0)
+                    return [Version]::new($major, $minor, $patch)
+                }
+                # Non-parseable versions sort last
+                return [Version]::new([int]::MaxValue, 0, 0)
+            }
+            Ascending = $true
         }
-    }
+    )
     
     if ($issuesNeedingManualFix.Count -eq 0) {
         return
@@ -151,16 +181,45 @@ function Write-ManualInstructionsToStepSummary
     }
     
     # Include pending issues (not yet fixed) as well as failed/unfixable ones
-    # Sort by priority (lower number = higher priority, e.g., Delete=10, Create=20, Release=30+)
+    # Sort by priority (lower number = higher priority), then by version for consistent ordering
     $issuesNeedingManualFix = $State.Issues | Where-Object { 
         $_.Status -eq "pending" -or $_.Status -eq "unfixable" -or $_.Status -eq "failed" -or $_.Status -eq "manual_fix_required"
-    } | Sort-Object {
-        if ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
-            $_.RemediationAction.Priority
-        } else {
-            100  # Default priority for issues without RemediationAction
+    } | Sort-Object @(
+        @{
+            Expression = {
+                # Use Issue.Priority if explicitly set (non-default)
+                if ($_.Priority -and $_.Priority -ne 100) {
+                    $_.Priority
+                }
+                # Otherwise use RemediationAction.Priority if available
+                elseif ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
+                    $_.RemediationAction.Priority
+                } else {
+                    100  # Default priority for issues without RemediationAction
+                }
+            }
+            Ascending = $true
+        },
+        @{
+            Expression = {
+                # Parse version for proper sorting using .NET Version object
+                $version = $_.Version
+                if ($version -eq 'latest') {
+                    # Sort 'latest' after all versioned items
+                    return [Version]::new([int]::MaxValue, 0, 0)
+                }
+                if ($version -match '^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?') {
+                    $major = [int]($Matches[1] ?? 0)
+                    $minor = [int]($Matches[2] ?? 0)
+                    $patch = [int]($Matches[3] ?? 0)
+                    return [Version]::new($major, $minor, $patch)
+                }
+                # Non-parseable versions sort last
+                return [Version]::new([int]::MaxValue, 0, 0)
+            }
+            Ascending = $true
         }
-    }
+    )
     
     if ($issuesNeedingManualFix.Count -eq 0) {
         return

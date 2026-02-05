@@ -235,6 +235,7 @@ class ValidationIssue {
     [string]$ManualFixCommand
     [object]$RemediationAction  # RemediationAction instance
     [string[]]$Dependencies  # Other issues that must be fixed first
+    [int]$Priority = 100  # Lower = higher priority (matches RemediationAction.Priority)
     # Status values: "pending", "fixed", "failed", "manual_fix_required", "unfixable"
     # - pending: Not yet attempted
     # - fixed: Successfully auto-fixed
