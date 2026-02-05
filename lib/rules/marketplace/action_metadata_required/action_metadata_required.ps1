@@ -1,15 +1,15 @@
 #############################################################################
 # Rule: action_metadata_required
 # Category: marketplace
-# Priority: 5
+# Priority: 27
 #############################################################################
 # This rule validates that all required marketplace metadata exists before
 # creating immutable releases. GitHub Marketplace requires:
 # - action.yaml or action.yml with name, description, branding.icon, branding.color
 # - README.md in the repository root
 #
-# This check runs early (priority 5) because if metadata is missing,
-# there's no point in proceeding with release immutability.
+# This check runs with priority 27 because metadata must be fixed
+# before creating releases.
 #############################################################################
 
 # Load shared marketplace helpers
@@ -61,6 +61,9 @@ $Rule_ActionMetadataRequired = [ValidationRule]@{
             $severity,
             $message
         )
+        
+        # Set priority to 27 - metadata must be fixed before creating releases
+        $issue.Priority = 27
         
         # No auto-fix available - user must manually add the missing metadata
         $issue.Status = "manual_fix_required"

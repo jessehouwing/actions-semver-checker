@@ -102,6 +102,9 @@ $Rule_MarketplacePublicationRequired = [ValidationRule]@{
         )
         $issue.Version = $version
         
+        # Set priority to 50 - should be fixed after republish for immutability (45)
+        $issue.Priority = 50
+        
         # No auto-fix available - marketplace publication is manual
         $issue.Status = "manual_fix_required"
         $issue.ManualFixCommand = @"
