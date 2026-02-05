@@ -39,7 +39,7 @@ function Get-ManualInstruction {
         @{
             Expression = {
                 # Use Issue.Priority if explicitly set (non-default)
-                if ($_.Priority -and $_.Priority -ne 100) {
+                if ($_.Priority -ne 100) {
                     $_.Priority
                 }
                 # Otherwise use RemediationAction.Priority if available
