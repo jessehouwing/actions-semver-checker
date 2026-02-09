@@ -4,6 +4,20 @@ A PowerShell module for validating GitHub Action semantic versioning from the co
 
 ## Installation
 
+### From PowerShell Gallery
+
+Install from the [PowerShell Gallery](https://www.powershellgallery.com/packages/GitHubActionVersioning/):
+
+```powershell
+Install-Module -Name GitHubActionVersioning -Scope CurrentUser
+```
+
+After installation, import the module:
+
+```powershell
+Import-Module GitHubActionVersioning
+```
+
 ### From Local Files
 
 ```powershell
