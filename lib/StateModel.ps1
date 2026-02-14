@@ -35,8 +35,10 @@ class VersionRef {
         # Parse version string to determine type and parts
         $versionStr = $this.Version -replace '^v', ''
         
-        # Handle non-semver versions like "latest"
-        if ($versionStr -notmatch '^\d') {
+        # Handle non-semver versions - must match pattern: digits only, optionally separated by dots
+        # Valid: "1", "1.0", "1.0.0", "123.456.789"
+        # Invalid: "latest", "2-proxy", "1.0.0-beta", "v1" (after stripping 'v' it would be "1" which is valid)
+        if ($versionStr -notmatch '^\d+(\.\d+){0,2}$') {
             $this.IsPatch = $false
             $this.IsMinor = $false
             $this.IsMajor = $false
@@ -575,7 +577,7 @@ function Initialize-RepositoryData {
     Write-Host "::debug::Found $($tags.Count) version tags: $($tags -join ', ')"
     
     Write-Host "::debug::Fetching branches from GitHub API..."
-    $apiBranches = Get-GitHubBranch -State $State -Pattern "^v\d+(\.\d+){0,2}(-.*)?$" -IgnoreVersions $IgnoreVersions
+    $apiBranches = Get-GitHubBranch -State $State -Pattern "^v\d+(\.\d+){0,2}$" -IgnoreVersions $IgnoreVersions
     $branches = $apiBranches | ForEach-Object { $_.Version }
     Write-Host "::debug::Found $($branches.Count) version branches: $($branches -join ', ')"
     
