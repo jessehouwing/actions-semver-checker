@@ -62,6 +62,31 @@ Describe "VersionRef" {
             $ref.Patch | Should -Be 0
         }
         
+        It "handles version-like strings with non-numeric suffixes (e.g., '2-proxy', 'v1-preview')" {
+            # These should be treated as non-semver versions, not throw errors
+            # Bug: "2-proxy" would previously throw "Cannot convert value '2-proxy' to type 'System.Int32'"
+            $ref = [VersionRef]::new("2-proxy", "refs/heads/2-proxy", "abc1234", "branch")
+            
+            $ref.IsPatch | Should -BeFalse
+            $ref.IsMinor | Should -BeFalse
+            $ref.IsMajor | Should -BeFalse
+            $ref.Major | Should -Be 0
+            $ref.Minor | Should -Be 0
+            $ref.Patch | Should -Be 0
+        }
+        
+        It "handles v-prefixed version with non-numeric suffix (e.g., 'v2-proxy')" {
+            # "v2-proxy" stripped of 'v' becomes "2-proxy" which is not a valid version
+            $ref = [VersionRef]::new("v2-proxy", "refs/heads/v2-proxy", "abc1234", "branch")
+            
+            $ref.IsPatch | Should -BeFalse
+            $ref.IsMinor | Should -BeFalse
+            $ref.IsMajor | Should -BeFalse
+            $ref.Major | Should -Be 0
+            $ref.Minor | Should -Be 0
+            $ref.Patch | Should -Be 0
+        }
+        
         It "handles version without 'v' prefix" {
             $ref = [VersionRef]::new("1.0.0", "refs/tags/1.0.0", "abc1234", "tag")
             
