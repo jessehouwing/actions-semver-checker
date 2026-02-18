@@ -13,7 +13,7 @@ jobs:
       contents: write # Required for dependency submission
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: jessehouwing/actions-dependency-submission@4dc7b7fe66b1f347c027dc0e07587bac5a43bd07 # 1.0.8
+      - uses: jessehouwing/actions-dependency-submission@a5622604a0febc7f93be403fef611725e53c8084 # 1.0.9
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # v4.8.2
