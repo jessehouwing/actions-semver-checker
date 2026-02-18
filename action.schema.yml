@@ -67,11 +67,15 @@ inputs:
   floating-versions-use:
     type: floating-backend
 
-  # Ignore versions - comma-separated list of version patterns
+  # Ignore versions - supports both comma-separated and newline-separated formats
+  # Comma-separated: 'v1.0.0,v2.0.0,v3.0.0'
+  # Newline-separated: |
+  #   v1.0.0
+  #   v2.0.0
   # Each version should match the version-pattern
   ignore-versions:
     type: string
-    separators: ','
+    separators: ['newline', ',']
     items:
       type: string
       match: '^(v?\d+(\.\d+)?(\.\d+)?|v?\d+\.\*|v?\d+\.\d+\.\*|latest)$'
