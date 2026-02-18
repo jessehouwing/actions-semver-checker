@@ -10,16 +10,12 @@ types:
     options:
       - value: error
         description: Report as error and fail validation
+        alternatives:
+          - true
       - value: warning
         description: Report as warning but allow validation to pass
       - value: none
         description: Skip this validation check
-      - value: true
-        description: Alias for 'error' (legacy compatibility)
-        alternatives:
-          - error
-      - value: false
-        description: Alias for 'none' (legacy compatibility)
         alternatives:
           - none
 
@@ -31,11 +27,6 @@ types:
         description: Use Git tags for floating versions (v1, v1.0, latest)
       - value: branches
         description: Use Git branches for floating versions (v1, v1.0, latest)
-
-  # Version pattern - supports basic semver and wildcards
-  version-pattern:
-    type: string
-    match: '^(v?\d+(\.\d+)?(\.\d+)?|v?\d+\.\*|v?\d+\.\d+\.\*|latest)$'
 
 # Validate inputs with explicit types
 inputs:
@@ -76,6 +67,4 @@ inputs:
   ignore-versions:
     type: string
     separators: ['newline', ',']
-    items:
-      type: string
-      match: '^(v?\d+(\.\d+)?(\.\d+)?|v?\d+\.\*|v?\d+\.\d+\.\*|latest)$'
+    match: '^(v?\d+(\.\d+)?(\.\d+)?|v?\d+\.\*|v?\d+\.\d+\.\*|latest)$'
