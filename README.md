@@ -857,7 +857,7 @@ To skip validation for specific versions:
 ```yaml
 - uses: jessehouwing/actions-semver-checker@v2
   with:
-    ignore-versions: 'v1.0.0,v2.0.0-beta'
+    ignore-versions: 'v1.0.0,v2.0.0'
 ```
 
 To automatically fix issues including republishing non-immutable releases:
