@@ -12,5 +12,5 @@ jobs:
   validate-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: jessehouwing/actions-example-checker@v0.0.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: jessehouwing/actions-example-checker@b362ec2c297a6ecde6d0fdd2a85339916eb49de9 # v0.0.0
