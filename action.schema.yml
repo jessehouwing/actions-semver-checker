@@ -10,12 +10,12 @@ types:
     options:
       - value: error
         description: Report as error and fail validation
-        alternatives: [true]
+        alternatives: ['true']
       - value: warning
         description: Report as warning but allow validation to pass
       - value: none
         description: Skip this validation check
-        alternatives: [false]
+        alternatives: ['false']
 
   # Floating versions backend type - tags or branches
   floating-backend:
