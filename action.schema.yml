@@ -1,0 +1,63 @@
+# Schema file for actions-example-checker validation
+# This file provides advanced validation for action inputs and outputs
+# See: https://github.com/jessehouwing/actions-example-checker
+
+# Define reusable custom types
+types:
+  # Validation level choice type - used across multiple inputs
+  validation-level:
+    type: choice
+    options:
+      - error
+      - warning
+      - none
+      - true
+      - false
+
+  # Floating versions backend type - tags or branches
+  floating-backend:
+    type: choice
+    options:
+      - tags
+      - branches
+
+  # Version pattern - supports basic semver and wildcards
+  version-pattern:
+    type: string
+    match: '^v?\d+(\.\d+)?(\.\d+)?(\*)?$|^latest$'
+
+# Validate inputs with explicit types
+inputs:
+  # GitHub token - string input (no pattern needed for secrets)
+  token:
+    type: string
+
+  # Validation level inputs - use the custom validation-level type
+  check-minor-version:
+    type: validation-level
+
+  check-releases:
+    type: validation-level
+
+  check-release-immutability:
+    type: validation-level
+
+  check-marketplace:
+    type: validation-level
+
+  # Boolean inputs
+  ignore-preview-releases:
+    type: boolean
+
+  auto-fix:
+    type: boolean
+
+  # Floating versions backend choice
+  floating-versions-use:
+    type: floating-backend
+
+  # Ignore versions - comma-separated list of version patterns
+  # Each version should match the version-pattern, but as a comma-separated list
+  # we can't directly apply the pattern here. The pattern is applied per-version in the action logic.
+  ignore-versions:
+    type: string
