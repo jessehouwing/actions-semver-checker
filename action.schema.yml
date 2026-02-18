@@ -8,23 +8,34 @@ types:
   validation-level:
     type: choice
     options:
-      - error
-      - warning
-      - none
-      - true
-      - false
+      - value: error
+        description: Report as error and fail validation
+      - value: warning
+        description: Report as warning but allow validation to pass
+      - value: none
+        description: Skip this validation check
+      - value: true
+        description: Alias for 'error' (legacy compatibility)
+        alternatives:
+          - error
+      - value: false
+        description: Alias for 'none' (legacy compatibility)
+        alternatives:
+          - none
 
   # Floating versions backend type - tags or branches
   floating-backend:
     type: choice
     options:
-      - tags
-      - branches
+      - value: tags
+        description: Use Git tags for floating versions (v1, v1.0, latest)
+      - value: branches
+        description: Use Git branches for floating versions (v1, v1.0, latest)
 
   # Version pattern - supports basic semver and wildcards
   version-pattern:
     type: string
-    match: '^v?\d+(\.\d+)?(\.\d+)?(\*)?$|^latest$'
+    match: '^(v?\d+(\.\d+)?(\.\d+)?|v?\d+\.\*|v?\d+\.\d+\.\*|latest)$'
 
 # Validate inputs with explicit types
 inputs:
@@ -57,7 +68,10 @@ inputs:
     type: floating-backend
 
   # Ignore versions - comma-separated list of version patterns
-  # Each version should match the version-pattern, but as a comma-separated list
-  # we can't directly apply the pattern here. The pattern is applied per-version in the action logic.
+  # Each version should match the version-pattern
   ignore-versions:
     type: string
+    separators: ','
+    items:
+      type: string
+      match: '^(v?\d+(\.\d+)?(\.\d+)?|v?\d+\.\*|v?\d+\.\d+\.\*|latest)$'
