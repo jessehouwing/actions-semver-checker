@@ -525,6 +525,18 @@ function Get-GitHubTag {
         return $result
     }
     catch {
+        # Handle 404 gracefully - GitHub returns 404 when the repository has no tags
+        # See: https://docs.github.com/en/rest/git/refs#get-all-references-in-a-namespace
+        $statusCode = $null
+        if ($_.Exception.Response) {
+            $statusCode = [int]$_.Exception.Response.StatusCode
+        }
+        
+        if ($statusCode -eq 404) {
+            Write-Host "::debug::No tags found in repository (404 response - this is normal for repos with no tags)"
+            return @()
+        }
+        
         Throw-GitHubApiFailure -Operation "fetching tags" -ErrorRecord $_
     }
 }
