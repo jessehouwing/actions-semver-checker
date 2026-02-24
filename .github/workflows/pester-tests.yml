@@ -15,7 +15,7 @@ jobs:
   unit-tests:
     name: Run Unit Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -27,9 +27,10 @@ jobs:
           if ($env:GITHUB_STEP_SUMMARY -and (Test-Path $env:GITHUB_STEP_SUMMARY)) {
             $originalSummary = Get-Content -Path $env:GITHUB_STEP_SUMMARY -Raw -ErrorAction SilentlyContinue
           }
-          
+
           # Run unit tests with test result output
-          $config = New-PesterConfiguration
+          Import-Module Pester -ErrorAction Stop
+          $config = [PesterConfiguration](Import-PowerShellDataFile -Path './pester.config.psd1')
           $config.Run.Path = @(
             './tests/unit/**/*.Tests.ps1'
             './tests/cli/**/*.Tests.ps1'
@@ -41,7 +42,7 @@ jobs:
           $config.TestResult.OutputFormat = 'NUnitXml'
           $config.Output.Verbosity = 'Detailed'
           $config.Run.Exit = $true
-          
+
           $stopMarker = (New-Guid).Guid
           Write-Output "::stop-commands::$stopMarker"
           Invoke-Pester -Configuration $config
@@ -55,7 +56,7 @@ jobs:
               Clear-Content -Path $env:GITHUB_STEP_SUMMARY -Force -ErrorAction SilentlyContinue
             }
           }
-      
+
       - name: Upload Unit Test Results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
@@ -74,7 +75,7 @@ jobs:
   integration-tests:
     name: Run Integration Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -86,16 +87,17 @@ jobs:
           if ($env:GITHUB_STEP_SUMMARY -and (Test-Path $env:GITHUB_STEP_SUMMARY)) {
             $originalSummary = Get-Content -Path $env:GITHUB_STEP_SUMMARY -Raw -ErrorAction SilentlyContinue
           }
-          
+
           # Run integration tests with test result output
-          $config = New-PesterConfiguration
+          Import-Module Pester -ErrorAction Stop
+          $config = [PesterConfiguration](Import-PowerShellDataFile -Path './pester.config.psd1')
           $config.Run.Path = './tests/integration'
           $config.TestResult.Enabled = $true
           $config.TestResult.OutputPath = 'integration-test-results.xml'
           $config.TestResult.OutputFormat = 'NUnitXml'
           $config.Output.Verbosity = 'Detailed'
           $config.Run.Exit = $true
-          
+
           $stopMarker = (New-Guid).Guid
           Write-Output "::stop-commands::$stopMarker"
           Invoke-Pester -Configuration $config
@@ -109,7 +111,7 @@ jobs:
               Clear-Content -Path $env:GITHUB_STEP_SUMMARY -Force -ErrorAction SilentlyContinue
             }
           }
-      
+
       - name: Upload Integration Test Results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
@@ -128,7 +130,7 @@ jobs:
   e2e-tests:
     name: Run E2E Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -140,16 +142,17 @@ jobs:
           if ($env:GITHUB_STEP_SUMMARY -and (Test-Path $env:GITHUB_STEP_SUMMARY)) {
             $originalSummary = Get-Content -Path $env:GITHUB_STEP_SUMMARY -Raw -ErrorAction SilentlyContinue
           }
-          
+
           # Run e2e tests with test result output
-          $config = New-PesterConfiguration
+          Import-Module Pester -ErrorAction Stop
+          $config = [PesterConfiguration](Import-PowerShellDataFile -Path './pester.config.psd1')
           $config.Run.Path = './tests/e2e'
           $config.TestResult.Enabled = $true
           $config.TestResult.OutputPath = 'e2e-test-results.xml'
           $config.TestResult.OutputFormat = 'NUnitXml'
           $config.Output.Verbosity = 'Detailed'
           $config.Run.Exit = $true
-          
+
           $stopMarker = (New-Guid).Guid
           Write-Output "::stop-commands::$stopMarker"
           Invoke-Pester -Configuration $config
@@ -163,7 +166,7 @@ jobs:
               Clear-Content -Path $env:GITHUB_STEP_SUMMARY -Force -ErrorAction SilentlyContinue
             }
           }
-      
+
       - name: Upload E2E Test Results
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()

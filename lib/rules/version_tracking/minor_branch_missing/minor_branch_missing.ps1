@@ -9,36 +9,36 @@ $Rule_MinorBranchMissing = [ValidationRule]@{
     Description = "Minor version branches should exist for all major.minor versions that have patches"
     Priority = 23
     Category = "version_tracking"
-    
+
     Condition = { param([RepositoryState]$State, [hashtable]$Config)
         # Only apply when using branches for floating versions
         $floatingVersionsUse = $Config.'floating-versions-use'
         if ($floatingVersionsUse -ne 'branches') {
             return @()
         }
-        
+
         # Only apply when minor version checking is enabled
         $checkMinorVersion = $Config.'check-minor-version'
         if ($checkMinorVersion -eq 'none') {
             return @()
         }
-        
+
         # Get all unique major.minor numbers from patch versions
         # Filter out prereleases if ignore-preview-releases is enabled
         $allRefs = $State.Tags + $State.Branches
         $ignorePreviewReleases = $Config.'ignore-preview-releases'
-        $patchVersions = $allRefs | Where-Object { 
-            $_.IsPatch -and 
+        $patchVersions = $allRefs | Where-Object {
+            $_.IsPatch -and
             -not $_.IsIgnored -and
             (-not $ignorePreviewReleases -or -not (Test-IsPrerelease -State $State -VersionRef $_))
         }
-        
+
         if ($patchVersions.Count -eq 0) {
             return @()
         }
-        
+
         # Group by major.minor
-        $minorNumbers = $patchVersions | ForEach-Object { 
+        $minorNumbers = $patchVersions | ForEach-Object {
             [PSCustomObject]@{
                 Major = $_.Major
                 Minor = $_.Minor
@@ -50,36 +50,36 @@ $Rule_MinorBranchMissing = [ValidationRule]@{
                 Minor = [int]$parts[1]
             }
         } | Sort-Object { $_.Major }, { $_.Minor }
-        
+
         # Find which minor versions don't have a minor branch
         $missingMinors = @()
         foreach ($minorVersion in $minorNumbers) {
-            $minorBranch = $State.Branches | Where-Object { 
-                $_.Version -eq "v$($minorVersion.Major).$($minorVersion.Minor)" 
+            $minorRef = ($State.Tags + $State.Branches) | Where-Object {
+                $_.Version -eq "v$($minorVersion.Major).$($minorVersion.Minor)" -and -not $_.IsIgnored
             }
-            if ($null -eq $minorBranch) {
+            if ($null -eq $minorRef) {
                 $missingMinors += $minorVersion
             }
         }
-        
+
         return $missingMinors
     }
-    
+
     Check = { param([PSCustomObject]$Item, [RepositoryState]$State, [hashtable]$Config)
         # If we got here from Condition, the minor branch is missing
         return $false
     }
-    
+
     CreateIssue = { param([PSCustomObject]$Item, [RepositoryState]$State, [hashtable]$Config)
         $version = "v$($Item.Major).$($Item.Minor)"
-        
+
         # Get the highest patch for this minor version to determine the SHA
         $ignorePreviewReleases = $Config.'ignore-preview-releases'
         $highestPatch = Get-HighestPatchForMinor -State $State -Major $Item.Major -Minor $Item.Minor -ExcludePrereleases $ignorePreviewReleases
-        
+
         $checkMinorVersion = $Config.'check-minor-version'
         $severity = if ($checkMinorVersion -eq 'warning') { 'warning' } else { 'error' }
-        
+
         $issue = [ValidationIssue]::new(
             "missing_minor_version",
             $severity,
@@ -88,7 +88,7 @@ $Rule_MinorBranchMissing = [ValidationRule]@{
         $issue.Version = $version
         $issue.ExpectedSha = $highestPatch.Sha
         $issue.RemediationAction = [CreateBranchAction]::new($version, $highestPatch.Sha)
-        
+
         return $issue
     }
 }

@@ -21,6 +21,13 @@ function Invoke-WithRetry
         [string]$OperationDescription = "operation"
     )
 
+    # Check if all direct GitHub API calls are disabled via environment variable.
+    # Wrapper-backed calls are still allowed so tests can mock HTTP behavior.
+    # Set $env:GITHUB_API_DISABLE_API = 'true' to fail immediately on real network calls.
+    if ($env:GITHUB_API_DISABLE_API -eq 'true' -and -not (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue)) {
+        throw "GitHub API calls are disabled for $OperationDescription (GITHUB_API_DISABLE_API=true)"
+    }
+
     # Check if retries are disabled via environment variable (useful for faster test execution)
     # Set $env:GITHUB_API_DISABLE_RETRY = 'true' to skip retries and fail immediately
     if ($env:GITHUB_API_DISABLE_RETRY -eq 'true') {
@@ -40,6 +47,11 @@ function Invoke-WithRetry
         }
         catch {
             $errorMessage = $_.Exception.Message
+
+            if ($errorMessage -match 'GITHUB_API_DISABLE_API=true') {
+                Write-Host "::debug::API disabled guard triggered for $OperationDescription"
+                throw
+            }
 
             # Check if this is a retryable error (network, timeout, rate limit)
             $isRetryable = $errorMessage -match '(timeout|connection|429|503|502|500)' -or `
@@ -77,6 +89,69 @@ function Get-ApiHeader {
     }
 
     return $headers
+}
+
+function Assert-GitHubApiEnabled {
+    param(
+        [string]$OperationDescription = "operation"
+    )
+
+    if ($env:GITHUB_API_DISABLE_API -eq 'true' -and -not (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue)) {
+        throw "GitHub API calls are disabled for $OperationDescription (GITHUB_API_DISABLE_API=true)"
+    }
+}
+
+function Invoke-GitHubHttpRequest {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Uri,
+        [Parameter(Mandatory)]
+        [hashtable]$Headers,
+        [Parameter(Mandatory)]
+        [ValidateSet('Get', 'Post', 'Patch', 'Delete', 'Head')]
+        [string]$Method,
+        [string]$Body,
+        [string]$ContentType,
+        [int]$TimeoutSec = 10,
+        [string]$OperationDescription = 'operation',
+        [switch]$ParseJsonContent
+    )
+
+    $requestParameters = @{
+        Uri = $Uri
+        Headers = $Headers
+        Method = $Method
+        ErrorAction = 'Stop'
+        TimeoutSec = $TimeoutSec
+    }
+
+    if ($PSBoundParameters.ContainsKey('Body')) {
+        $requestParameters['Body'] = $Body
+    }
+    if ($PSBoundParameters.ContainsKey('ContentType')) {
+        $requestParameters['ContentType'] = $ContentType
+    }
+
+    $response = $null
+    if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
+        $response = Invoke-WebRequestWrapper @requestParameters
+    } else {
+        Assert-GitHubApiEnabled -OperationDescription $OperationDescription
+        $response = Invoke-RestMethod @requestParameters
+    }
+
+    if ($ParseJsonContent) {
+        if ($response -is [System.Collections.IDictionary] -and $response.ContainsKey('Content')) {
+            return $response.Content | ConvertFrom-Json
+        }
+
+        $contentProperty = $response.PSObject.Properties['Content']
+        if ($contentProperty -and $contentProperty.Value) {
+            return $contentProperty.Value | ConvertFrom-Json
+        }
+    }
+
+    return $response
 }
 
 function Throw-GitHubApiFailure
@@ -936,12 +1011,7 @@ function New-GitHubRelease
 
         $body = $bodyObj | ConvertTo-Json
 
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-            $releaseObj = $response.Content | ConvertFrom-Json
-        } else {
-            $releaseObj = Invoke-RestMethod -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-        }
+        $releaseObj = Invoke-GitHubHttpRequest -Uri $url -Headers $headers -Method Post -Body $body -ContentType "application/json" -TimeoutSec 10 -OperationDescription "Create release $TagName" -ParseJsonContent
 
         # Return success with the release ID
         return @{ Success = $true; ReleaseId = $releaseObj.id; Unfixable = $false }
@@ -1010,11 +1080,7 @@ function Publish-GitHubRelease {
         if (-not $ReleaseId) {
             $releasesUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/releases/tags/$TagName"
 
-            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $releaseResponse = Invoke-WebRequestWrapper -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
-            } else {
-                $releaseResponse = Invoke-RestMethod -Uri $releasesUrl -Headers $headers -Method Get -ErrorAction Stop -TimeoutSec 10
-            }
+            $releaseResponse = Invoke-GitHubHttpRequest -Uri $releasesUrl -Headers $headers -Method Get -TimeoutSec 10 -OperationDescription "Get release $TagName" -ParseJsonContent
 
             $ReleaseId = $releaseResponse.id
         }
@@ -1032,13 +1098,7 @@ function Publish-GitHubRelease {
 
         $body = $bodyObj | ConvertTo-Json
 
-        # Use error variable to capture errors without writing to error stream
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $null = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-        } else {
-            # Suppress PowerShell error output by using try/catch and error variable
-            $null = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-        }
+        $null = Invoke-GitHubHttpRequest -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -TimeoutSec 10 -OperationDescription "Publish release $TagName"
 
         return @{ Success = $true; Unfixable = $false }
     }
@@ -1102,11 +1162,7 @@ function Set-GitHubReleaseLatest
             make_latest = 'true'
         } | ConvertTo-Json
 
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $null = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-        } else {
-            $null = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-        }
+        $null = Invoke-GitHubHttpRequest -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -TimeoutSec 10 -OperationDescription "Set release $TagName as latest"
 
         return @{ Success = $true; Unfixable = $false }
     }
@@ -1241,11 +1297,7 @@ function New-GitHubRef
         } | ConvertTo-Json
 
         try {
-            if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                $null = Invoke-WebRequestWrapper -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-            } else {
-                $null = Invoke-RestMethod -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-            }
+            $null = Invoke-GitHubHttpRequest -Uri $updateUrl -Headers $headers -Method Patch -Body $body -ContentType "application/json" -TimeoutSec 10 -OperationDescription "Update ref $RefName"
             return @{ Success = $true; RequiresManualFix = $false }
         }
         catch {
@@ -1264,11 +1316,7 @@ function New-GitHubRef
                     sha = $Sha
                 } | ConvertTo-Json
 
-                if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-                    $null = Invoke-WebRequestWrapper -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-                } else {
-                    $null = Invoke-RestMethod -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -ErrorAction Stop -TimeoutSec 10
-                }
+                $null = Invoke-GitHubHttpRequest -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -TimeoutSec 10 -OperationDescription "Create ref $RefName"
                 return @{ Success = $true; RequiresManualFix = $false }
             }
             else {

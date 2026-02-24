@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # Tests for MarketplaceRulesHelper functions
 #############################################################################
 
@@ -14,27 +14,27 @@ Describe "ConvertTo-MarketplaceSlug" {
         $result = ConvertTo-MarketplaceSlug -ActionName "Test Action"
         $result | Should -Be "test-action"
     }
-    
+
     It "should handle multiple spaces" {
         $result = ConvertTo-MarketplaceSlug -ActionName "Actions   SemVer   Checker"
         $result | Should -Be "actions-semver-checker"
     }
-    
+
     It "should remove special characters" {
         $result = ConvertTo-MarketplaceSlug -ActionName "My Action! (v2.0)"
         $result | Should -Be "my-action-v20"
     }
-    
+
     It "should handle already-lowercase names" {
         $result = ConvertTo-MarketplaceSlug -ActionName "my-action"
         $result | Should -Be "my-action"
     }
-    
+
     It "should trim leading and trailing hyphens" {
         $result = ConvertTo-MarketplaceSlug -ActionName "  Test Action  "
         $result | Should -Be "test-action"
     }
-    
+
     It "should convert 'Actions SemVer Checker' to 'actions-semver-checker'" {
         $result = ConvertTo-MarketplaceSlug -ActionName "Actions SemVer Checker"
         $result | Should -Be "actions-semver-checker"
@@ -49,12 +49,12 @@ Describe "Test-MarketplaceVersionPublished" {
             throw "Invoke-WebRequestWrapper should be mocked in tests"
         }
     }
-    
+
     AfterAll {
         # Clean up global function
         Remove-Item -Path "Function:\global:Invoke-WebRequestWrapper" -ErrorAction SilentlyContinue
     }
-    
+
     Context "Successful marketplace query" {
         It "should return IsPublished=true when version is published" {
             # Mock Invoke-WebRequestWrapper to return a page with embedded JSON containing the version
@@ -72,14 +72,14 @@ Describe "Test-MarketplaceVersionPublished" {
 "@
                 }
             }
-            
+
             $result = Test-MarketplaceVersionPublished -ActionName "Test Action" -Version "v1.0.0"
-            
+
             $result.IsPublished | Should -Be $true
             $result.Error | Should -BeNullOrEmpty
             $result.MarketplaceUrl | Should -Match "marketplace/actions/test-action.*version=v1.0.0"
         }
-        
+
         It "should return IsPublished=false when version is not in releases" {
             # Mock Invoke-WebRequestWrapper to return a page with embedded JSON NOT containing the version
             Mock Invoke-WebRequestWrapper {
@@ -96,14 +96,14 @@ Describe "Test-MarketplaceVersionPublished" {
 "@
                 }
             }
-            
+
             $result = Test-MarketplaceVersionPublished -ActionName "Test Action" -Version "v99.0.0"
-            
+
             $result.IsPublished | Should -Be $false
             $result.Error | Should -BeNullOrEmpty
         }
     }
-    
+
     Context "Network errors" {
         It "should return error when request fails with 404" {
             Mock Invoke-WebRequestWrapper {
@@ -112,26 +112,26 @@ Describe "Test-MarketplaceVersionPublished" {
                 $exception | Add-Member -NotePropertyName 'Response' -NotePropertyValue $response -Force
                 throw $exception
             }
-            
+
             $result = Test-MarketplaceVersionPublished -ActionName "Nonexistent Action" -Version "v1.0.0"
-            
+
             $result.IsPublished | Should -Be $false
             $result.Error | Should -Not -BeNullOrEmpty
         }
-        
+
         It "should return error with null IsPublished for network errors" {
             Mock Invoke-WebRequestWrapper {
                 throw [System.Net.WebException]::new("Network error")
             }
-            
+
             $result = Test-MarketplaceVersionPublished -ActionName "Test Action" -Version "v1.0.0"
-            
+
             $result.IsPublished | Should -BeNullOrEmpty
             $result.Error | Should -Not -BeNullOrEmpty
             $result.Error | Should -Match "Failed to check marketplace"
         }
     }
-    
+
     Context "Custom server URL" {
         It "should use custom server URL when provided" {
             # Mock to return embedded JSON with version
@@ -148,10 +148,35 @@ Describe "Test-MarketplaceVersionPublished" {
 "@
                 }
             }
-            
+
             $result = Test-MarketplaceVersionPublished -ActionName "Test Action" -Version "v1.0.0" -ServerUrl "https://github.mycompany.com"
-            
+
             $result.MarketplaceUrl | Should -Match "github.mycompany.com"
+        }
+    }
+
+    Context "API disable guard" {
+        AfterEach {
+            Remove-Item Env:GITHUB_API_DISABLE_API -ErrorAction SilentlyContinue
+            if (-not (Test-Path Function:\Invoke-WebRequestWrapper)) {
+                function global:Invoke-WebRequestWrapper {
+                    param($Uri, $Method, $ErrorAction, $TimeoutSec)
+                    throw "Invoke-WebRequestWrapper should be mocked in tests"
+                }
+            }
+        }
+
+        It "should throw when API calls are disabled and wrapper is unavailable" {
+            $env:GITHUB_API_DISABLE_API = 'true'
+            Remove-Item -Path "Function:\Invoke-WebRequestWrapper" -ErrorAction SilentlyContinue
+            Remove-Item -Path "Function:\global:Invoke-WebRequestWrapper" -ErrorAction SilentlyContinue
+            Mock Get-Command {
+                return $null
+            } -ParameterFilter { $Name -eq 'Invoke-WebRequestWrapper' }
+
+            {
+                Test-MarketplaceVersionPublished -ActionName "Test Action" -Version "v1.0.0"
+            } | Should -Throw -ExpectedMessage "*GITHUB_API_DISABLE_API=true*"
         }
     }
 }
@@ -162,7 +187,7 @@ Describe "Get-ActionMarketplaceMetadata" {
             # Mock Get-GitHubFileContents to return test YAML
             Mock Get-GitHubFileContents {
                 param($State, $Path, $Ref)
-                
+
                 if ($Path -eq 'action.yaml') {
                     return @"
 name: 'Test Action'
@@ -182,12 +207,12 @@ runs:
                 }
                 return $null
             }
-            
+
             Mock Test-GitHubFileExists {
                 param($State, $Path, $Ref)
                 return $Path -eq 'README.md'
             }
-            
+
             # Mock directory listing for README check
             Mock Get-GitHubDirectoryContents {
                 param($State, $Path, $Ref)
@@ -198,119 +223,119 @@ runs:
                 )
             }
         }
-        
+
         It "should detect action.yaml exists" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.ActionFileExists | Should -Be $true
             $metadata.ActionFilePath | Should -Be 'action.yaml'
         }
-        
+
         It "should extract name property" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.HasName | Should -Be $true
             $metadata.Name | Should -Be 'Test Action'
         }
-        
+
         It "should extract description property" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.HasDescription | Should -Be $true
             $metadata.Description | Should -Be 'A test action for unit testing'
         }
-        
+
         It "should extract branding icon" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.HasBrandingIcon | Should -Be $true
             $metadata.BrandingIcon | Should -Be 'check-circle'
         }
-        
+
         It "should extract branding color" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.HasBrandingColor | Should -Be $true
             $metadata.BrandingColor | Should -Be 'blue'
         }
-        
+
         It "should detect README.md exists" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.ReadmeExists | Should -Be $true
         }
-        
+
         It "should return valid metadata when all requirements are met" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.IsValid() | Should -Be $true
         }
     }
-    
+
     Context "Missing action file" {
         BeforeAll {
             Mock Get-GitHubFileContents {
                 param($State, $Path, $Ref)
                 return $null  # File not found
             }
-            
+
             Mock Test-GitHubFileExists {
                 param($State, $Path, $Ref)
                 return $false
             }
-            
+
             # Mock empty directory listing
             Mock Get-GitHubDirectoryContents {
                 param($State, $Path, $Ref)
                 return @()
             }
         }
-        
+
         It "should report action file missing" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.ActionFileExists | Should -Be $false
             $metadata.IsValid() | Should -Be $false
         }
     }
-    
+
     Context "Partial metadata" {
         BeforeAll {
             Mock Get-GitHubFileContents {
                 param($State, $Path, $Ref)
-                
+
                 if ($Path -eq 'action.yaml') {
                     return @"
 name: 'Test Action'
@@ -322,12 +347,12 @@ inputs:
                 }
                 return $null
             }
-            
+
             Mock Test-GitHubFileExists {
                 param($State, $Path, $Ref)
                 return $false  # No README
             }
-            
+
             # Mock empty directory listing (no README)
             Mock Get-GitHubDirectoryContents {
                 param($State, $Path, $Ref)
@@ -336,14 +361,14 @@ inputs:
                 )
             }
         }
-        
+
         It "should report missing fields" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.ActionFileExists | Should -Be $true
             $metadata.HasName | Should -Be $true
             $metadata.HasDescription | Should -Be $false
@@ -352,27 +377,27 @@ inputs:
             $metadata.ReadmeExists | Should -Be $false
             $metadata.IsValid() | Should -Be $false
         }
-        
+
         It "should list missing requirements" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
             $missing = $metadata.GetMissingRequirements()
-            
+
             $missing | Should -Contain "description property in action.yaml"
             $missing | Should -Contain "branding.icon property in action.yaml"
             $missing | Should -Contain "branding.color property in action.yaml"
             $missing | Should -Contain "README.md file in repository root"
         }
     }
-    
+
     Context "action.yml fallback" {
         BeforeAll {
             Mock Get-GitHubFileContents {
                 param($State, $Path, $Ref)
-                
+
                 if ($Path -eq 'action.yml') {
                     return @"
 name: 'Test Action YML'
@@ -384,12 +409,12 @@ branding:
                 }
                 return $null  # action.yaml not found
             }
-            
+
             Mock Test-GitHubFileExists {
                 param($State, $Path, $Ref)
                 return $Path -eq 'README.md'
             }
-            
+
             # Mock directory listing with README (for action.yml fallback)
             Mock Get-GitHubDirectoryContents {
                 param($State, $Path, $Ref)
@@ -399,14 +424,14 @@ branding:
                 )
             }
         }
-        
+
         It "should find action.yml when action.yaml doesn't exist" {
             $state = [RepositoryState]::new()
             $state.RepoOwner = "test"
             $state.RepoName = "repo"
-            
+
             $metadata = Get-ActionMarketplaceMetadata -State $state
-            
+
             $metadata.ActionFileExists | Should -Be $true
             $metadata.ActionFilePath | Should -Be 'action.yml'
             $metadata.Name | Should -Be 'Test Action YML'

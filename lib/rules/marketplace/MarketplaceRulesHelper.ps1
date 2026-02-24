@@ -1,4 +1,4 @@
-#############################################################################
+﻿#############################################################################
 # MarketplaceRulesHelper.ps1 - Helper functions for marketplace validation rules
 #############################################################################
 # This module provides shared helper functions used by marketplace validation rules.
@@ -25,12 +25,12 @@ function ConvertTo-MarketplaceSlug {
         [Parameter(Mandatory)]
         [string]$ActionName
     )
-    
+
     # Convert to lowercase, replace spaces with hyphens, remove non-alphanumeric except hyphens
     $slug = $ActionName.ToLower() -replace '\s+', '-' -replace '[^a-z0-9\-]', ''
     # Remove consecutive hyphens and trim leading/trailing hyphens
     $slug = $slug -replace '-+', '-' -replace '^-|-$', ''
-    
+
     return $slug
 }
 
@@ -67,40 +67,36 @@ function Test-MarketplaceVersionPublished {
     param(
         [Parameter(Mandatory)]
         [string]$ActionName,
-        
+
         [Parameter(Mandatory)]
         [string]$Version,
-        
+
         [string]$ServerUrl = "https://github.com"
     )
-    
+
     $slug = ConvertTo-MarketplaceSlug -ActionName $ActionName
     $marketplaceUrl = "$ServerUrl/marketplace/actions/$slug"
     $versionUrl = "$marketplaceUrl`?version=$Version"
-    
+
+    Assert-GitHubApiEnabled -OperationDescription "Marketplace version check $Version"
+
     try {
-        # Use Invoke-WebRequestWrapper if available (for testability)
-        $response = $null
-        if (Get-Command Invoke-WebRequestWrapper -ErrorAction SilentlyContinue) {
-            $response = Invoke-WebRequestWrapper -Uri $versionUrl -Method Get -ErrorAction Stop -TimeoutSec 10
-        } else {
-            $response = Invoke-WebRequest -Uri $versionUrl -Method Get -ErrorAction Stop -TimeoutSec 10
-        }
-        
+        $response = Invoke-GitHubHttpRequest -Uri $versionUrl -Headers @{} -Method Get -TimeoutSec 10 -OperationDescription "Marketplace version check $Version"
+
         # Get content - handle both raw response and wrapped response
         $content = if ($response.Content) { $response.Content } else { $response }
-        
+
         # Primary method: Parse the embedded JSON data from the React app
         # The page contains: <script type="application/json" data-target="react-app.embeddedData">
         # with releaseData.releases[] containing all published versions
         $isPublished = $false
-        
+
         if ($content -match '<script[^>]+data-target="react-app\.embeddedData"[^>]*>([^<]+)</script>') {
             try {
                 $embeddedJson = $Matches[1]
                 $embeddedData = $embeddedJson | ConvertFrom-Json
                 $releases = $embeddedData.payload.releaseData.releases
-                
+
                 if ($releases) {
                     # Check if the version appears in the releases array
                     $isPublished = ($releases | Where-Object { $_.tagName -eq $Version }).Count -gt 0
@@ -110,7 +106,7 @@ function Test-MarketplaceVersionPublished {
                 Write-Host "::debug::Failed to parse embedded JSON: $_"
             }
         }
-        
+
         return [PSCustomObject]@{
             IsPublished = $isPublished
             MarketplaceUrl = $versionUrl
@@ -122,7 +118,7 @@ function Test-MarketplaceVersionPublished {
         if ($_.Exception.Response) {
             $statusCode = [int]$_.Exception.Response.StatusCode
         }
-        
+
         # If we get a 404, the action is not in the marketplace at all
         if ($statusCode -eq 404) {
             return [PSCustomObject]@{
@@ -131,7 +127,7 @@ function Test-MarketplaceVersionPublished {
                 Error = "Action is not published to the GitHub Marketplace"
             }
         }
-        
+
         # For other errors, return with error message but don't fail
         return [PSCustomObject]@{
             IsPublished = $null  # Unknown
@@ -168,16 +164,16 @@ function Get-ActionMarketplaceMetadata {
     param(
         [Parameter(Mandatory)]
         [RepositoryState]$State,
-        
+
         [string]$Ref
     )
-    
+
     $metadata = [MarketplaceMetadata]::new()
-    
+
     # Try to fetch action.yaml first, then action.yml
     $actionContent = $null
     $actionPath = $null
-    
+
     foreach ($path in @('action.yaml', 'action.yml')) {
         Write-Host "::debug::Checking for $path..."
         $content = Get-GitHubFileContents -State $State -Path $path -Ref $Ref
@@ -188,15 +184,15 @@ function Get-ActionMarketplaceMetadata {
             break
         }
     }
-    
+
     if ($actionContent -and $actionPath) {
         $metadata.ActionFileExists = $true
         $metadata.ActionFilePath = $actionPath
-        
+
         # Parse YAML content to extract required fields
         # Note: Using simple regex-based parsing since PowerShell doesn't have built-in YAML support
         # This handles common YAML formats without requiring external modules
-        
+
         # Extract 'name' property (top-level)
         if ($actionContent -match '(?m)^name:\s*[''"]?([^''"#\r\n]+)[''"]?') {
             $metadata.Name = $matches[1].Trim()
@@ -205,7 +201,7 @@ function Get-ActionMarketplaceMetadata {
             # Empty name
             $metadata.HasName = $false
         }
-        
+
         # Extract 'description' property (top-level)
         if ($actionContent -match '(?m)^description:\s*[''"]?([^''"#\r\n]+)[''"]?') {
             $metadata.Description = $matches[1].Trim()
@@ -215,7 +211,7 @@ function Get-ActionMarketplaceMetadata {
             $metadata.HasDescription = $true
             $metadata.Description = "(multi-line)"
         }
-        
+
         # Extract 'branding.icon' property
         # Split into lines and look for icon after branding section
         $lines = $actionContent -split '[\r\n]+'
@@ -242,13 +238,13 @@ function Get-ActionMarketplaceMetadata {
             }
         }
     }
-    
+
     # Check for README.md using directory listing (single API call with case-insensitive local match)
     $rootContents = Get-GitHubDirectoryContents -State $State -Ref $Ref
     $readmeFile = $rootContents | Where-Object { $_.Type -eq 'file' -and $_.Name -match '^readme(\.md)?$' } | Select-Object -First 1
     if ($readmeFile) {
         $metadata.ReadmeExists = $true
     }
-    
+
     return $metadata
 }
