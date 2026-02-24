@@ -329,3 +329,57 @@ Describe "API failure handling" {
         { Test-ReleaseImmutability -Owner "test-owner" -Repo "test-repo" -Tag "v1.0.0" -Token "" -ApiUrl "https://api.github.com" } | Should -Throw
     }
 }
+
+Describe "Invoke-WithRetry API disable behavior" {
+    AfterEach {
+        Remove-Item Env:GITHUB_API_DISABLE_API -ErrorAction SilentlyContinue
+        Remove-Item Function:\Invoke-WebRequestWrapper -ErrorAction SilentlyContinue
+    }
+
+    It "Should throw immediately when GITHUB_API_DISABLE_API is true" {
+        $env:GITHUB_API_DISABLE_API = 'true'
+        $counter = @{ Value = 0 }
+
+        Remove-Item Function:\Invoke-WebRequestWrapper -ErrorAction SilentlyContinue
+        Remove-Item Function:\global:Invoke-WebRequestWrapper -ErrorAction SilentlyContinue
+
+        {
+            Invoke-WithRetry -OperationDescription "test operation" -ScriptBlock {
+                $counter.Value++
+                return "should not execute"
+            }
+        } | Should -Throw -ExpectedMessage "*GITHUB_API_DISABLE_API=true*"
+
+        $counter.Value | Should -Be 0
+    }
+
+    It "Should execute scriptblock when GITHUB_API_DISABLE_API is not true" {
+        $counter = @{ Value = 0 }
+
+        $result = Invoke-WithRetry -OperationDescription "test operation" -ScriptBlock {
+            $counter.Value++
+            return "executed"
+        }
+
+        $result | Should -Be "executed"
+        $counter.Value | Should -Be 1
+    }
+
+    It "Should execute scriptblock when API is disabled but wrapper exists" {
+        $env:GITHUB_API_DISABLE_API = 'true'
+        $counter = @{ Value = 0 }
+
+        function Invoke-WebRequestWrapper {
+            param($Uri, $Headers, $Method, $TimeoutSec)
+            return @{ Content = "mock" }
+        }
+
+        $result = Invoke-WithRetry -OperationDescription "test operation" -ScriptBlock {
+            $counter.Value++
+            return "executed with wrapper"
+        }
+
+        $result | Should -Be "executed with wrapper"
+        $counter.Value | Should -Be 1
+    }
+}

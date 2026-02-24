@@ -12,6 +12,15 @@ AfterAll {
 }
 
 Describe "Test-GitHubActionVersioning" {
+    BeforeEach {
+        # Prevent accidental live API calls in CLI unit tests
+        $env:GITHUB_API_DISABLE_API = 'true'
+    }
+
+    AfterEach {
+        Remove-Item Env:GITHUB_API_DISABLE_API -ErrorAction SilentlyContinue
+    }
+
     Context "Parameter validation" {
         It "Should have Repository parameter" {
             $cmd = Get-Command Test-GitHubActionVersioning
@@ -104,9 +113,9 @@ Describe "Test-GitHubActionVersioning" {
             $oldRepo = $env:GITHUB_REPOSITORY
             try {
                 $env:GITHUB_REPOSITORY = $null
-                
+
                 $result = Test-GitHubActionVersioning -PassThru
-                
+
                 $result.ReturnCode | Should -Be 1
             }
             finally {
@@ -119,15 +128,17 @@ Describe "Test-GitHubActionVersioning" {
             $oldRepo = $env:GITHUB_REPOSITORY
             try {
                 $env:GITHUB_REPOSITORY = "test-owner/test-repo"
-                
+
                 # Mock API calls to prevent actual API requests
                 Mock -ModuleName GitHubActionVersioning Get-GitHubTag { return @() }
+                Mock -ModuleName GitHubActionVersioning Get-GitHubBranch { return @() }
                 Mock -ModuleName GitHubActionVersioning Get-GitHubRelease { return @() }
-                
-                $result = Test-GitHubActionVersioning -PassThru
-                
+
+                $result = Test-GitHubActionVersioning -PassThru -CheckMarketplace 'none'
+
                 # Should not fail on repository validation
                 $result | Should -Not -BeNullOrEmpty
+                $result.ReturnCode | Should -Be 0
             }
             finally {
                 $env:GITHUB_REPOSITORY = $oldRepo
@@ -136,7 +147,7 @@ Describe "Test-GitHubActionVersioning" {
 
         It "Should return error for invalid repository format" {
             $result = Test-GitHubActionVersioning -Repository "invalid-format" -PassThru
-            
+
             $result.ReturnCode | Should -Be 1
         }
     }
@@ -147,15 +158,16 @@ Describe "Test-GitHubActionVersioning" {
             $oldToken = $env:GITHUB_TOKEN
             try {
                 $env:GITHUB_TOKEN = $null
-                
+
                 # Mock gh command to fail
                 Mock -ModuleName GitHubActionVersioning gh { throw "gh not found" }
-                
+
                 # Mock API calls
                 Mock -ModuleName GitHubActionVersioning Get-GitHubTag { return @() }
+                Mock -ModuleName GitHubActionVersioning Get-GitHubBranch { return @() }
                 Mock -ModuleName GitHubActionVersioning Get-GitHubRelease { return @() }
-                
-                { Test-GitHubActionVersioning -Repository "owner/repo" -WarningVariable warnings } | Should -Not -Throw
+
+                { Test-GitHubActionVersioning -Repository "owner/repo" -WarningVariable warnings -CheckMarketplace 'none' } | Should -Not -Throw
             }
             finally {
                 $env:GITHUB_TOKEN = $oldToken
@@ -167,16 +179,18 @@ Describe "Test-GitHubActionVersioning" {
         It "Should return hashtable with expected properties when PassThru is used" {
             # Mock API calls
             Mock -ModuleName GitHubActionVersioning Get-GitHubTag { return @() }
+            Mock -ModuleName GitHubActionVersioning Get-GitHubBranch { return @() }
             Mock -ModuleName GitHubActionVersioning Get-GitHubRelease { return @() }
-            
-            $result = Test-GitHubActionVersioning -Repository "owner/repo" -PassThru
-            
+
+            $result = Test-GitHubActionVersioning -Repository "owner/repo" -PassThru -CheckMarketplace 'none'
+
             $result | Should -Not -BeNullOrEmpty
             $result.ContainsKey('Issues') | Should -Be $true
             $result.ContainsKey('FixedCount') | Should -Be $true
             $result.ContainsKey('FailedCount') | Should -Be $true
             $result.ContainsKey('UnfixableCount') | Should -Be $true
             $result.ContainsKey('ReturnCode') | Should -Be $true
+            $result.ReturnCode | Should -Be 0
         }
     }
 }
@@ -198,7 +212,7 @@ Describe "CliLogging functions" {
         It "Should add error to State when provided" {
             $state = [RepositoryState]::new()
             Write-ActionsError -Message "Test error" -State $state
-            
+
             $state.Issues.Count | Should -Be 1
             $state.Issues[0].Severity | Should -Be "error"
         }
