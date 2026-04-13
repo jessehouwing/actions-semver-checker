@@ -13,4 +13,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: jessehouwing/actions-example-checker@6eae14fcd8b6d4d1f0cde6b2ada154c1c046d2cb # v0.0.6
+      - uses: jessehouwing/actions-example-checker@2320f85090ee4e37c4d96692165563986baa4323 # v0.0.7
