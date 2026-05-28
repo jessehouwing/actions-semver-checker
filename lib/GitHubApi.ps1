@@ -1277,7 +1277,8 @@ function New-GitHubRef
         [RepositoryState]$State,
         [string]$RefName,  # e.g., "refs/tags/v1.0.0" or "refs/heads/main"
         [string]$Sha,
-        [bool]$Force = $true  # Force update if ref exists
+        [bool]$Force = $true,  # Force update if ref exists
+        [bool]$RefExists = $true  # $false = ref is known not to exist; skip PATCH and go straight to POST
     )
 
     try {
@@ -1289,7 +1290,19 @@ function New-GitHubRef
 
         $headers = Get-ApiHeader -Token $State.Token
 
-        # Try to update the ref first (in case it exists)
+        $createUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/refs"
+        $createBody = @{
+            ref = $RefName
+            sha = $Sha
+        } | ConvertTo-Json
+
+        if (-not $RefExists) {
+            # Ref is known not to exist — skip PATCH and go straight to POST create
+            $null = Invoke-GitHubHttpRequest -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -TimeoutSec 10 -OperationDescription "Create ref $RefName"
+            return @{ Success = $true; RequiresManualFix = $false }
+        }
+
+        # Ref may exist — try PATCH (update) first
         $updateUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/$RefName"
         $body = @{
             sha = $Sha
@@ -1301,7 +1314,7 @@ function New-GitHubRef
             return @{ Success = $true; RequiresManualFix = $false }
         }
         catch {
-            # Check if this is a 404 or 422 "Reference does not exist" error (ref doesn't exist)
+            # Check if this is a 404 or 422 "Reference does not exist" error (ref was deleted between check and update)
             $refNotFound = $false
             if ($_.Exception.Response) {
                 $statusCode = $_.Exception.Response.StatusCode.value__
@@ -1321,14 +1334,8 @@ function New-GitHubRef
                 }
             }
 
-            # Only try to create if the ref doesn't exist (404 or 422 "Reference does not exist")
+            # Fall back to POST create if the ref disappeared since we last checked (TOCTOU)
             if ($refNotFound) {
-                $createUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/refs"
-                $createBody = @{
-                    ref = $RefName
-                    sha = $Sha
-                } | ConvertTo-Json
-
                 $null = Invoke-GitHubHttpRequest -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -TimeoutSec 10 -OperationDescription "Create ref $RefName"
                 return @{ Success = $true; RequiresManualFix = $false }
             }
