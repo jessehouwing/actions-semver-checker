@@ -14,7 +14,7 @@ class CreateBranchAction : RemediationAction {
     
     [bool] Execute([RepositoryState]$state) {
         Write-Host "Auto-fix: Create branch $($this.BranchName)"
-        $result = New-GitHubRef -State $state -RefName "refs/heads/$($this.BranchName)" -Sha $this.Sha -Force $false -RefExists $false
+        $result = New-GitHubRef -State $state -RefName "refs/heads/$($this.BranchName)" -Sha $this.Sha -Force $false
         
         if ($result.Success) {
             Write-Host "✓ Success: Created branch $($this.BranchName)"

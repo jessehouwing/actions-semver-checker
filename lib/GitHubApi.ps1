@@ -1277,8 +1277,7 @@ function New-GitHubRef
         [RepositoryState]$State,
         [string]$RefName,  # e.g., "refs/tags/v1.0.0" or "refs/heads/main"
         [string]$Sha,
-        [bool]$Force = $true,  # Force update if ref exists
-        [bool]$RefExists = $true  # $false = ref is known not to exist; skip PATCH and go straight to POST
+        [bool]$Force = $true  # Force update if ref exists
     )
 
     try {
@@ -1296,8 +1295,16 @@ function New-GitHubRef
             sha = $Sha
         } | ConvertTo-Json
 
-        if (-not $RefExists) {
-            # Ref is known not to exist — skip PATCH and go straight to POST create
+        # Determine whether the ref is known to exist based on state (skip PATCH when it's not)
+        $refExistsInState = $false
+        if ($RefName -like "refs/tags/*") {
+            $refExistsInState = $null -ne ($State.Tags | Where-Object { $_.Ref -eq $RefName } | Select-Object -First 1)
+        } elseif ($RefName -like "refs/heads/*") {
+            $refExistsInState = $null -ne ($State.Branches | Where-Object { $_.Ref -eq $RefName } | Select-Object -First 1)
+        }
+
+        if (-not $refExistsInState) {
+            # Ref is not in state — skip PATCH and go straight to POST create
             $null = Invoke-GitHubHttpRequest -Uri $createUrl -Headers $headers -Method Post -Body $createBody -ContentType "application/json" -TimeoutSec 10 -OperationDescription "Create ref $RefName"
             return @{ Success = $true; RequiresManualFix = $false }
         }

@@ -57,8 +57,7 @@ Describe "CreateTagAction" {
             Should -Invoke New-GitHubRef -Times 1 -ParameterFilter {
                 $RefName -eq "refs/tags/v1.0.0" -and
                 $Sha -eq "abc123" -and
-                $Force -eq $false -and
-                $RefExists -eq $false
+                $Force -eq $false
             }
         }
         

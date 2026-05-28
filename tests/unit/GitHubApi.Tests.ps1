@@ -149,6 +149,8 @@ Describe "New-GitHubRef" {
         $state.ApiUrl = "https://api.github.com"
         $state.ServerUrl = "https://github.com"
         $state.Token = "test-token"
+        # Ref is known to exist in state so PATCH is attempted (TOCTOU: ref deleted before PATCH arrives)
+        $state.Tags = @([VersionRef]::new("v2", "refs/tags/v2", "oldsha", "tag"))
 
         # Mock: PATCH throws 422 "Reference does not exist" (via ErrorDetails); POST succeeds
         $mock422ThenSuccess = {
@@ -184,6 +186,8 @@ Describe "New-GitHubRef" {
         $state.ApiUrl = "https://api.github.com"
         $state.ServerUrl = "https://github.com"
         $state.Token = "test-token"
+        # Ref is known to exist in state so PATCH is attempted (TOCTOU: ref deleted before PATCH arrives)
+        $state.Tags = @([VersionRef]::new("v2", "refs/tags/v2", "oldsha", "tag"))
 
         # Mock: PATCH throws 422 with "Reference does not exist" in exception message; POST succeeds
         $mock422ThenSuccess = {
@@ -211,6 +215,8 @@ Describe "New-GitHubRef" {
         $state.ApiUrl = "https://api.github.com"
         $state.ServerUrl = "https://github.com"
         $state.Token = "test-token"
+        # Ref is known to exist in state so PATCH is attempted
+        $state.Tags = @([VersionRef]::new("v2", "refs/tags/v2", "oldsha", "tag"))
 
         $throw422Other = {
             $mockException = New-Object System.Exception "The remote server returned an error: (422) Unprocessable Entity"
@@ -232,6 +238,8 @@ Describe "New-GitHubRef" {
         $state.ApiUrl = "https://api.github.com"
         $state.ServerUrl = "https://github.com"
         $state.Token = "test-token"
+        # Ref is known to exist in state so PATCH is attempted (TOCTOU: ref deleted before PATCH arrives)
+        $state.Tags = @([VersionRef]::new("v2", "refs/tags/v2", "oldsha", "tag"))
 
         # Mock: PATCH throws 404; POST succeeds
         $mock404ThenSuccess = {
@@ -251,26 +259,27 @@ Describe "New-GitHubRef" {
         $result.Success | Should -Be $true
         $result.RequiresManualFix | Should -Be $false
     }
-    It "Should go directly to POST create when RefExists is false (skip PATCH)" {
+    It "Should go directly to POST create when ref is not in state (skip PATCH)" {
         $state = [RepositoryState]::new()
         $state.RepoOwner = "test-owner"
         $state.RepoName = "test-repo"
         $state.ApiUrl = "https://api.github.com"
         $state.ServerUrl = "https://github.com"
         $state.Token = "test-token"
+        # state.Tags is empty — ref is not known to exist, so POST is used directly
 
         # Mock: verify only POST is called (never PATCH)
         $mockPostOnly = {
             param($Uri, $Headers, $Method, $Body, $ContentType, $ErrorAction, $TimeoutSec)
             if ($Method -eq 'Patch') {
-                throw "PATCH should not be called when RefExists is false"
+                throw "PATCH should not be called when ref is not in state"
             }
             return $null
         }
 
         Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $mockPostOnly
 
-        $result = New-GitHubRef -State $state -RefName "refs/tags/v2" -Sha "abc123" -RefExists $false
+        $result = New-GitHubRef -State $state -RefName "refs/tags/v2" -Sha "abc123"
 
         $result.Success | Should -Be $true
         $result.RequiresManualFix | Should -Be $false

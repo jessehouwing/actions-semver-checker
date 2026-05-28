@@ -44,7 +44,7 @@ class ConvertTagToBranchAction : RemediationAction {
         }
 
         Write-Host "Auto-fix: Convert tag $($this.Name) to branch"
-        $createResult = New-GitHubRef -State $state -RefName "refs/heads/$($this.Name)" -Sha $this.Sha -Force $false -RefExists $false
+        $createResult = New-GitHubRef -State $state -RefName "refs/heads/$($this.Name)" -Sha $this.Sha -Force $false
 
         if (-not $createResult.Success) {
             if ($createResult.RequiresManualFix) {
