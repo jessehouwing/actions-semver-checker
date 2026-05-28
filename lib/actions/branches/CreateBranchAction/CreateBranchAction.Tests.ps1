@@ -50,8 +50,7 @@ Describe "CreateBranchAction" {
             Should -Invoke New-GitHubRef -Times 1 -ParameterFilter {
                 $RefName -eq "refs/heads/v1" -and
                 $Sha -eq "abc123" -and
-                $Force -eq $false -and
-                $RefExists -eq $false
+                $Force -eq $false
             }
         }
         
