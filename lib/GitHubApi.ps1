@@ -1301,15 +1301,28 @@ function New-GitHubRef
             return @{ Success = $true; RequiresManualFix = $false }
         }
         catch {
-            # Check if this is a 404 error (ref doesn't exist)
-            $is404 = $false
+            # Check if this is a 404 or 422 "Reference does not exist" error (ref doesn't exist)
+            $refNotFound = $false
             if ($_.Exception.Response) {
                 $statusCode = $_.Exception.Response.StatusCode.value__
-                $is404 = ($statusCode -eq 404)
+                if ($statusCode -eq 404) {
+                    $refNotFound = $true
+                }
+                elseif ($statusCode -eq 422) {
+                    # GitHub returns 422 "Reference does not exist" when PATCHing a non-existent ref
+                    $errorBody = ""
+                    if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+                        $errorBody = $_.ErrorDetails.Message
+                    }
+                    elseif ($_.Exception.Message) {
+                        $errorBody = $_.Exception.Message
+                    }
+                    $refNotFound = $errorBody -match "Reference does not exist"
+                }
             }
 
-            # Only try to create if the ref doesn't exist (404 error)
-            if ($is404) {
+            # Only try to create if the ref doesn't exist (404 or 422 "Reference does not exist")
+            if ($refNotFound) {
                 $createUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/git/refs"
                 $createBody = @{
                     ref = $RefName
@@ -1320,7 +1333,7 @@ function New-GitHubRef
                 return @{ Success = $true; RequiresManualFix = $false }
             }
             else {
-                # Re-throw the error if it's not a 404
+                # Re-throw the error if it's not a ref-not-found error
                 throw
             }
         }
