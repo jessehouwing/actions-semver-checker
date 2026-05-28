@@ -14,7 +14,7 @@ class CreateTagAction : RemediationAction {
     
     [bool] Execute([RepositoryState]$state) {
         Write-Host "Auto-fix: Create tag $($this.TagName)"
-        $result = New-GitHubRef -State $state -RefName "refs/tags/$($this.TagName)" -Sha $this.Sha -Force $false
+        $result = New-GitHubRef -State $state -RefName "refs/tags/$($this.TagName)" -Sha $this.Sha -Force $false -RefExists $false
         
         if ($result.Success) {
             Write-Host "✓ Success: Created tag $($this.TagName)"

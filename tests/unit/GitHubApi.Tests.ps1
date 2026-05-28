@@ -251,6 +251,30 @@ Describe "New-GitHubRef" {
         $result.Success | Should -Be $true
         $result.RequiresManualFix | Should -Be $false
     }
+    It "Should go directly to POST create when RefExists is false (skip PATCH)" {
+        $state = [RepositoryState]::new()
+        $state.RepoOwner = "test-owner"
+        $state.RepoName = "test-repo"
+        $state.ApiUrl = "https://api.github.com"
+        $state.ServerUrl = "https://github.com"
+        $state.Token = "test-token"
+
+        # Mock: verify only POST is called (never PATCH)
+        $mockPostOnly = {
+            param($Uri, $Headers, $Method, $Body, $ContentType, $ErrorAction, $TimeoutSec)
+            if ($Method -eq 'Patch') {
+                throw "PATCH should not be called when RefExists is false"
+            }
+            return $null
+        }
+
+        Set-Item -Path function:global:Invoke-WebRequestWrapper -Value $mockPostOnly
+
+        $result = New-GitHubRef -State $state -RefName "refs/tags/v2" -Sha "abc123" -RefExists $false
+
+        $result.Success | Should -Be $true
+        $result.RequiresManualFix | Should -Be $false
+    }
 }
 
 Describe "Get-GitHubRelease GraphQL query validation" {
