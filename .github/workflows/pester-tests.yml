@@ -70,7 +70,7 @@ jobs:
           path: unit-test-results.xml
 
       - name: Publish Unit Test Results
-        uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040 # v2
+        uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2
         if: always()
         with:
           files: unit-test-results.xml
@@ -130,7 +130,7 @@ jobs:
           path: integration-test-results.xml
 
       - name: Publish Integration Test Results
-        uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040 # v2
+        uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2
         if: always()
         with:
           files: integration-test-results.xml
@@ -190,7 +190,7 @@ jobs:
           path: e2e-test-results.xml
 
       - name: Publish E2E Test Results
-        uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040 # v2
+        uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2
         if: always()
         with:
           files: e2e-test-results.xml
