@@ -6,7 +6,11 @@ workflows:
     '.github/workflows/action-dependency-submission.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/dependency-review-action@v5.0.0'
+<<<<<<< HEAD
         - 'jessehouwing/actions-dependency-submission@v1.0.16'
+=======
+        - 'jessehouwing/actions-dependency-submission@v1.0.15'
+>>>>>>> 9363785 (chore(deps): update action versions and add actions.lock file)
         - 'step-security/harden-runner@v2.21.0'
     '.github/workflows/action-example-checker.yml':
         - 'actions/checkout@v7.0.1'
