@@ -19,8 +19,7 @@
 . "$PSScriptRoot/lib/rules/releases/ReleaseRulesHelper.ps1"
 . "$PSScriptRoot/lib/rules/marketplace/MarketplaceRulesHelper.ps1"
 
-function Test-GitHubActionVersioning
-{
+function Test-GitHubActionVersioning {
     <#
     .SYNOPSIS
     Validates semantic versioning tags and branches for GitHub Actions repositories.
@@ -173,27 +172,29 @@ function Test-GitHubActionVersioning
             [System.ConsoleColor]$BackgroundColor
         )
         
-        # Filter out GitHub Actions workflow commands in CLI mode
-        # Matches patterns like ::debug::, ::warning::, ::error::, ::notice::, etc.
-        if ($script:cliMode -and $Object -match '^::([a-z-]+)::') {
-            # Convert ::debug:: to Write-Verbose, suppress others
-            if ($Object -match '^::debug::') {
-                $message = $Object -replace '^::debug::', ''
-                Write-Verbose $message
+        process {
+            # Filter out GitHub Actions workflow commands in CLI mode
+            # Matches patterns like ::debug::, ::warning::, ::error::, ::notice::, etc.
+            if ($script:cliMode -and $Object -match '^::([a-z-]+)::') {
+                # Convert ::debug:: to Write-Verbose, suppress others
+                if ($Object -match '^::debug::') {
+                    $message = $Object -replace '^::debug::', ''
+                    Write-Verbose $message
+                }
+                # Suppress all other workflow commands (::warning::, ::error::, ::group::, etc.)
+                return
             }
-            # Suppress all other workflow commands (::warning::, ::error::, ::group::, etc.)
-            return
+            
+            # Pass through to original Write-Host using fully qualified name to avoid recursion
+            $params = @{}
+            if ($PSBoundParameters.ContainsKey('Object')) { $params['Object'] = $Object }
+            if ($NoNewline) { $params['NoNewline'] = $true }
+            if ($PSBoundParameters.ContainsKey('Separator')) { $params['Separator'] = $Separator }
+            if ($PSBoundParameters.ContainsKey('ForegroundColor')) { $params['ForegroundColor'] = $ForegroundColor }
+            if ($PSBoundParameters.ContainsKey('BackgroundColor')) { $params['BackgroundColor'] = $BackgroundColor }
+            
+            Microsoft.PowerShell.Utility\Write-Host @params
         }
-        
-        # Pass through to original Write-Host using fully qualified name to avoid recursion
-        $params = @{}
-        if ($PSBoundParameters.ContainsKey('Object')) { $params['Object'] = $Object }
-        if ($NoNewline) { $params['NoNewline'] = $true }
-        if ($PSBoundParameters.ContainsKey('Separator')) { $params['Separator'] = $Separator }
-        if ($PSBoundParameters.ContainsKey('ForegroundColor')) { $params['ForegroundColor'] = $ForegroundColor }
-        if ($PSBoundParameters.ContainsKey('BackgroundColor')) { $params['BackgroundColor'] = $BackgroundColor }
-        
-        Microsoft.PowerShell.Utility\Write-Host @params
     }
     
     #############################################################################

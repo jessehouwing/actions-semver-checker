@@ -34,7 +34,8 @@ function ConvertTo-CheckLevel {
     # Map boolean values to error/none
     if ($normalized -eq "true") {
         return "error"
-    } elseif ($normalized -eq "false") {
+    }
+    elseif ($normalized -eq "false") {
         return "none"
     }
     
@@ -108,7 +109,8 @@ function ConvertTo-IgnoreVersionsList {
         # Use safe validation function that prevents ReDoS attacks
         if (Test-ValidVersionPattern -Pattern $verTrimmed) {
             $ignoreVersions += $verTrimmed
-        } else {
+        }
+        else {
             Write-Host "::warning title=Invalid ignore-versions pattern::Pattern '$verTrimmed' does not match expected format (vX, vX.Y, vX.Y.Z, or wildcard like v1.*). Skipping."
         }
     }
@@ -157,7 +159,8 @@ function Read-ActionInput {
     $tokenInput = $inputs.token
     if ([string]::IsNullOrWhiteSpace($tokenInput)) {
         $token = $State.Token
-    } else {
+    }
+    else {
         $token = $tokenInput
     }
     

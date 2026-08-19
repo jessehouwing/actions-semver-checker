@@ -19,7 +19,8 @@ class CreateBranchAction : RemediationAction {
         if ($result.Success) {
             Write-Host "✓ Success: Created branch $($this.BranchName)"
             return $true
-        } else {
+        }
+        else {
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
                 Write-Host "✗ Manual fix required: Cannot create branch $($this.BranchName) - requires 'workflows' permission to modify workflow files"
@@ -29,7 +30,8 @@ class CreateBranchAction : RemediationAction {
                     # Update message to be more helpful
                     $issue.Message = "Version $($this.BranchName) cannot be created by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please create manually."
                 }
-            } else {
+            }
+            else {
                 Write-Host "✗ Failed: Create branch $($this.BranchName)"
             }
             

@@ -69,7 +69,8 @@ $Rule_FloatingVersionNoRelease = [ValidationRule]@{
             )
             $issue.Version = $version
             $issue.Status = "unfixable"
-        } else {
+        }
+        else {
             # Mutable (draft) releases can be deleted
             # Determine severity based on config (most severe wins)
             $checkReleases = $Config.'check-releases'

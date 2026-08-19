@@ -129,7 +129,8 @@ class MarketplaceMetadata {
     [string]ToString() {
         if ($this.IsValid()) {
             return "Marketplace metadata: Valid (name=$($this.Name))"
-        } else {
+        }
+        else {
             $missing = $this.GetMissingRequirements()
             return "Marketplace metadata: Invalid (missing: $($missing -join ', '))"
         }
@@ -172,9 +173,11 @@ class ReleaseInfo {
         # The GitHub API returns is_latest on release objects
         if ($null -ne $apiResponse.is_latest) {
             $this.IsLatest = $apiResponse.is_latest
-        } elseif ($null -ne $apiResponse.isLatest) {
+        }
+        elseif ($null -ne $apiResponse.isLatest) {
             $this.IsLatest = $apiResponse.isLatest
-        } else {
+        }
+        else {
             $this.IsLatest = $false
         }
     }
@@ -195,16 +198,19 @@ class ReleaseInfo {
         # Set immutability from response property (if available)
         if ($null -ne $apiResponse.immutable) {
             $this.IsImmutable = $apiResponse.immutable
-        } else {
+        }
+        else {
             $this.IsImmutable = $false
         }
         
         # Set IsLatest from response property (if available)
         if ($null -ne $apiResponse.is_latest) {
             $this.IsLatest = $apiResponse.is_latest
-        } elseif ($null -ne $apiResponse.isLatest) {
+        }
+        elseif ($null -ne $apiResponse.isLatest) {
             $this.IsLatest = $apiResponse.isLatest
-        } else {
+        }
+        else {
             $this.IsLatest = $false
         }
     }
@@ -348,7 +354,8 @@ class RepositoryState {
         
         if ($errorIssues.Count -gt 0) {
             return 1
-        } else {
+        }
+        else {
             return 0
         }
     }

@@ -26,7 +26,8 @@ $Rule_PatchTagMissing = [ValidationRule]@{
             $floatingVersions = $State.Tags | Where-Object { 
                 ($_.IsMajor -or $_.IsMinor) -and -not $_.IsIgnored 
             }
-        } else {
+        }
+        else {
             $floatingVersions = $State.Branches | Where-Object { 
                 ($_.IsMajor -or $_.IsMinor) -and -not $_.IsIgnored 
             }
@@ -36,7 +37,8 @@ $Rule_PatchTagMissing = [ValidationRule]@{
         $latestVersion = $null
         if ($floatingVersionsUse -eq 'tags') {
             $latestVersion = $State.Tags | Where-Object { $_.Version -eq 'latest' }
-        } else {
+        }
+        else {
             $latestVersion = $State.Branches | Where-Object { $_.Version -eq 'latest' }
         }
         if ($latestVersion) {
@@ -57,7 +59,8 @@ $Rule_PatchTagMissing = [ValidationRule]@{
                         ExpectedPatchVersion = 'v1.0.0'  # Suggest starting version
                     }
                 }
-            } elseif ($floating.IsMajor) {
+            }
+            elseif ($floating.IsMajor) {
                 # Check if any patch exists for this major version
                 $patches = $allRefs | Where-Object { 
                     $_.IsPatch -and $_.Major -eq $floating.Major -and -not $_.IsIgnored 
@@ -68,7 +71,8 @@ $Rule_PatchTagMissing = [ValidationRule]@{
                         ExpectedPatchVersion = "v$($floating.Major).0.0"
                     }
                 }
-            } elseif ($floating.IsMinor) {
+            }
+            elseif ($floating.IsMinor) {
                 # Check if any patch exists for this minor version
                 $patches = $allRefs | Where-Object { 
                     $_.IsPatch -and 

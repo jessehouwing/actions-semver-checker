@@ -37,7 +37,8 @@ class ConvertBranchToTagAction : RemediationAction {
                     $issue.Status = "manual_fix_required"
                     $issue.Message = "Version $($this.Name) cannot be converted to a tag by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please convert manually."
                 }
-            } else {
+            }
+            else {
                 Write-Host "✗ Failed: Create tag $($this.Name)"
             }
             return $false

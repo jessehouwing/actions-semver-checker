@@ -20,18 +20,21 @@ class RepublishReleaseAction : ReleaseRemediationAction {
             if ($isImmutable) {
                 Write-Host "✓ Success: Republished release for $($this.TagName) and verified immutability"
                 return $true
-            } else {
+            }
+            else {
                 # Release was republished but is still mutable - repository settings not configured
                 $settingsUrl = "$($state.ServerUrl)/$($state.RepoOwner)/$($state.RepoName)/settings#releases-settings"
                 $this.MarkAsManualFixRequired($state, "non_immutable_release", "Release $($this.TagName) was republished but is still mutable. Enable 'Release immutability' in repository settings: $settingsUrl")
                 Write-Host "::warning::Release $($this.TagName) is still mutable after republishing. Enable 'Release immutability' at: $settingsUrl"
                 return $false
             }
-        } else {
+        }
+        else {
             # Check if this is an unfixable error (422 - tag used by immutable release)
             if ($this.IsUnfixableError($result)) {
                 $this.MarkAsUnfixable($state, "non_immutable_release", "Release $($this.TagName) cannot be republished because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
-            } else {
+            }
+            else {
                 Write-Host "✗ Failed: Republish release for $($this.TagName) - $($result.Reason)"
             }
             return $false

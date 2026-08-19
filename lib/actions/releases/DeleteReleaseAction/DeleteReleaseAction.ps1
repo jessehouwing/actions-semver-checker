@@ -17,7 +17,8 @@ class DeleteReleaseAction : ReleaseRemediationAction {
         if ($success) {
             Write-Host "✓ Success: Removed release for $($this.TagName)"
             return $true
-        } else {
+        }
+        else {
             Write-Host "✗ Failed: Remove release for $($this.TagName)"
             return $false
         }

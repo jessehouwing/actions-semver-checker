@@ -5,8 +5,7 @@
 # injection protection for GitHub Actions.
 #############################################################################
 
-function Write-DebugLog
-{
+function Write-DebugLog {
     <#
     .SYNOPSIS
     Writes a debug message that works both locally and in GitHub Actions.
@@ -22,13 +21,13 @@ function Write-DebugLog
     # Locally, always show the message for troubleshooting
     if ($env:GITHUB_ACTIONS -eq 'true') {
         Write-Host "::debug::$Message"
-    } else {
+    }
+    else {
         Write-Host "[DEBUG] $Message" -ForegroundColor Cyan
     }
 }
 
-function Write-SafeOutput
-{
+function Write-SafeOutput {
     param(
         [string]$Message,
         [string]$Prefix = ""
@@ -50,8 +49,7 @@ function Write-SafeOutput
     Write-Host "::$stopMarker::"
 }
 
-function Write-ActionsError
-{
+function Write-ActionsError {
     <#
     .SYNOPSIS
     Writes an error message in GitHub Actions workflow command format.
@@ -81,8 +79,7 @@ function Write-ActionsError
     }
 }
 
-function Write-ActionsWarning
-{
+function Write-ActionsWarning {
     <#
     .SYNOPSIS
     Writes a warning message in GitHub Actions workflow command format.
@@ -97,8 +94,7 @@ function Write-ActionsWarning
     Write-Output $Message
 }
 
-function Write-ActionsMessage
-{
+function Write-ActionsMessage {
     <#
     .SYNOPSIS
     Writes a message in GitHub Actions workflow command format with configurable severity.
@@ -120,7 +116,8 @@ function Write-ActionsMessage
 
     if ($Severity -eq "error") {
         Write-ActionsError -Message $Message -State $State
-    } elseif ($Severity -eq "warning") {
+    }
+    elseif ($Severity -eq "warning") {
         Write-ActionsWarning -Message $Message
     }
     # If "none", don't write anything

@@ -17,7 +17,8 @@ class DeleteBranchAction : RemediationAction {
         if ($success) {
             Write-Host "✓ Success: Deleted branch $($this.BranchName)"
             return $true
-        } else {
+        }
+        else {
             Write-Host "✗ Failed: Delete branch $($this.BranchName)"
             return $false
         }

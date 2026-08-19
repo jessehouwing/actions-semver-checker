@@ -197,7 +197,8 @@ function Get-ActionMarketplaceMetadata {
         if ($actionContent -match '(?m)^name:\s*[''"]?([^''"#\r\n]+)[''"]?') {
             $metadata.Name = $matches[1].Trim()
             $metadata.HasName = $metadata.Name.Length -gt 0
-        } elseif ($actionContent -match '(?m)^name:\s*$') {
+        }
+        elseif ($actionContent -match '(?m)^name:\s*$') {
             # Empty name
             $metadata.HasName = $false
         }
@@ -206,7 +207,8 @@ function Get-ActionMarketplaceMetadata {
         if ($actionContent -match '(?m)^description:\s*[''"]?([^''"#\r\n]+)[''"]?') {
             $metadata.Description = $matches[1].Trim()
             $metadata.HasDescription = $metadata.Description.Length -gt 0
-        } elseif ($actionContent -match "(?m)^description:\s*['`"]\|") {
+        }
+        elseif ($actionContent -match "(?m)^description:\s*['`"]\|") {
             # Multi-line description (folded or literal block)
             $metadata.HasDescription = $true
             $metadata.Description = "(multi-line)"

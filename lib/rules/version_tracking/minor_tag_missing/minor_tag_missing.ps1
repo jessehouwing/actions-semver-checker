@@ -108,11 +108,13 @@ $Rule_MinorTagMissing = [ValidationRule]@{
         if ($highestPatch) {
             $targetSha = $highestPatch.Sha
             $targetVersion = $highestPatch.Version
-        } elseif ($Item.SourceSha) {
+        }
+        elseif ($Item.SourceSha) {
             # No patches exist - use the SHA from the major tag
             $targetSha = $Item.SourceSha
             $targetVersion = "v$($Item.Major)"
-        } else {
+        }
+        else {
             # Fallback: look up major tag SHA
             $majorTag = $State.Tags | Where-Object { $_.Version -eq "v$($Item.Major)" } | Select-Object -First 1
             if ($majorTag) {

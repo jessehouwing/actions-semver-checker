@@ -5,8 +5,7 @@
 # Only 3-part semantic versions (major.minor.patch) are supported.
 #############################################################################
 
-function ConvertTo-Version
-{
+function ConvertTo-Version {
     <#
     .SYNOPSIS
     Converts a version string to a [Version] object with 3 parts (major.minor.patch).
@@ -43,22 +42,17 @@ function ConvertTo-Version
 
     $dots = $Value.Split(".").Count - 1
 
-    switch ($dots)
-    {
-        0
-        {
+    switch ($dots) {
+        0 {
             return [Version]"$Value.0.0"
         }
-        1
-        {
+        1 {
             return [Version]"$Value.0"
         }
-        2
-        {
+        2 {
             return [Version]$Value
         }
-        default
-        {
+        default {
             # For versions with more than 2 dots, truncate to first 3 parts
             $parts = $Value.Split(".") | Select-Object -First 3
             return [Version]($parts -join ".")
@@ -66,8 +60,7 @@ function ConvertTo-Version
     }
 }
 
-function Test-ValidVersionPattern
-{
+function Test-ValidVersionPattern {
     <#
     .SYNOPSIS
     Validates that a version pattern is safe and well-formed.

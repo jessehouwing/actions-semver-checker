@@ -25,7 +25,8 @@ class ConvertTagToBranchAction : RemediationAction {
                     }
                     return $false
                 }
-            } catch {
+            }
+            catch {
                 Write-Host "::debug::Failed to check release immutability for tag $($this.Name): $($_.Exception.Message)"
             }
         }
@@ -54,7 +55,8 @@ class ConvertTagToBranchAction : RemediationAction {
                     $issue.Status = "manual_fix_required"
                     $issue.Message = "Version $($this.Name) cannot be converted to a branch by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please convert manually."
                 }
-            } else {
+            }
+            else {
                 Write-Host "✗ Failed: Create branch $($this.Name)"
             }
             return $false

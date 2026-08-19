@@ -96,7 +96,8 @@ $Rule_HighestPatchReleaseShouldBeLatest = [ValidationRule]@{
         # Create appropriate message
         if ($currentLatest) {
             $message = "Release $version should be marked as 'latest', but $($currentLatest.TagName) is currently marked as latest"
-        } else {
+        }
+        else {
             $message = "Release $version should be marked as 'latest', but no release is currently marked as latest"
         }
         

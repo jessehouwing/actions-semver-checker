@@ -66,7 +66,8 @@ $Rule_PatchReleaseRequired = [ValidationRule]@{
             if ($floatingRef.IsMajor) {
                 # For v1, expect v1.0.0
                 $expectedPatchVersion = "v$($floatingRef.Major).0.0"
-            } elseif ($floatingRef.IsMinor) {
+            }
+            elseif ($floatingRef.IsMinor) {
                 # For v1.0, expect v1.0.0
                 $expectedPatchVersion = "v$($floatingRef.Major).$($floatingRef.Minor).0"
             }

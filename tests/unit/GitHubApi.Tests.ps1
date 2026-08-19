@@ -311,7 +311,8 @@ Describe "Get-GitHubRelease GraphQL query validation" {
             foreach ($field in $requiredFields) {
                 $queryFields | Should -Match $field -Because "GraphQL query must include '$field' field to populate ReleaseInfo correctly"
             }
-        } else {
+        }
+        else {
             throw "Could not find GraphQL query in Get-GitHubRelease function"
         }
     }
@@ -339,7 +340,8 @@ Describe "Get-GitHubRelease GraphQL query validation" {
             foreach ($mapping in $requiredMappings) {
                 $mappingCode | Should -Match $mapping -Because "Response mapping must include all fields required by ReleaseInfo constructor"
             }
-        } else {
+        }
+        else {
             throw "Could not find releaseData mapping code in Get-GitHubRelease function"
         }
     }
