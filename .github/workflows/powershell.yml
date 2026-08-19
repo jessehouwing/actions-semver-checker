@@ -43,7 +43,7 @@ jobs:
         run: |
           # Install modules in CurrentUser scope to avoid permission issues
           # Use -Force and -AllowClobber to ensure clean installation
-          Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser -AllowClobber
+          Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.24.0 -Force -Scope CurrentUser -AllowClobber
           Install-Module -Name ConvertToSARIF -Force -Scope CurrentUser -AllowClobber
           
           # Verify installation
@@ -55,7 +55,7 @@ jobs:
         shell: pwsh
         run: |
           # Import modules explicitly in fresh session
-          Import-Module -Name PSScriptAnalyzer -Force
+          Import-Module -Name PSScriptAnalyzer -RequiredVersion 1.24.0 -Force
           Import-Module -Name ConvertToSARIF -Force
           
           # Run analysis and generate SARIF
