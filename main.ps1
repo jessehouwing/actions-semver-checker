@@ -166,8 +166,7 @@ Write-UnresolvedIssue -State $State
 # Display summary based on auto-fix mode
 $exitCode = $State.GetReturnCode()
 
-if ($inputConfig.AutoFix)
-{
+if ($inputConfig.AutoFix) {
     Write-Output ""
     Write-Output "### Auto-fix Summary"
     Write-Output "✓ Fixed issues: $($State.GetFixedIssuesCount())"
@@ -181,8 +180,7 @@ if ($inputConfig.AutoFix)
     $errorManualFixCount = ($State.Issues | Where-Object { $_.Severity -eq "error" -and $_.Status -eq "manual_fix_required" }).Count
     $errorUnfixableCount = ($State.Issues | Where-Object { $_.Severity -eq "error" -and $_.Status -eq "unfixable" }).Count
     
-    if ($errorFailedCount -gt 0 -or $errorManualFixCount -gt 0 -or $errorUnfixableCount -gt 0)
-    {
+    if ($errorFailedCount -gt 0 -or $errorManualFixCount -gt 0 -or $errorUnfixableCount -gt 0) {
         $exitCode = 1
         Write-Output ""
         if ($errorManualFixCount -gt 0) {
@@ -192,20 +190,17 @@ if ($inputConfig.AutoFix)
             Write-Output "::error::Some issues cannot be fixed (e.g., immutable release conflicts). Consider adding affected versions to the ignore-versions list."
         }
     }
-    elseif ($State.GetFixedIssuesCount() -gt 0)
-    {
+    elseif ($State.GetFixedIssuesCount() -gt 0) {
         # Issues were found and all were fixed successfully
         Write-Output ""
         Write-Output "::notice::All issues were successfully fixed!"
     }
-    elseif ($State.GetManualFixRequiredCount() -gt 0 -or $State.GetUnfixableIssuesCount() -gt 0)
-    {
+    elseif ($State.GetManualFixRequiredCount() -gt 0 -or $State.GetUnfixableIssuesCount() -gt 0) {
         # Only warning-severity issues remain that need manual attention
         Write-Output ""
         Write-Output "::notice::Some warning-level issues require manual attention. See remediation steps below."
     }
-    else
-    {
+    else {
         # No issues were found
         Write-Output ""
         Write-Output "::notice::No issues found!"
@@ -215,8 +210,7 @@ if ($inputConfig.AutoFix)
     Get-ManualInstruction -State $State -GroupByType $false
     Write-ManualInstructionsToStepSummary -State $State
 }
-else
-{
+else {
     # Not in auto-fix mode, show manual instructions for all issues
     Get-ManualInstruction -State $State -GroupByType $false
     Write-ManualInstructionsToStepSummary -State $State

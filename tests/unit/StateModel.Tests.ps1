@@ -791,11 +791,11 @@ Describe "RepositoryState" {
             $warning = [ValidationIssue]::new("warn", "warning", "Warning issue")
             $warning.Status = "manual_fix_required"
             
-            $error = [ValidationIssue]::new("err", "error", "Error issue")
-            $error.Status = "manual_fix_required"
+            $errorIssue = [ValidationIssue]::new("err", "error", "Error issue")
+            $errorIssue.Status = "manual_fix_required"
             
             $state.AddIssue($warning)
-            $state.AddIssue($error)
+            $state.AddIssue($errorIssue)
             
             # Error-severity issue should cause failure
             $state.GetReturnCode() | Should -Be 1
@@ -807,11 +807,11 @@ Describe "RepositoryState" {
             $warning = [ValidationIssue]::new("warn", "warning", "Warning issue")
             $warning.Status = "manual_fix_required"
             
-            $error = [ValidationIssue]::new("err", "error", "Error issue")
-            $error.Status = "fixed"
+            $errorIssue = [ValidationIssue]::new("err", "error", "Error issue")
+            $errorIssue.Status = "fixed"
             
             $state.AddIssue($warning)
-            $state.AddIssue($error)
+            $state.AddIssue($errorIssue)
             
             # Error issue is fixed, warning is not - should not cause failure
             $state.GetReturnCode() | Should -Be 0

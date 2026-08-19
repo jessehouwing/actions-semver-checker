@@ -40,10 +40,12 @@ class SetLatestReleaseAction : ReleaseRemediationAction {
         if ($result.Success) {
             Write-Host "✓ Success: Set release $($this.TagName) as latest"
             return $true
-        } else {
+        }
+        else {
             if ($this.IsUnfixableError($result)) {
                 $this.MarkAsUnfixable($state, "wrong_latest_release", "Cannot set $($this.TagName) as latest release")
-            } else {
+            }
+            else {
                 Write-Host "✗ Failed: Set release $($this.TagName) as latest"
             }
             return $false

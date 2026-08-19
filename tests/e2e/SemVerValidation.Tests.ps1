@@ -1095,8 +1095,7 @@ Describe "SemVer Checker" {
             $result = Invoke-MainScript -AutoFix "true"
 
             # Assert - should attempt to auto-fix
-            if ($result.Output -match "git push")
-            {
+            if ($result.Output -match "git push") {
                 $result.Output | Should -Match "Auto-fixing"
             }
         }
@@ -1799,10 +1798,12 @@ exit 0
                         prerelease = $false
                         id = 456
                     } | ConvertTo-Json
-                } elseif ($Method -eq "DELETE") {
+                }
+                elseif ($Method -eq "DELETE") {
                     $script:deleteCalled = $true
                     return @{ Content = ""; Headers = @{} }
-                } else {
+                }
+                else {
                     $mockContent = '[{"tag_name":"v1.0.0","draft":false,"prerelease":false,"id":123}]'
                 }
 
@@ -1848,7 +1849,8 @@ exit 0
                             }
                         }
                     } | ConvertTo-Json -Depth 5
-                } else {
+                }
+                else {
                     $mockContent = '[{"tag_name":"v1.0.0","draft":false,"prerelease":false,"id":123}]'
                 }
 
@@ -1894,7 +1896,8 @@ exit 0
                             Content = '{"ref":"refs/tags/v1","object":{"sha":"abc123"}}'
                             Headers = @{}
                         }
-                    } else {
+                    }
+                    else {
                         # Second call fails
                         throw [System.Net.WebException]::new("422 Unprocessable Entity")
                     }
@@ -2320,7 +2323,8 @@ exit 0
                         Content = '{"id":999,"tag_name":"v1.0.0","draft":true}'
                         Headers = @{}
                     }
-                } elseif ($Method -eq "PATCH") {
+                }
+                elseif ($Method -eq "PATCH") {
                     $script:operations += "publish"
                     return @{
                         Content = '{"id":999,"tag_name":"v1.0.0","draft":false}'
@@ -2400,7 +2404,8 @@ exit 0
                 if ($Method -eq "DELETE") {
                     $script:operations += "delete-tag"
                     return @{ Content = ""; Headers = @{} }
-                } elseif ($Method -eq "POST") {
+                }
+                elseif ($Method -eq "POST") {
                     $script:operations += "create-branch"
                     return @{
                         Content = '{"ref":"refs/heads/v1","object":{"sha":"abc123"}}'
@@ -2448,7 +2453,8 @@ exit 0
             # Restore the original GITHUB_STEP_SUMMARY value
             if ($originalStepSummary) {
                 $env:GITHUB_STEP_SUMMARY = $originalStepSummary
-            } else {
+            }
+            else {
                 $env:GITHUB_STEP_SUMMARY = $null
             }
 

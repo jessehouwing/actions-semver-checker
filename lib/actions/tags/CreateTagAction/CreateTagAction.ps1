@@ -19,7 +19,8 @@ class CreateTagAction : RemediationAction {
         if ($result.Success) {
             Write-Host "✓ Success: Created tag $($this.TagName)"
             return $true
-        } else {
+        }
+        else {
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
                 Write-Host "✗ Manual fix required: Cannot create tag $($this.TagName) - requires 'workflows' permission to modify workflow files"
@@ -30,7 +31,8 @@ class CreateTagAction : RemediationAction {
                     # Update message to be more helpful
                     $issue.Message = "Version $($this.TagName) cannot be created by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please create manually."
                 }
-            } else {
+            }
+            else {
                 Write-Host "✗ Failed: Create tag $($this.TagName)"
             }
             

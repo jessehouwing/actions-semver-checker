@@ -23,11 +23,13 @@ class PublishReleaseAction : ReleaseRemediationAction {
         if ($result.Success) {
             Write-Host "✓ Success: Published release for $($this.TagName)"
             return $true
-        } else {
+        }
+        else {
             # Check if this is an unfixable error (422 - tag used by immutable release)
             if ($this.IsUnfixableError($result)) {
                 $this.MarkAsUnfixable($state, "draft_release", "Release $($this.TagName) cannot be published because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
-            } else {
+            }
+            else {
                 Write-Host "✗ Failed: Publish release for $($this.TagName)"
             }
             

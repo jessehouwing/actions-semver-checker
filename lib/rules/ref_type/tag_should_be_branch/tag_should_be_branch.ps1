@@ -55,7 +55,8 @@ $Rule_TagShouldBeBranch = [ValidationRule]@{
             if ($highestPatch) {
                 $targetSha = $highestPatch.Sha
             }
-        } elseif ($Tag.IsMinor) {
+        }
+        elseif ($Tag.IsMinor) {
             $highestPatch = Get-HighestPatchForMinor -State $State -Major $Tag.Major -Minor $Tag.Minor -ExcludePrereleases $excludePrereleases
             if ($highestPatch) {
                 $targetSha = $highestPatch.Sha

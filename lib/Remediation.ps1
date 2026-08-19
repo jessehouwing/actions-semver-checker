@@ -45,7 +45,8 @@ function Get-ManualInstruction {
                 # Otherwise use RemediationAction.Priority if available
                 elseif ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
                     $_.RemediationAction.Priority
-                } else {
+                }
+                else {
                     100  # Default priority for issues without RemediationAction
                 }
             }
@@ -86,7 +87,8 @@ function Get-ManualInstruction {
             if ($commands) {
                 $allCommands += $commands
             }
-        } elseif ($issue.ManualFixCommand) {
+        }
+        elseif ($issue.ManualFixCommand) {
             $allCommands += $issue.ManualFixCommand
         }
     }
@@ -110,7 +112,8 @@ function Get-ManualInstruction {
         $grouped = $issuesNeedingManualFix | Group-Object { 
             if ($_.RemediationAction) {
                 $_.RemediationAction.GetType().Name
-            } else {
+            }
+            else {
                 "Other"
             }
         }
@@ -129,7 +132,8 @@ function Get-ManualInstruction {
                         Write-Output "  $cmd"
                         Write-Output "  ``````"
                     }
-                } elseif ($issue.ManualFixCommand) {
+                }
+                elseif ($issue.ManualFixCommand) {
                     Write-Output "  ``````"
                     Write-Output "  $($issue.ManualFixCommand)"
                     Write-Output "  ``````"
@@ -148,7 +152,8 @@ function Get-ManualInstruction {
                         Write-Output "$cmd"
                     }
                 }
-            } elseif ($issue.ManualFixCommand) {
+            }
+            elseif ($issue.ManualFixCommand) {
                 Write-Output "$($issue.ManualFixCommand)"
             }
         }
@@ -158,8 +163,7 @@ function Get-ManualInstruction {
     Write-Host "##[endgroup]"
 }
 
-function Write-ManualInstructionsToStepSummary
-{
+function Write-ManualInstructionsToStepSummary {
     <#
     .SYNOPSIS
     Writes manual remediation instructions to GitHub Actions step summary
@@ -194,7 +198,8 @@ function Write-ManualInstructionsToStepSummary
                 # Otherwise use RemediationAction.Priority if available
                 elseif ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
                     $_.RemediationAction.Priority
-                } else {
+                }
+                else {
                     100  # Default priority for issues without RemediationAction
                 }
             }
@@ -237,7 +242,8 @@ function Write-ManualInstructionsToStepSummary
             if ($commands) {
                 $allCommands += $commands
             }
-        } elseif ($issue.ManualFixCommand) {
+        }
+        elseif ($issue.ManualFixCommand) {
             $allCommands += $issue.ManualFixCommand
         }
     }
@@ -269,7 +275,8 @@ function Write-ManualInstructionsToStepSummary
                 }
                 "``````" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
             }
-        } elseif ($issue.ManualFixCommand) {
+        }
+        elseif ($issue.ManualFixCommand) {
             "``````bash" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
             $issue.ManualFixCommand | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
             "``````" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
@@ -320,7 +327,8 @@ function Invoke-AutoFix {
     $sortedIssues = $issuesWithActions | Sort-Object { 
         if ($_.RemediationAction -and ($_.RemediationAction -is [RemediationAction])) {
             $_.RemediationAction.Priority
-        } else {
+        }
+        else {
             50  # Default priority for scriptblock-based actions
         }
     }
@@ -336,7 +344,8 @@ function Invoke-AutoFix {
                 
                 if ($result) {
                     $issue.Status = "fixed"
-                } else {
+                }
+                else {
                     # Only set status to "failed" if the action didn't already mark it as something else
                     # (e.g., "unfixable" or "manual_fix_required")
                     if ($issue.Status -eq "pending") {
@@ -401,7 +410,8 @@ function Write-UnresolvedIssue {
         
         if ($messageType -eq "error") {
             Write-Output "::error title=$titlePrefix issue::$($issue.Message)"
-        } elseif ($messageType -eq "warning") {
+        }
+        elseif ($messageType -eq "warning") {
             Write-Output "::warning title=$titlePrefix issue::$($issue.Message)"
         }
     }

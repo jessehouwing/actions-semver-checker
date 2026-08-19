@@ -37,11 +37,13 @@ class CreateReleaseAction : ReleaseRemediationAction {
         if ($result.Success) {
             Write-Host "✓ Success: $actionDesc for $($this.TagName)"
             return $true
-        } else {
+        }
+        else {
             # Check if this is an unfixable error and mark it accordingly
             if ($this.IsUnfixableError($result)) {
                 $this.MarkAsUnfixable($state, "missing_release", "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
-            } else {
+            }
+            else {
                 Write-Host "✗ Failed: $actionDesc for $($this.TagName)"
             }
             return $false
@@ -72,7 +74,8 @@ class CreateReleaseAction : ReleaseRemediationAction {
             return @(
                 "gh release create $($this.TagName)$repoArg --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`"$targetArg$latestArg"
             )
-        } else {
+        }
+        else {
             # Create as draft
             return @(
                 "gh release create $($this.TagName)$repoArg --draft --title `"$($this.TagName)`" --notes `"Release $($this.TagName)`"$targetArg$latestArg"

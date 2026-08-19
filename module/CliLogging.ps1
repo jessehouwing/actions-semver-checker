@@ -5,8 +5,7 @@
 # GitHub Actions workflow commands.
 #############################################################################
 
-function Write-SafeOutput
-{
+function Write-SafeOutput {
     param(
         [string]$Message,
         [string]$Prefix = ""
@@ -19,8 +18,7 @@ function Write-SafeOutput
     Write-Host $Message
 }
 
-function Write-ActionsError
-{
+function Write-ActionsError {
     <#
     .SYNOPSIS
     Writes an error message in CLI format.
@@ -51,8 +49,7 @@ function Write-ActionsError
     }
 }
 
-function Write-ActionsWarning
-{
+function Write-ActionsWarning {
     <#
     .SYNOPSIS
     Writes a warning message in CLI format.
@@ -73,8 +70,7 @@ function Write-ActionsWarning
     }
 }
 
-function Write-ActionsMessage
-{
+function Write-ActionsMessage {
     <#
     .SYNOPSIS
     Writes a message in CLI format with configurable severity.
@@ -96,7 +92,8 @@ function Write-ActionsMessage
 
     if ($Severity -eq "error") {
         Write-ActionsError -Message $Message -State $State
-    } elseif ($Severity -eq "warning") {
+    }
+    elseif ($Severity -eq "warning") {
         Write-ActionsWarning -Message $Message
     }
     # If "none", don't write anything

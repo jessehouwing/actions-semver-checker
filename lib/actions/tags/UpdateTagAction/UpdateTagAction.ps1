@@ -22,7 +22,8 @@ class UpdateTagAction : RemediationAction {
         if ($result.Success) {
             Write-Host "✓ Success: Updated tag $($this.TagName)"
             return $true
-        } else {
+        }
+        else {
             # Check if this requires manual fix due to workflows permission
             if ($result.RequiresManualFix) {
                 Write-Host "✗ Manual fix required: Cannot update tag $($this.TagName) - requires 'workflows' permission to modify workflow files"
@@ -32,7 +33,8 @@ class UpdateTagAction : RemediationAction {
                     # Update message to be more helpful
                     $issue.Message = "Version $($this.TagName) cannot be updated by GitHub Actions because it contains workflow file changes and requires the 'workflows' permission. Please update manually."
                 }
-            } else {
+            }
+            else {
                 Write-Host "✗ Failed: Update tag $($this.TagName)"
             }
             

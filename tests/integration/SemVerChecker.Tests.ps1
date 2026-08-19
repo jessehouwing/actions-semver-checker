@@ -309,7 +309,8 @@ Describe "SemVer Checker Integration Tests" {
                 if ($ExpectedPattern) {
                     $result.Output | Should -Match $ExpectedPattern
                 }
-            } else {
+            }
+            else {
                 $result.ReturnCode | Should -Be 0
             }
         }
@@ -486,7 +487,8 @@ Describe "SemVer Checker Integration Tests" {
                         Content = '[{"tag_name":"v2.0.0","prerelease":false,"draft":false,"id":2}]'
                         Headers = @{}
                     }
-                } else {
+                }
+                else {
                     # First page with Link header
                     return @{
                         Content = '[{"tag_name":"v1.0.0","prerelease":false,"draft":false,"id":1}]'

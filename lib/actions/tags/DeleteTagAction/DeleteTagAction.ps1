@@ -17,7 +17,8 @@ class DeleteTagAction : RemediationAction {
         if ($success) {
             Write-Host "✓ Success: Deleted tag $($this.TagName)"
             return $true
-        } else {
+        }
+        else {
             Write-Host "✗ Failed: Delete tag $($this.TagName)"
             return $false
         }
