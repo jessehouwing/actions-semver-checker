@@ -5,10 +5,18 @@
 
 version: 2
 updates:
-  - package-ecosystem: "github-actions" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: 'github-actions'
+    directories:
+      - '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
+    cooldown:
+      default-days: 3
+    groups:
+      minor-updates:
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: "devcontainers"
     directory: "/"
