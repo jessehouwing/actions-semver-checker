@@ -5,12 +5,46 @@
 
 version: 2
 updates:
-  - package-ecosystem: "github-actions" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: 'github-actions'
+    directories:
+      - '/'
+      - '/*/'
     schedule:
-      interval: "weekly"
-
-  - package-ecosystem: "devcontainers"
-    directory: "/"
+      interval: 'weekly'
+    cooldown:
+      default-days: 3
+    groups:
+      minor-updates:
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
+      interval: 'weekly'
+    cooldown:
+      default-days: 3
+    ignore:
+      - dependency-name: '@types/node'
+        update-types:
+          - 'version-update:semver-major'
+      - dependency-name: 'typescript'
+        update-types:
+          - 'version-update:semver-major'
+    groups:
+      ESLint:
+        patterns:
+          - eslint
+          - '@typescript-eslint/*'
+          - '@eslint/*'
+          - typescript-eslint
+      rollup:
+        patterns:
+          - '@rollup/*'
+      minor-updates:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      development-dependencies:
+        dependency-type: development
