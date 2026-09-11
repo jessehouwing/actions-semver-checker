@@ -58,7 +58,14 @@
         # for older PowerShell versions (core-6.1.0-linux,
         # desktop-5.1.14393.206-windows) have previously caused
         # "Get-Command is not recognized" errors on hosted runners.
+        # Both rule names are excluded: 'PSUseCompatibleCmdlets' is the
+        # legacy/simple rule, while 'PSUseCompatibleCommands' is the actual
+        # rule PSScriptAnalyzer 1.24.0 runs by default and the one that
+        # crashes with a NullReferenceException/"Get-Command is not
+        # recognized" error when it tries to lazily fetch compatibility
+        # profile data on GitHub-hosted Linux runners.
         'PSUseCompatibleCmdlets',
+        'PSUseCompatibleCommands',
 
         # Almost all reports are false positives caused by our rule-engine
         # scriptblock invocation pattern (parameters consumed inside
