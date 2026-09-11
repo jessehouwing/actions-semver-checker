@@ -41,14 +41,46 @@ jobs:
       - name: Install PSScriptAnalyzer and ConvertToSARIF
         shell: pwsh
         run: |
+          # GitHub-hosted runners ship with a pre-installed PSScriptAnalyzer
+          # version (e.g. 1.25.x) in a system module path. If that version
+          # stays available alongside our pinned 1.24.0, PowerShell can end
+          # up loading the pre-installed one (module auto-loading resolves
+          # to the highest available version unless a fully-qualified
+          # -RequiredVersion import forces it), which reintroduces the
+          # rule-set/behavior differences this workflow pins against.
+          # Remove every existing installation first so 1.24.0 is
+          # unambiguously the only version present, then install it clean.
+          Remove-Module -Name PSScriptAnalyzer -Force -ErrorAction SilentlyContinue
+
+          Get-Module -ListAvailable -Name PSScriptAnalyzer | ForEach-Object {
+            Write-Host "Removing pre-existing PSScriptAnalyzer $($_.Version) from $($_.ModuleBase)"
+            try {
+              Uninstall-Module -Name PSScriptAnalyzer -RequiredVersion $_.Version -Force -ErrorAction Stop
+            } catch {
+              # Not all pre-installed copies are registered with PowerShellGet
+              # (e.g. runner-image-baked modules); fall back to deleting the
+              # module folder directly.
+              if (Test-Path $_.ModuleBase) {
+                Remove-Item -Path $_.ModuleBase -Recurse -Force -ErrorAction SilentlyContinue
+              }
+            }
+          }
+
+          # Confirm no versions remain before (re)installing the pinned one
+          $remaining = Get-Module -ListAvailable -Name PSScriptAnalyzer
+          if ($remaining) {
+            Write-Host "::warning::PSScriptAnalyzer still present after cleanup:"
+            $remaining | Select-Object Name, Version, ModuleBase | Format-Table -AutoSize
+          }
+
           # Install modules in CurrentUser scope to avoid permission issues
           # Use -Force and -AllowClobber to ensure clean installation
           Install-Module -Name PSScriptAnalyzer -RequiredVersion 1.24.0 -Force -Scope CurrentUser -AllowClobber
           Install-Module -Name ConvertToSARIF -Force -Scope CurrentUser -AllowClobber
           
-          # Verify installation
+          # Verify installation - only 1.24.0 should be listed for PSScriptAnalyzer
           Get-Module -ListAvailable -Name PSScriptAnalyzer, ConvertToSARIF | 
-            Select-Object Name, Version | 
+            Select-Object Name, Version, ModuleBase | 
             Format-Table -AutoSize
 
       - name: Run PSScriptAnalyzer
@@ -57,6 +89,13 @@ jobs:
           # Import modules explicitly in fresh session
           Import-Module -Name PSScriptAnalyzer -RequiredVersion 1.24.0 -Force
           Import-Module -Name ConvertToSARIF -Force
+
+          # Fail fast if the wrong version got loaded (e.g. a pre-installed
+          # copy on the runner image was not fully removed)
+          $loadedVersion = (Get-Module -Name PSScriptAnalyzer).Version
+          if ($loadedVersion -ne [version]'1.24.0') {
+            throw "Expected PSScriptAnalyzer 1.24.0 to be loaded, but found $loadedVersion"
+          }
           
           # Run analysis and generate SARIF
           $results = Invoke-ScriptAnalyzer -Path './' -Recurse -Settings 'PSScriptAnalyzerSettings.psd1'
