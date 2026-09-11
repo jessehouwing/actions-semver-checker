@@ -41,7 +41,7 @@ class CreateReleaseAction : ReleaseRemediationAction {
         else {
             # Check if this is an unfixable error and mark it accordingly
             if ($this.IsUnfixableError($result)) {
-                $this.MarkAsUnfixable($state, "missing_release", "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
+                $this.MarkAsUnfixable($state, "missing_release", "Release $($this.TagName) cannot be created because this tag was previously used by an immutable release that was deleted. GitHub does not allow recreating a release on this tag. Add $($this.TagName) to the ignore-versions list so floating versions and 'latest' fall back to the previous released version, and/or publish a new patch (or minor) release so floating versions and 'latest' can advance to a version with a valid release.")
             }
             else {
                 Write-Host "✗ Failed: $actionDesc for $($this.TagName)"

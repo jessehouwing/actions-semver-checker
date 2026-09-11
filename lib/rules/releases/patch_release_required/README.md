@@ -62,7 +62,10 @@ When `auto-fix` is enabled, this rule uses `CreateReleaseAction` which:
 2. If `check-release-immutability` is enabled, publishes the release immediately (making it immutable)
 3. If the tag doesn't exist yet, GitHub's API will create it automatically
 
-**Note:** If the tag was previously used by a deleted immutable release, GitHub will return HTTP 422 and the issue will be marked as **unfixable**. In this case, create a new patch version or add the version to `ignore-versions`.
+**Note:** If the tag was previously used by a deleted immutable release, GitHub will return HTTP 422 and the issue will be marked as **unfixable**. This tag can never have a release again. Floating versions (major/minor tags) and `latest` can track any version, but they *should* track the latest released version. Recommended remediation (do both):
+
+1. Add the affected version to `ignore-versions` so floating versions and `latest` fall back to the previous version that still has a valid release.
+2. Publish a new patch (or minor) release so floating versions and `latest` can advance forward to a version with a valid release, instead of remaining pinned to the previous one indefinitely.
 
 ## Manual Remediation
 
