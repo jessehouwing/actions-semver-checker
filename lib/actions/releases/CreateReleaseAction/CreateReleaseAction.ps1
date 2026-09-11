@@ -52,9 +52,10 @@ class CreateReleaseAction : ReleaseRemediationAction {
     }
     
     [string[]] GetManualCommands([RepositoryState]$state) {
-        # Check if the issue is unfixable - if so, return empty array
+        # Check if the issue is unfixable - if so, return a copy/pasteable
+        # ignore-versions YAML snippet instead of a CLI command
         if ($this.IsIssueUnfixable($state, "missing_release")) {
-            return @()
+            return $this.GetIgnoreVersionsYamlSnippet($state)
         }
         
         $repoArg = ""

@@ -47,7 +47,7 @@ Describe "ReleaseRemediationAction Base Class" {
             $issue.Status | Should -Be "unfixable"
         }
         
-        It "Should not return manual commands when issue is unfixable" {
+        It "Should return an ignore-versions YAML snippet instead of a gh command when issue is unfixable" {
             # Create unfixable issue
             $issue = [ValidationIssue]::new("missing_release", "error", "Release missing")
             $issue.Version = "v1.0.0"
@@ -57,7 +57,8 @@ Describe "ReleaseRemediationAction Base Class" {
             $action = [CreateReleaseAction]::new("v1.0.0", $true)
             $commands = $action.GetManualCommands($script:state)
             
-            $commands | Should -HaveCount 0
+            $commands.Count | Should -BeGreaterThan 0
+            ($commands -join "`n") | Should -Match 'ignore-versions:\s*"v1\.0\.0"'
         }
         
         It "Should return manual commands when issue is not unfixable" {

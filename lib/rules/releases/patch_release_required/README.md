@@ -64,7 +64,12 @@ When `auto-fix` is enabled, this rule uses `CreateReleaseAction` which:
 
 **Note:** If the tag was previously used by a deleted immutable release, GitHub will return HTTP 422 and the issue will be marked as **unfixable**. This tag can never have a release again. Floating versions (major/minor tags) and `latest` can track any version, but they *should* track the latest released version. Recommended remediation (do both):
 
-1. Add the affected version to `ignore-versions` so floating versions and `latest` fall back to the previous version that still has a valid release. The unfixable issue message includes the ready-to-paste new `ignore-versions` value, computed from your current configured list (wildcard patterns preserved) plus the affected version.
+1. Add the affected version to `ignore-versions` so floating versions and `latest` fall back to the previous version that still has a valid release. The unfixable issue message includes the ready-to-paste new `ignore-versions` value, computed from your current configured list (wildcard patterns preserved) plus the affected version. The GitHub Actions job summary also renders this as a copy/pasteable ```` ```yaml ```` block, for example:
+   ```yaml
+   # Update your workflow step to skip this locked version:
+   with:
+     ignore-versions: "v1.*,v6.3.0"
+   ```
 2. Publish a new patch (or minor) release so floating versions and `latest` can advance forward to a version with a valid release, instead of remaining pinned to the previous one indefinitely.
 
 ## Manual Remediation

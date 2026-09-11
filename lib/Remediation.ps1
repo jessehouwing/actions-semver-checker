@@ -127,10 +127,13 @@ function Get-ManualInstruction {
                 
                 if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
                     $commands = $issue.RemediationAction.GetManualCommands($State)
+                    $fenceLang = $issue.RemediationAction.ManualCommandsLanguage
+                    $openFence = '  ' + '```' + $fenceLang
+                    $closeFence = '  ' + '```'
                     foreach ($cmd in $commands) {
-                        Write-Output "  ``````"
+                        Write-Output $openFence
                         Write-Output "  $cmd"
-                        Write-Output "  ``````"
+                        Write-Output $closeFence
                     }
                 }
                 elseif ($issue.ManualFixCommand) {
@@ -269,7 +272,8 @@ function Write-ManualInstructionsToStepSummary {
         if ($issue.RemediationAction -and ($issue.RemediationAction -is [RemediationAction])) {
             $commands = $issue.RemediationAction.GetManualCommands($State)
             if ($commands) {
-                "``````bash" | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
+                $fenceLang = $issue.RemediationAction.ManualCommandsLanguage
+                ('```' + $fenceLang) | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
                 foreach ($cmd in $commands) {
                     $cmd | Out-File -Append -FilePath $env:GITHUB_STEP_SUMMARY
                 }

@@ -9,6 +9,7 @@ class RemediationAction {
     [string]$Description
     [string]$Version
     [int]$Priority  # Lower number = higher priority (for ordering)
+    [string]$ManualCommandsLanguage = "bash"  # Fence language used to render GetManualCommands() output (e.g. "bash", "yaml")
     
     RemediationAction([string]$description, [string]$version) {
         $this.Description = $description

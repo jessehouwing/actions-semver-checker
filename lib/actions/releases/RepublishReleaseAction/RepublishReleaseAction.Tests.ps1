@@ -98,7 +98,7 @@ Describe "RepublishReleaseAction" {
             $commands[1] | Should -Match "--draft=false --latest=false"
         }
         
-        It "Should return empty array when issue is unfixable" {
+        It "Should return an ignore-versions YAML snippet (not a gh command) when issue is unfixable" {
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release not immutable")
             $issue.Version = "v1.0.0"
@@ -107,7 +107,10 @@ Describe "RepublishReleaseAction" {
             
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 0
+            $commands.Count | Should -BeGreaterThan 0
+            ($commands -join "`n") | Should -Match 'ignore-versions:\s*"v1\.0\.0"'
+            ($commands -join "`n") | Should -Not -Match "gh release"
+            $action.ManualCommandsLanguage | Should -Be "yaml"
         }
         
         It "Should return settings URL comment AND remediation commands when no immutable releases exist" {

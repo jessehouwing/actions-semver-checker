@@ -46,7 +46,7 @@ Describe "PublishReleaseAction" {
             $commands[0] | Should -Not -Match "# Or edit at"
         }
         
-        It "Should return empty array when issue is unfixable" {
+        It "Should return an ignore-versions YAML snippet (not a gh command) when issue is unfixable" {
             $action = [PublishReleaseAction]::new("v1.0.0", 12345)
             $issue = [ValidationIssue]::new("draft_release", "error", "Release is draft")
             $issue.Version = "v1.0.0"
@@ -55,7 +55,10 @@ Describe "PublishReleaseAction" {
             
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 0
+            $commands.Count | Should -BeGreaterThan 0
+            ($commands -join "`n") | Should -Match 'ignore-versions:\s*"v1\.0\.0"'
+            ($commands -join "`n") | Should -Not -Match "gh release"
+            $action.ManualCommandsLanguage | Should -Be "yaml"
         }
     }
     

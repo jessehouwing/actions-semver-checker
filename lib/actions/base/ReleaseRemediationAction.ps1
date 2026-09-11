@@ -32,6 +32,21 @@ class ReleaseRemediationAction : RemediationAction {
         return ($updated -join ",")
     }
 
+    # Helper method to build a copy/pasteable YAML snippet showing the updated
+    # ignore-versions input, ready to drop into the workflow file that calls
+    # this action. Also switches ManualCommandsLanguage to "yaml" so the
+    # snippet is rendered with a ```yaml fence instead of ```bash.
+    hidden [string[]] GetIgnoreVersionsYamlSnippet([RepositoryState]$state) {
+        $this.ManualCommandsLanguage = "yaml"
+        $suggestedIgnoreVersions = $this.GetSuggestedIgnoreVersions($state)
+
+        return @(
+            "# Update your workflow step to skip this locked version:"
+            "with:"
+            "  ignore-versions: `"$suggestedIgnoreVersions`""
+        )
+    }
+
     # Helper method to mark an issue as unfixable
     hidden [void] MarkAsUnfixable([RepositoryState]$state, [string]$issueType, [string]$message) {
         Write-Host "✗ Unfixable: $message"
