@@ -349,7 +349,7 @@ function Test-GitHubActionVersioning {
         Write-Host ""
         Write-Host "Auto-fix enabled. Attempting to fix issues..."
         
-        Invoke-Remediation -State $state
+        Invoke-AutoFix -State $state -AutoFix $true
         
         $fixedCount = $state.GetFixedIssuesCount()
         $failedCount = $state.GetFailedFixesCount()
@@ -386,9 +386,7 @@ function Test-GitHubActionVersioning {
             if ($pendingIssues.Count -gt 0) {
                 Write-Host ""
                 Write-Host "Manual fixes required:"
-                Get-ManualFixCommands -State $state | ForEach-Object {
-                    Write-Host "  $_"
-                }
+                Get-ManualInstruction -State $state | Out-Host
             }
         }
     }
