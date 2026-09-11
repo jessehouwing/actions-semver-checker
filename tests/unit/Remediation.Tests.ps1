@@ -43,7 +43,7 @@ Describe "Unfixable release remediation - ignore-versions YAML snippet" {
             ($commands -join "`n") | Should -Match 'ignore-versions:\s*"v1\.\*,v6\.3\.0"'
         }
 
-        It "Renders the snippet inside a fenced ```yaml block (not ```bash) in the GitHub Actions job summary" {
+        It 'Renders the snippet inside a fenced ```yaml block (not ```bash) in the GitHub Actions job summary' {
             Mock New-GitHubRelease { return @{ Success = $false; Unfixable = $true } }
 
             $action = [CreateReleaseAction]::new("v6.3.0", $false)
