@@ -32,7 +32,8 @@ class RepublishReleaseAction : ReleaseRemediationAction {
         else {
             # Check if this is an unfixable error (422 - tag used by immutable release)
             if ($this.IsUnfixableError($result)) {
-                $this.MarkAsUnfixable($state, "non_immutable_release", "Release $($this.TagName) cannot be republished because this tag was previously used by an immutable release that was deleted. Consider adding this version to the ignore-versions list.")
+                $suggestedIgnoreVersions = $this.GetSuggestedIgnoreVersions($state)
+                $this.MarkAsUnfixable($state, "non_immutable_release", "Release $($this.TagName) cannot be republished because this tag was previously used by an immutable release that was deleted. Add $($this.TagName) to the ignore-versions list so floating versions and 'latest' fall back to the previous released version (new ignore-versions value: `"$suggestedIgnoreVersions`"), and/or publish a new patch (or minor) release so floating versions and 'latest' can advance to a version with a valid release.")
             }
             else {
                 Write-Host "✗ Failed: Republish release for $($this.TagName) - $($result.Reason)"

@@ -17,6 +17,21 @@ class ReleaseRemediationAction : RemediationAction {
         return $result.ContainsKey('Unfixable') -and $result.Unfixable -eq $true
     }
     
+    # Helper method to build the suggested new ignore-versions value to paste back
+    # into the input: the original configured list (preserving any wildcard
+    # patterns such as "v1.*" exactly as configured) plus this action's TagName,
+    # deduplicated and comma-separated.
+    hidden [string] GetSuggestedIgnoreVersions([RepositoryState]$state) {
+        $current = @()
+        if ($state.IgnoreVersions) {
+            $current = @($state.IgnoreVersions | Where-Object { $_ })
+        }
+
+        $updated = @($current + $this.TagName) | Select-Object -Unique
+
+        return ($updated -join ",")
+    }
+
     # Helper method to mark an issue as unfixable
     hidden [void] MarkAsUnfixable([RepositoryState]$state, [string]$issueType, [string]$message) {
         Write-Host "✗ Unfixable: $message"
