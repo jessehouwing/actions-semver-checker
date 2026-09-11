@@ -60,7 +60,7 @@ jobs:
           # For private repositories:
           #   - `publish_results` will always be set to `false`, regardless
           #     of the value entered here.
-          publish_results: true
+          publish_results: false
 
       # We use lock files (actions.lock via gh actions-lock) to pin our GitHub Actions,
       # so the Pinned-Dependencies findings are not actionable here. Strip them from the
