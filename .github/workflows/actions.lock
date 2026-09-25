@@ -25,7 +25,7 @@ workflows:
         - 'step-security/harden-runner@v2.21.1'
     '.github/workflows/powershell.yml':
         - 'actions/checkout@v7.0.1'
-        - 'github/codeql-action@v4.38.0'
+        - 'github/codeql-action@v4.38.2'
         - 'step-security/harden-runner@v2.21.1'
     '.github/workflows/publish-psgallery.yml':
         - 'actions/checkout@v7.0.1'
@@ -33,7 +33,7 @@ workflows:
     '.github/workflows/scorecard.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.1'
-        - 'github/codeql-action@v4.38.0'
+        - 'github/codeql-action@v4.38.2'
         - 'ossf/scorecard-action@v2.4.4'
         - 'step-security/harden-runner@v2.21.1'
 dependencies:
@@ -57,9 +57,9 @@ dependencies:
         commit: 'sha1-d0a4676d0e0b938bc201470d88276b7c74c712b3'
         owner_id: 44700269
         repo_id: 290227969
-    'github/codeql-action@v4.38.0':
-        ref: 'v4.38.0'
-        commit: 'sha1-b96794f015dfd88f77b49b1c93e0fa7110f94c63'
+    'github/codeql-action@v4.38.2':
+        ref: 'v4.38.2'
+        commit: 'sha1-2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2'
         owner_id: 9919
         repo_id: 259445878
     'jessehouwing/actions-dependency-submission@v1.0.17':
