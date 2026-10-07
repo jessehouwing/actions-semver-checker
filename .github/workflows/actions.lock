@@ -20,7 +20,7 @@ workflows:
         - 'step-security/harden-runner@v2.21.1'
     '.github/workflows/pester-tests.yml':
         - 'actions/checkout@v7.0.1'
-        - 'actions/upload-artifact@v7.0.1'
+        - 'actions/upload-artifact@v7.0.2'
         - 'enricomi/publish-unit-test-result-action@v2.24.0'
         - 'step-security/harden-runner@v2.21.1'
     '.github/workflows/powershell.yml':
@@ -32,7 +32,7 @@ workflows:
         - 'step-security/harden-runner@v2.21.1'
     '.github/workflows/scorecard.yml':
         - 'actions/checkout@v7.0.1'
-        - 'actions/upload-artifact@v7.0.1'
+        - 'actions/upload-artifact@v7.0.2'
         - 'github/codeql-action@v4.38.0'
         - 'ossf/scorecard-action@v2.4.4'
         - 'step-security/harden-runner@v2.21.1'
@@ -47,9 +47,9 @@ dependencies:
         commit: 'sha1-a1d282b36b6f3519aa1f3fc636f609c47dddb294'
         owner_id: 44036562
         repo_id: 476372928
-    'actions/upload-artifact@v7.0.1':
-        ref: 'v7.0.1'
-        commit: 'sha1-043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
+    'actions/upload-artifact@v7.0.2':
+        ref: 'v7.0.2'
+        commit: 'sha1-cf430e030ddbb5b0abf93d22962f4752f3646cd9'
         owner_id: 44036562
         repo_id: 192625955
     'enricomi/publish-unit-test-result-action@v2.24.0':
