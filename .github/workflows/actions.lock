@@ -7,35 +7,35 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/dependency-review-action@v5.0.0'
         - 'jessehouwing/actions-dependency-submission@v1.0.17'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/action-example-checker.yml':
         - 'actions/checkout@v7.0.1'
         - 'jessehouwing/actions-example-checker@v0.0.11'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/action-semver-checker.yml':
         - 'actions/checkout@v7.0.1'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/copilot-setup-steps.yml':
         - 'actions/checkout@v7.0.1'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/pester-tests.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.1'
         - 'enricomi/publish-unit-test-result-action@v2.24.0'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/powershell.yml':
         - 'actions/checkout@v7.0.1'
         - 'github/codeql-action@v4.38.0'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/publish-psgallery.yml':
         - 'actions/checkout@v7.0.1'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/scorecard.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.1'
         - 'github/codeql-action@v4.38.0'
         - 'ossf/scorecard-action@v2.4.4'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
 dependencies:
     'actions/checkout@v7.0.1':
         ref: 'v7.0.1'
@@ -77,8 +77,8 @@ dependencies:
         commit: 'sha1-2d1146689b8cda280b9bc96326124645441f03bc'
         owner_id: 67707773
         repo_id: 421101922
-    'step-security/harden-runner@v2.21.1':
-        ref: 'v2.21.1'
-        commit: 'sha1-e14015d583714f6e62063499dc959a02595150a1'
+    'step-security/harden-runner@v2.22.1':
+        ref: 'v2.22.1'
+        commit: 'sha1-ccd8616d44fd3846e67624a50d5aad6d37bf2d25'
         owner_id: 88700172
         repo_id: 422287306
