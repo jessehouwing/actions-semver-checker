@@ -72,7 +72,7 @@ jobs:
           path: unit-test-results.xml
 
       - name: Publish Unit Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2.24.0
+        uses: EnricoMi/publish-unit-test-result-action@v2.25.0
         if: always()
         with:
           files: unit-test-results.xml
@@ -132,7 +132,7 @@ jobs:
           path: integration-test-results.xml
 
       - name: Publish Integration Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2.24.0
+        uses: EnricoMi/publish-unit-test-result-action@v2.25.0
         if: always()
         with:
           files: integration-test-results.xml
@@ -192,7 +192,7 @@ jobs:
           path: e2e-test-results.xml
 
       - name: Publish E2E Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2.24.0
+        uses: EnricoMi/publish-unit-test-result-action@v2.25.0
         if: always()
         with:
           files: e2e-test-results.xml
