@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@v2.21.1
+        uses: step-security/harden-runner@v2.22.1
         with:
           egress-policy: audit
 
@@ -43,7 +43,7 @@ jobs:
           persist-credentials: false
 
       - name: "Run analysis"
-        uses: ossf/scorecard-action@v2.4.4
+        uses: ossf/scorecard-action@v2.5.0
         with:
           results_file: results.sarif
           results_format: sarif
@@ -73,10 +73,21 @@ jobs:
           ' results.sarif > results.filtered.sarif
           mv results.filtered.sarif results.sarif
 
+      # We use lock files (actions.lock via gh actions-lock) to pin our GitHub Actions,
+      # so the Pinned-Dependencies findings are not actionable here. Strip them from the
+      # SARIF results before they are uploaded/published.
+      - name: "Filter out Pinned-Dependencies findings"
+        run: |
+          jq '
+            .runs[].results |= map(select(.ruleId != "Pinned-Dependencies")) |
+            .runs[].tool.driver.rules |= map(select(.id != "Pinned-Dependencies"))
+          ' results.sarif > results.filtered.sarif
+          mv results.filtered.sarif results.sarif
+
       # Upload the results as artifacts (optional). Commenting out will disable uploads of run results in SARIF
       # format to the repository Actions tab.
       - name: "Upload artifact"
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: SARIF file
           path: results.sarif
@@ -84,6 +95,6 @@ jobs:
 
       # Upload the results to GitHub's code scanning dashboard.
       - name: "Upload to code-scanning"
-        uses: github/codeql-action/upload-sarif@v4.38.0
+        uses: github/codeql-action/upload-sarif@v4.38.3
         with:
           sarif_file: results.sarif

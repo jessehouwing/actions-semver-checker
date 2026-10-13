@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@v2.21.1
+        uses: step-security/harden-runner@v2.22.1
         with:
           egress-policy: audit
 
@@ -65,14 +65,14 @@ jobs:
           }
 
       - name: Upload Unit Test Results
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: unit-test-results
           path: unit-test-results.xml
 
       - name: Publish Unit Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2.24.0
+        uses: EnricoMi/publish-unit-test-result-action@v2.25.0
         if: always()
         with:
           files: unit-test-results.xml
@@ -85,7 +85,7 @@ jobs:
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@v2.21.1
+        uses: step-security/harden-runner@v2.22.1
         with:
           egress-policy: audit
 
@@ -125,14 +125,14 @@ jobs:
           }
 
       - name: Upload Integration Test Results
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: integration-test-results
           path: integration-test-results.xml
 
       - name: Publish Integration Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2.24.0
+        uses: EnricoMi/publish-unit-test-result-action@v2.25.0
         if: always()
         with:
           files: integration-test-results.xml
@@ -145,7 +145,7 @@ jobs:
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@v2.21.1
+        uses: step-security/harden-runner@v2.22.1
         with:
           egress-policy: audit
 
@@ -185,14 +185,14 @@ jobs:
           }
 
       - name: Upload E2E Test Results
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: e2e-test-results
           path: e2e-test-results.xml
 
       - name: Publish E2E Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2.24.0
+        uses: EnricoMi/publish-unit-test-result-action@v2.25.0
         if: always()
         with:
           files: e2e-test-results.xml
