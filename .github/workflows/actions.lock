@@ -7,35 +7,35 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/dependency-review-action@v5.0.0'
         - 'jessehouwing/actions-dependency-submission@v1.0.17'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/action-example-checker.yml':
         - 'actions/checkout@v7.0.1'
         - 'jessehouwing/actions-example-checker@v0.0.11'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/action-semver-checker.yml':
         - 'actions/checkout@v7.0.1'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/copilot-setup-steps.yml':
         - 'actions/checkout@v7.0.1'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/pester-tests.yml':
         - 'actions/checkout@v7.0.1'
-        - 'actions/upload-artifact@v7.0.1'
+        - 'actions/upload-artifact@v7.0.2'
         - 'enricomi/publish-unit-test-result-action@v2.25.0'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/powershell.yml':
         - 'actions/checkout@v7.0.1'
-        - 'github/codeql-action@v4.38.0'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'github/codeql-action@v4.38.3'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/publish-psgallery.yml':
         - 'actions/checkout@v7.0.1'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/scorecard.yml':
         - 'actions/checkout@v7.0.1'
-        - 'actions/upload-artifact@v7.0.1'
-        - 'github/codeql-action@v4.38.0'
+        - 'actions/upload-artifact@v7.0.2'
+        - 'github/codeql-action@v4.38.3'
         - 'ossf/scorecard-action@v2.5.0'
-        - 'step-security/harden-runner@v2.21.1'
+        - 'step-security/harden-runner@v2.22.1'
 dependencies:
     'actions/checkout@v7.0.1':
         ref: 'v7.0.1'
@@ -47,9 +47,9 @@ dependencies:
         commit: 'sha1-a1d282b36b6f3519aa1f3fc636f609c47dddb294'
         owner_id: 44036562
         repo_id: 476372928
-    'actions/upload-artifact@v7.0.1':
-        ref: 'v7.0.1'
-        commit: 'sha1-043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
+    'actions/upload-artifact@v7.0.2':
+        ref: 'v7.0.2'
+        commit: 'sha1-cf430e030ddbb5b0abf93d22962f4752f3646cd9'
         owner_id: 44036562
         repo_id: 192625955
     'enricomi/publish-unit-test-result-action@v2.25.0':
@@ -57,9 +57,9 @@ dependencies:
         commit: 'sha1-7622c5bf3d112a72ab4fa3951c2aa5723d8ab92d'
         owner_id: 44700269
         repo_id: 290227969
-    'github/codeql-action@v4.38.0':
-        ref: 'v4.38.0'
-        commit: 'sha1-b96794f015dfd88f77b49b1c93e0fa7110f94c63'
+    'github/codeql-action@v4.38.3':
+        ref: 'v4.38.3'
+        commit: 'sha1-24c54180a607b1449ed407dd24f251e4e9147c8d'
         owner_id: 9919
         repo_id: 259445878
     'jessehouwing/actions-dependency-submission@v1.0.17':
@@ -77,8 +77,8 @@ dependencies:
         commit: 'sha1-fa7117db83c52d787ae5a89f350999701505d78e'
         owner_id: 67707773
         repo_id: 421101922
-    'step-security/harden-runner@v2.21.1':
-        ref: 'v2.21.1'
-        commit: 'sha1-e14015d583714f6e62063499dc959a02595150a1'
+    'step-security/harden-runner@v2.22.1':
+        ref: 'v2.22.1'
+        commit: 'sha1-ccd8616d44fd3846e67624a50d5aad6d37bf2d25'
         owner_id: 88700172
         repo_id: 422287306
