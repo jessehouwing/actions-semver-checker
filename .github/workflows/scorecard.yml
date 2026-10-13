@@ -60,7 +60,18 @@ jobs:
           # For private repositories:
           #   - `publish_results` will always be set to `false`, regardless
           #     of the value entered here.
-          publish_results: true
+          publish_results: false
+
+      # We use lock files (actions.lock via gh actions-lock) to pin our GitHub Actions,
+      # so the Pinned-Dependencies findings are not actionable here. Strip them from the
+      # SARIF results before they are uploaded/published.
+      - name: "Filter out Pinned-Dependencies findings"
+        run: |
+          jq '
+            .runs[].results |= map(select(.ruleId != "Pinned-Dependencies")) |
+            .runs[].tool.driver.rules |= map(select(.id != "Pinned-Dependencies"))
+          ' results.sarif > results.filtered.sarif
+          mv results.filtered.sarif results.sarif
 
       # We use lock files (actions.lock via gh actions-lock) to pin our GitHub Actions,
       # so the Pinned-Dependencies findings are not actionable here. Strip them from the
