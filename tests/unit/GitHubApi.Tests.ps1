@@ -30,11 +30,40 @@ Describe "Get-GitHubImmutableReleaseStatus and Enable-GitHubImmutableRelease" {
         Get-GitHubImmutableReleaseStatus -State $script:state | Should -BeNullOrEmpty
     }
 
-    It "Enables immutable releases with PUT" {
-        Mock Invoke-GitHubHttpRequest { return $null }
+    It "Enables immutable releases with PUT and confirms the status" {
+        Mock Start-Sleep { }
+        Mock Invoke-GitHubHttpRequest { return $null } -ParameterFilter { $Method -eq 'Put' }
+        Mock Invoke-GitHubHttpRequest { return [PSCustomObject]@{ enabled = $true } } -ParameterFilter { $Method -eq 'Get' }
 
         Enable-GitHubImmutableRelease -State $script:state | Should -Be $true
-        Should -Invoke Invoke-GitHubHttpRequest -ParameterFilter { $Uri -eq "https://api.github.com/repos/owner/repo/immutable-releases" -and $Method -eq 'Put' }
+        Should -Invoke Invoke-GitHubHttpRequest -Exactly 1 -ParameterFilter { $Uri -eq "https://api.github.com/repos/owner/repo/immutable-releases" -and $Method -eq 'Put' }
+        Should -Invoke Start-Sleep -Exactly 0
+    }
+
+    It "Polls with exponential backoff until the status reports enabled" {
+        Mock Start-Sleep { }
+        $script:getCalls = 0
+        Mock Invoke-GitHubHttpRequest { return $null } -ParameterFilter { $Method -eq 'Put' }
+        Mock Invoke-GitHubHttpRequest {
+            $script:getCalls++
+            return [PSCustomObject]@{ enabled = ($script:getCalls -ge 4) }
+        } -ParameterFilter { $Method -eq 'Get' }
+
+        Enable-GitHubImmutableRelease -State $script:state | Should -Be $true
+        $script:getCalls | Should -Be 4
+        Should -Invoke Start-Sleep -Exactly 1 -ParameterFilter { $Seconds -eq 1 }
+        Should -Invoke Start-Sleep -Exactly 1 -ParameterFilter { $Seconds -eq 2 }
+        Should -Invoke Start-Sleep -Exactly 1 -ParameterFilter { $Seconds -eq 4 }
+    }
+
+    It "Returns false when the status never reports enabled" {
+        Mock Start-Sleep { }
+        Mock Invoke-GitHubHttpRequest { return $null } -ParameterFilter { $Method -eq 'Put' }
+        Mock Invoke-GitHubHttpRequest { return [PSCustomObject]@{ enabled = $false } } -ParameterFilter { $Method -eq 'Get' }
+
+        Enable-GitHubImmutableRelease -State $script:state -MaxAttempts 3 | Should -Be $false
+        Should -Invoke Invoke-GitHubHttpRequest -Exactly 3 -ParameterFilter { $Method -eq 'Get' }
+        Should -Invoke Start-Sleep -Exactly 2
     }
 
     It "Returns false when enabling fails" {

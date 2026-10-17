@@ -1846,14 +1846,24 @@ function Enable-GitHubImmutableRelease {
     .PARAMETER State
     The RepositoryState object containing API configuration.
 
+    .PARAMETER MaxAttempts
+    Number of times to check that the setting is reported as enabled after the PUT.
+
+    .PARAMETER InitialDelaySeconds
+    Delay before the second check; doubles after each attempt (capped at 30 seconds).
+
     .OUTPUTS
-    Returns $true if the setting was enabled, $false otherwise.
+    Returns $true once the setting is confirmed enabled, $false otherwise.
     #>
     [CmdletBinding()]
     [OutputType([bool])]
     param(
         [Parameter(Mandatory)]
-        [RepositoryState]$State
+        [RepositoryState]$State,
+
+        [int]$MaxAttempts = 6,
+
+        [int]$InitialDelaySeconds = 1
     )
 
     try {
@@ -1869,7 +1879,21 @@ function Enable-GitHubImmutableRelease {
             Invoke-GitHubHttpRequest -Uri $url -Headers $headers -Method Put -OperationDescription "enable immutable releases"
         }
 
-        return $true
+        # The setting is eventually consistent: GET can still report 'disabled' right after the PUT
+        $delay = $InitialDelaySeconds
+        for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+            if ((Get-GitHubImmutableReleaseStatus -State $State) -eq $true) {
+                return $true
+            }
+            if ($attempt -lt $MaxAttempts) {
+                Write-Host "::debug::Immutable releases not yet reported as enabled (attempt $attempt of $MaxAttempts); retrying in $delay seconds"
+                Start-Sleep -Seconds $delay
+                $delay = [Math]::Min($delay * 2, 30)
+            }
+        }
+
+        Write-Host "::debug::Immutable releases were not reported as enabled after $MaxAttempts checks"
+        return $false
     }
     catch {
         Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to enable immutable releases: "
