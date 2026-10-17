@@ -40,22 +40,26 @@ This rule runs when:
 
 When `auto-fix` is enabled, this rule uses `RepublishReleaseAction` which:
 
-1. Converts the release to draft
-2. Republishes it
-3. Verifies the `immutable: true` flag is set
+1. Queries whether "Release immutability" is enabled (`GET /repos/{owner}/{repo}/immutable-releases`) and enables it (`PUT`) if it is off
+2. Converts the release to draft
+3. Republishes it
+4. Verifies the `immutable: true` flag is set
 
-**Important:** If the repository does not have "Release immutability" enabled in settings, the republish will succeed but the release will still be mutable. The action will detect this and mark the issue as "manual_fix_required" with instructions to enable the setting.
+**Important:** Enabling the setting requires repository admin permissions, which the default Actions `GITHUB_TOKEN` usually lacks. If it cannot be enabled, the issue is marked as "manual_fix_required" with the `gh api -X PUT` command to run, and the release is not republished (it would stay mutable).
 
-**Note:** If the tag was previously used by a deleted immutable release, GitHub will return HTTP 422 and the issue will be marked as **unfixable**.
+**Note:** If the tag was previously used by a deleted immutable release, GitHub will return HTTP 422. Because the release was most likely deleted for security reasons, auto-fix then **deletes the tag** so it can no longer be referenced. If the tag cannot be deleted (e.g. a tag ruleset blocks it), the issue is marked as **manual_fix_required**; the message and manual instructions name the ruleset(s) to bypass or disable and give the command to delete the tag remotely (`git push origin :refs/tags/<tag>`).
 
 ## Manual Remediation
 
 ### Step 1: Enable Release Immutability in Repository Settings
 
-1. Navigate to **Settings** > **General** in your repository
-2. Scroll to the **Releases** section
-3. Enable **Release immutability**
-4. Save changes
+Requires repository admin permissions:
+
+```bash
+gh api -X PUT "repos/{owner}/{repo}/immutable-releases"
+```
+
+Or in the web UI: **Settings** > **General** > **Releases** > enable **Release immutability**.
 
 ### Step 2: Republish the Release
 
