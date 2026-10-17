@@ -5,6 +5,7 @@
 class RepublishReleaseAction : ReleaseRemediationAction {
     [Nullable[bool]]$MakeLatest = $null  # Controls whether release should become latest ($true, $false, or $null to let GitHub decide)
     [bool]$TagDeletionFailed = $false  # Set when the release was deleted (422) and removing the tag failed
+    [bool]$ImmutabilityEnableFailed = $false  # Set when immutability could not be enabled or confirmed; manual steps must then include the enable command
     [object[]]$BlockingRulesets = @()  # Tag rulesets that prevent deleting the tag
     
     RepublishReleaseAction([string]$tagName) : base("Republish release for immutability", $tagName) {
@@ -20,6 +21,7 @@ class RepublishReleaseAction : ReleaseRemediationAction {
 
     hidden [void] MarkImmutabilityManualFix([RepositoryState]$state, [string]$reason) {
         $enableCommand = "gh api -X PUT $($this.GetImmutableReleasesEndpoint($state))"
+        $this.ImmutabilityEnableFailed = $true
         $this.MarkAsManualFixRequired($state, "non_immutable_release", "$reason Enable 'Release immutability' for the repository (requires repository admin permissions): $enableCommand")
         Write-Host "::warning::Release $($this.TagName) is not immutable. Enable 'Release immutability' with: $enableCommand"
     }
@@ -31,7 +33,7 @@ class RepublishReleaseAction : ReleaseRemediationAction {
         if ((Get-GitHubImmutableReleaseStatus -State $state) -eq $false) {
             Write-Host "'Release immutability' is disabled for the repository; enabling it"
             if (-not (Enable-GitHubImmutableRelease -State $state)) {
-                $this.MarkImmutabilityManualFix($state, "Release $($this.TagName) is not immutable because 'Release immutability' is disabled for the repository and it could not be enabled automatically.")
+                $this.MarkImmutabilityManualFix($state, "Release $($this.TagName) is not immutable because 'Release immutability' is disabled for the repository and it could not be enabled automatically (the request failed or the setting was not confirmed in time).")
                 return $false
             }
         }
@@ -103,7 +105,7 @@ class RepublishReleaseAction : ReleaseRemediationAction {
         }) | Select-Object -First 1
         
         # If no immutable releases exist AND no auto-fix succeeded, add the command to enable the feature
-        if (-not $hasImmutableReleases -and -not $anyImmutabilityFixSucceeded) {
+        if ($this.ImmutabilityEnableFailed -or (-not $hasImmutableReleases -and -not $anyImmutabilityFixSucceeded)) {
             $commands += "# Enable 'Release immutability' for the repository (requires repository admin permissions):"
             $commands += "gh api -X PUT $($this.GetImmutableReleasesEndpoint($state))"
         }

@@ -312,6 +312,22 @@ Describe "RepublishReleaseAction" {
             Should -Invoke Republish-GitHubRelease -Times 0
         }
 
+        It "Should list the enable command in manual steps after an enablement failure even if other releases are immutable" {
+            Mock Get-GitHubImmutableReleaseStatus { return $false }
+            Mock Enable-GitHubImmutableRelease { return $false }
+
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release not immutable")
+            $issue.Version = "v1.0.0"
+            $script:state.Issues = @($issue)
+            $immutable = [ReleaseInfo]::new([PSCustomObject]@{ id = 1; tag_name = "v0.9.0"; draft = $false; prerelease = $false; immutable = $true; html_url = "u" })
+            $script:state.Releases = @($immutable)
+
+            $action.Execute($script:state) | Should -Be $false
+            $commands = $action.GetManualCommands($script:state)
+            ($commands -join "`n") | Should -Match "gh api -X PUT repos/test-owner/test-repo/immutable-releases"
+        }
+
         It "Should delete the tag on 422 error" {
             Mock Republish-GitHubRelease { return @{ Success = $false; Unfixable = $true } }
             Mock Remove-GitHubRef { return $true }
