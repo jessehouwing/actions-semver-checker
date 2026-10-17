@@ -6,7 +6,7 @@ workflows:
     '.github/workflows/action-dependency-submission.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/dependency-review-action@v5.0.0'
-        - 'jessehouwing/actions-dependency-submission@v1.0.17'
+        - 'jessehouwing/actions-dependency-submission@v2.0.2'
         - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/action-example-checker.yml':
         - 'actions/checkout@v7.0.1'
@@ -62,9 +62,9 @@ dependencies:
         commit: 'sha1-24c54180a607b1449ed407dd24f251e4e9147c8d'
         owner_id: 9919
         repo_id: 259445878
-    'jessehouwing/actions-dependency-submission@v1.0.17':
-        ref: 'v1.0.17'
-        commit: 'sha1-aa358ec7aee0a7f2dbaef9702915b28e90879842'
+    'jessehouwing/actions-dependency-submission@v2.0.2':
+        ref: 'v2.0.2'
+        commit: 'sha1-811981eec3c108f41783f194522fde91a34301a4'
         owner_id: 4173387
         repo_id: 1109249632
     'jessehouwing/actions-example-checker@v0.0.11':
