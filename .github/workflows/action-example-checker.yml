@@ -23,4 +23,4 @@ jobs:
             github.com:443
 
       - uses: actions/checkout@v7.0.1
-      - uses: jessehouwing/actions-example-checker@v0.0.11
+      - uses: jessehouwing/actions-example-checker@v0.0.12

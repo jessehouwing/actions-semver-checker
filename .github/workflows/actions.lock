@@ -10,7 +10,7 @@ workflows:
         - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/action-example-checker.yml':
         - 'actions/checkout@v7.0.1'
-        - 'jessehouwing/actions-example-checker@v0.0.11'
+        - 'jessehouwing/actions-example-checker@v0.0.12'
         - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/action-semver-checker.yml':
         - 'actions/checkout@v7.0.1'
@@ -67,9 +67,9 @@ dependencies:
         commit: 'sha1-811981eec3c108f41783f194522fde91a34301a4'
         owner_id: 4173387
         repo_id: 1109249632
-    'jessehouwing/actions-example-checker@v0.0.11':
-        ref: 'v0.0.11'
-        commit: 'sha1-eb2c287585cd48847abc0d3012e861918793561f'
+    'jessehouwing/actions-example-checker@v0.0.12':
+        ref: 'v0.0.12'
+        commit: 'sha1-ca55c0d967b1f7aa6b3767e476c0bdbb5108481a'
         owner_id: 4173387
         repo_id: 1161059458
     'ossf/scorecard-action@v2.5.0':
