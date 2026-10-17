@@ -145,11 +145,12 @@ Describe "RemediationAction Classes" {
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $commands = $action.GetManualCommands($script:state)
             
-            # Should include comment about enabling immutability + 2 commands
-            $commands.Count | Should -Be 3
+            # Should include comment + gh api command for enabling immutability + 2 commands
+            $commands.Count | Should -Be 4
             $commands[0] | Should -Match "^# Enable 'Release immutability'"
-            $commands[1] | Should -Match 'gh release edit v1\.0\.0.*--draft=true'
-            $commands[2] | Should -Match 'gh release edit v1\.0\.0.*--draft=false'
+            $commands[1] | Should -Match '^gh api -X PUT .*immutable-releases$'
+            $commands[2] | Should -Match 'gh release edit v1\.0\.0.*--draft=true'
+            $commands[3] | Should -Match 'gh release edit v1\.0\.0.*--draft=false'
         }
         
         It "Should generate manual commands with latest=true" {
@@ -157,8 +158,8 @@ Describe "RemediationAction Classes" {
             $action.MakeLatest = $true
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 3
-            $commands[2] | Should -Match 'gh release edit v1\.0\.0.*--draft=false.*--latest'
+            $commands.Count | Should -Be 4
+            $commands[3] | Should -Match 'gh release edit v1\.0\.0.*--draft=false.*--latest'
         }
         
         It "Should generate manual commands with latest=false" {
@@ -166,8 +167,8 @@ Describe "RemediationAction Classes" {
             $action.MakeLatest = $false
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 3
-            $commands[2] | Should -Match 'gh release edit v1\.0\.0.*--draft=false.*--latest=false'
+            $commands.Count | Should -Be 4
+            $commands[3] | Should -Match 'gh release edit v1\.0\.0.*--draft=false.*--latest=false'
         }
         
         It "Should not include immutability comment when repo already has immutable releases" {
@@ -179,14 +180,14 @@ Describe "RemediationAction Classes" {
             
             # Add an existing immutable release
             $existingRelease = [ReleaseInfo]::new([PSCustomObject]@{
-                    tag_name = "v0.9.0"
-                    id = 123
-                    draft = $false
-                    prerelease = $false
-                    html_url = "https://github.com/owner/repo/releases/tag/v0.9.0"
-                    target_commitish = "abc123"
-                    immutable = $true
-                })
+                tag_name = "v0.9.0"
+                id = 123
+                draft = $false
+                prerelease = $false
+                html_url = "https://github.com/owner/repo/releases/tag/v0.9.0"
+                target_commitish = "abc123"
+                immutable = $true
+            })
             $state.Releases = @($existingRelease)
             
             $commands = $action.GetManualCommands($state)

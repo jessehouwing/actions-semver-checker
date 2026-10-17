@@ -107,7 +107,7 @@ function Invoke-GitHubHttpRequest {
         [Parameter(Mandatory)]
         [hashtable]$Headers,
         [Parameter(Mandatory)]
-        [ValidateSet('Get', 'Post', 'Patch', 'Delete', 'Head')]
+        [ValidateSet('Get', 'Post', 'Patch', 'Put', 'Delete', 'Head')]
         [string]$Method,
         [string]$Body,
         [string]$ContentType,
@@ -1677,6 +1677,227 @@ function Get-GitHubDirectoryContents {
 
         Write-Host "::debug::Error listing directory $Path : $_"
         return @()
+    }
+}
+
+function Test-RefNamePattern {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [string]$Pattern,
+        [Parameter(Mandatory)]
+        [string]$Ref
+    )
+
+    if ($Pattern -eq '~ALL') {
+        return $true
+    }
+
+    # fnmatch-style: ** crosses '/', * and ? do not
+    $escaped = [regex]::Escape($Pattern)
+    $escaped = $escaped.Replace('\*\*', '.*').Replace('\*', '[^/]*').Replace('\?', '[^/]')
+    return $Ref -match "^$escaped$"
+}
+
+function Get-GitHubTagProtection {
+    <#
+    .SYNOPSIS
+    Finds the active tag rulesets that prevent a tag from being deleted.
+
+    .DESCRIPTION
+    Lists the repository (and inherited organization) rulesets that target tags, and returns
+    those that are not disabled, include the given tag in their ref_name conditions and contain
+    a 'deletion' rule. Requires a token with permission to read rulesets; if the rulesets
+    cannot be read an empty array is returned.
+
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+
+    .PARAMETER TagName
+    The tag name (e.g., "v1.0.0").
+
+    .OUTPUTS
+    Array of PSCustomObjects with Id, Name, Enforcement, Source and Url.
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject[]])]
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+        [Parameter(Mandatory)]
+        [string]$TagName
+    )
+
+    $blocking = @()
+
+    try {
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return @()
+        }
+
+        $headers = Get-ApiHeader -Token $State.Token
+        $baseUrl = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/rulesets"
+        $fullRef = "refs/tags/$TagName"
+
+        $rulesets = Invoke-WithRetry -OperationDescription "List rulesets" -ScriptBlock {
+            Invoke-GitHubHttpRequest -Uri "${baseUrl}?includes_parents=true&per_page=100" -Headers $headers -Method Get -OperationDescription "list rulesets" -ParseJsonContent
+        }
+
+        foreach ($summary in @($rulesets)) {
+            if (-not $summary -or $summary.target -ne 'tag' -or $summary.enforcement -eq 'disabled') {
+                continue
+            }
+
+            $ruleset = Invoke-WithRetry -OperationDescription "Get ruleset $($summary.id)" -ScriptBlock {
+                Invoke-GitHubHttpRequest -Uri "$baseUrl/$($summary.id)" -Headers $headers -Method Get -OperationDescription "get ruleset" -ParseJsonContent
+            }
+
+            if (-not ($ruleset.rules | Where-Object { $_.type -eq 'deletion' })) {
+                continue
+            }
+
+            $includes = @($ruleset.conditions.ref_name.include)
+            $excludes = @($ruleset.conditions.ref_name.exclude)
+            $included = $includes | Where-Object { $_ -and (Test-RefNamePattern -Pattern $_ -Ref $fullRef) }
+            $excluded = $excludes | Where-Object { $_ -and (Test-RefNamePattern -Pattern $_ -Ref $fullRef) }
+            if (-not $included -or $excluded) {
+                continue
+            }
+
+            $source = if ($ruleset.source_type -eq 'Organization') { "organization $($ruleset.source)" } else { "repository $($repoInfo.Owner)/$($repoInfo.Repo)" }
+            $url = if ($ruleset.source_type -eq 'Organization') {
+                "$($State.ServerUrl)/organizations/$($ruleset.source)/settings/rules/$($ruleset.id)"
+            }
+            else {
+                "$($State.ServerUrl)/$($repoInfo.Owner)/$($repoInfo.Repo)/rules/$($ruleset.id)"
+            }
+
+            $blocking += [PSCustomObject]@{
+                Id          = $ruleset.id
+                Name        = $ruleset.name
+                Enforcement = $ruleset.enforcement
+                Source      = $source
+                Url         = $url
+            }
+        }
+    }
+    catch {
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to query tag protection for $TagName : "
+        return @()
+    }
+
+    return $blocking
+}
+
+function Get-GitHubImmutableReleaseStatus {
+    <#
+    .SYNOPSIS
+    Queries whether 'Release immutability' is enabled for the repository.
+
+    .DESCRIPTION
+    Calls GET /repos/{owner}/{repo}/immutable-releases and returns the 'enabled' flag.
+
+    .OUTPUTS
+    $true or $false when the status could be determined, $null when the query failed.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State
+    )
+
+    try {
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return $null
+        }
+
+        $headers = Get-ApiHeader -Token $State.Token
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/immutable-releases"
+
+        $response = Invoke-WithRetry -OperationDescription "Get immutable releases status" -ScriptBlock {
+            Invoke-GitHubHttpRequest -Uri $url -Headers $headers -Method Get -OperationDescription "get immutable releases status" -ParseJsonContent
+        }
+
+        if ($null -eq $response -or $null -eq $response.enabled) {
+            return $null
+        }
+
+        return [bool]$response.enabled
+    }
+    catch {
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to query immutable releases status: "
+        return $null
+    }
+}
+
+function Enable-GitHubImmutableRelease {
+    <#
+    .SYNOPSIS
+    Enables the 'Release immutability' setting for the repository.
+
+    .DESCRIPTION
+    Calls PUT /repos/{owner}/{repo}/immutable-releases. This requires repository admin
+    permissions, which the default GITHUB_TOKEN usually does not have.
+
+    .PARAMETER State
+    The RepositoryState object containing API configuration.
+
+    .PARAMETER MaxAttempts
+    Number of times to check that the setting is reported as enabled after the PUT.
+
+    .PARAMETER InitialDelaySeconds
+    Delay before the second check; doubles after each attempt (capped at 30 seconds).
+
+    .OUTPUTS
+    Returns $true once the setting is confirmed enabled, $false otherwise.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [RepositoryState]$State,
+
+        [int]$MaxAttempts = 6,
+
+        [int]$InitialDelaySeconds = 1
+    )
+
+    try {
+        $repoInfo = Get-GitHubRepoInfo -State $State
+        if (-not $repoInfo) {
+            return $false
+        }
+
+        $headers = Get-ApiHeader -Token $State.Token
+        $url = "$($State.ApiUrl)/repos/$($repoInfo.Owner)/$($repoInfo.Repo)/immutable-releases"
+
+        $null = Invoke-WithRetry -OperationDescription "Enable immutable releases" -ScriptBlock {
+            Invoke-GitHubHttpRequest -Uri $url -Headers $headers -Method Put -OperationDescription "enable immutable releases"
+        }
+
+        # The setting is eventually consistent: GET can still report 'disabled' right after the PUT
+        $delay = $InitialDelaySeconds
+        for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+            if ((Get-GitHubImmutableReleaseStatus -State $State) -eq $true) {
+                return $true
+            }
+            if ($attempt -lt $MaxAttempts) {
+                Write-Host "::debug::Immutable releases not yet reported as enabled (attempt $attempt of $MaxAttempts); retrying in $delay seconds"
+                Start-Sleep -Seconds $delay
+                $delay = [Math]::Min($delay * 2, 30)
+            }
+        }
+
+        Write-Host "::debug::Immutable releases were not reported as enabled after $MaxAttempts checks"
+        return $false
+    }
+    catch {
+        Write-SafeOutput -Message ([string]$_) -Prefix "::debug::Failed to enable immutable releases: "
+        return $false
     }
 }
 

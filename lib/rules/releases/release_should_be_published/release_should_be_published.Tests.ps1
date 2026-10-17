@@ -220,23 +220,23 @@ Describe "release_should_be_published" {
                     immutable = $false
                 })
             $release2 = [ReleaseInfo]::new([PSCustomObject]@{
-                    tag_name = "v1.0.0"
-                    id = 102
-                    draft = $true
-                    prerelease = $false
-                    html_url = "url2"
-                    target_commitish = "abc123"
-                    immutable = $false
-                })
+                tag_name = "v1.0.0"
+                id = 102
+                draft = $true
+                prerelease = $false
+                html_url = "url2"
+                target_commitish = "abc123"
+                immutable = $false
+            })
             $release3 = [ReleaseInfo]::new([PSCustomObject]@{
-                    tag_name = "v1.0.0"
-                    id = 103
-                    draft = $true
-                    prerelease = $false
-                    html_url = "url3"
-                    target_commitish = "abc123"
-                    immutable = $false
-                })
+                tag_name = "v1.0.0"
+                id = 103
+                draft = $true
+                prerelease = $false
+                html_url = "url3"
+                target_commitish = "abc123"
+                immutable = $false
+            })
             
             $state.Releases = @($release1, $release2, $release3)
             $state.IgnoreVersions = @()
@@ -258,32 +258,32 @@ Describe "release_should_be_published" {
             # 2 drafts for v1.0.0, 1 draft for v2.0.0
             $state.Releases = @(
                 [ReleaseInfo]::new([PSCustomObject]@{
-                        tag_name = "v1.0.0"
-                        id = 101
-                        draft = $true
-                        prerelease = $false
-                        html_url = "url1"
-                        target_commitish = "abc"
-                        immutable = $false
-                    }),
+                    tag_name = "v1.0.0"
+                    id = 101
+                    draft = $true
+                    prerelease = $false
+                    html_url = "url1"
+                    target_commitish = "abc"
+                    immutable = $false
+                }),
                 [ReleaseInfo]::new([PSCustomObject]@{
-                        tag_name = "v1.0.0"
-                        id = 102
-                        draft = $true
-                        prerelease = $false
-                        html_url = "url2"
-                        target_commitish = "abc"
-                        immutable = $false
-                    }),
+                    tag_name = "v1.0.0"
+                    id = 102
+                    draft = $true
+                    prerelease = $false
+                    html_url = "url2"
+                    target_commitish = "abc"
+                    immutable = $false
+                }),
                 [ReleaseInfo]::new([PSCustomObject]@{
-                        tag_name = "v2.0.0"
-                        id = 201
-                        draft = $true
-                        prerelease = $false
-                        html_url = "url3"
-                        target_commitish = "def"
-                        immutable = $false
-                    })
+                    tag_name = "v2.0.0"
+                    id = 201
+                    draft = $true
+                    prerelease = $false
+                    html_url = "url3"
+                    target_commitish = "def"
+                    immutable = $false
+                })
             )
             $state.IgnoreVersions = @()
             
@@ -303,23 +303,23 @@ Describe "release_should_be_published" {
             $state = [RepositoryState]::new()
             
             $published = [ReleaseInfo]::new([PSCustomObject]@{
-                    tag_name = "v1.0.0"
-                    id = 100
-                    draft = $false
-                    prerelease = $false
-                    html_url = "url1"
-                    target_commitish = "abc123"
-                    immutable = $true
-                })
+                tag_name = "v1.0.0"
+                id = 100
+                draft = $false
+                prerelease = $false
+                html_url = "url1"
+                target_commitish = "abc123"
+                immutable = $true
+            })
             $draft = [ReleaseInfo]::new([PSCustomObject]@{
-                    tag_name = "v1.0.0"
-                    id = 200
-                    draft = $true
-                    prerelease = $false
-                    html_url = "url2"
-                    target_commitish = "abc123"
-                    immutable = $false
-                })
+                tag_name = "v1.0.0"
+                id = 200
+                draft = $true
+                prerelease = $false
+                html_url = "url2"
+                target_commitish = "abc123"
+                immutable = $false
+            })
             
             $state.Releases = @($published, $draft)
             $state.IgnoreVersions = @()

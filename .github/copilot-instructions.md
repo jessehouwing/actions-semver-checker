@@ -174,21 +174,11 @@ class MyNewAction : RemediationAction {
 
 ## Error Handling
 
-### Unfixable Errors (HTTP 422)
+### HTTP 422 on Release Operations
 
-When GitHub returns HTTP 422 for release operations, the issue is marked as **unfixable**. This happens when:
-- A tag was previously used by an **immutable release that was deleted**
-- GitHub permanently blocks recreating releases on that tag
+GitHub returns 422 when a tag was previously used by an **immutable release that was deleted**. Such releases are most likely deleted for security reasons, so `RepublishReleaseAction` runs `DeleteTagAction` for the tag. If the delete fails (e.g. a tag ruleset with a `deletion` rule), `Get-GitHubTagProtection` finds the blocking rulesets and the issue becomes `manual_fix_required`, with manual commands naming the rulesets and `git push origin :refs/tags/<tag>`.
 
-```powershell
-# In RemediationAction.Execute():
-if ($this.IsUnfixableError($result)) {
-    $this.MarkAsUnfixable($state, "missing_release", "Cannot create - tag locked by deleted immutable release")
-    return $false
-}
-```
-
-**Resolution:** Add the version to `ignore-versions` input or manually create a new patch version.
+Other actions may still use `IsUnfixableError` / `MarkAsUnfixable` for 422 errors (resolve via `ignore-versions` or a new patch version).
 
 ### Issue Statuses
 - `pending` → Not yet processed
@@ -211,6 +201,9 @@ if ($this.IsUnfixableError($result)) {
 | `POST /repos/{owner}/{repo}/releases` | `New-GitHubRelease` | Create release |
 | `DELETE /repos/{owner}/{repo}/releases/{id}` | `Remove-GitHubRelease` | Delete release |
 | `PATCH /repos/{owner}/{repo}/releases/{id}` | `Publish-GitHubRelease` | Publish draft release |
+| `GET /repos/{owner}/{repo}/immutable-releases` | `Get-GitHubImmutableReleaseStatus` | Check if release immutability is enabled |
+| `PUT /repos/{owner}/{repo}/immutable-releases` | `Enable-GitHubImmutableRelease` | Enable release immutability (needs admin) |
+| `GET /repos/{owner}/{repo}/rulesets` | `Get-GitHubTagProtection` | Find rulesets blocking tag deletion |
 
 ### GraphQL API (Used)
 | Query | Function | Purpose | Queried Fields |
@@ -223,7 +216,6 @@ if ($this.IsUnfixableError($result)) {
 ### Missing APIs (Not Available from GitHub)
 | Feature | Status | Workaround |
 |---------|--------|------------|
-| Check if repo has immutable releases enabled | ❌ Not exposed | Infer from 422 errors on publish |
 | Check if tag is blocked by deleted immutable release | ❌ Not exposed | Only discoverable via 422 error on create |
 | Force-delete immutable release | ❌ Not possible | Must use `ignore-versions` |
 

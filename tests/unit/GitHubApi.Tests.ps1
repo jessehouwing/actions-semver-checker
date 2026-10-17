@@ -8,6 +8,120 @@
     . "$PSScriptRoot/../../lib/GitHubApi.ps1"
 }
 
+Describe "Get-GitHubImmutableReleaseStatus and Enable-GitHubImmutableRelease" {
+    BeforeEach {
+        $script:state = [RepositoryState]::new()
+        $script:state.RepoOwner = "owner"
+        $script:state.RepoName = "repo"
+        $script:state.ApiUrl = "https://api.github.com"
+        $script:state.Token = "token"
+    }
+
+    It "Returns the enabled flag from GET immutable-releases" {
+        Mock Invoke-GitHubHttpRequest { return [PSCustomObject]@{ enabled = $false; enforced_by_owner = $false } }
+
+        Get-GitHubImmutableReleaseStatus -State $script:state | Should -Be $false
+        Should -Invoke Invoke-GitHubHttpRequest -ParameterFilter { $Uri -eq "https://api.github.com/repos/owner/repo/immutable-releases" -and $Method -eq 'Get' }
+    }
+
+    It "Returns null when the status cannot be queried" {
+        Mock Invoke-GitHubHttpRequest { throw "403 Forbidden" }
+
+        Get-GitHubImmutableReleaseStatus -State $script:state | Should -BeNullOrEmpty
+    }
+
+    It "Enables immutable releases with PUT and confirms the status" {
+        Mock Start-Sleep { }
+        Mock Invoke-GitHubHttpRequest { return $null } -ParameterFilter { $Method -eq 'Put' }
+        Mock Invoke-GitHubHttpRequest { return [PSCustomObject]@{ enabled = $true } } -ParameterFilter { $Method -eq 'Get' }
+
+        Enable-GitHubImmutableRelease -State $script:state | Should -Be $true
+        Should -Invoke Invoke-GitHubHttpRequest -Exactly 1 -ParameterFilter { $Uri -eq "https://api.github.com/repos/owner/repo/immutable-releases" -and $Method -eq 'Put' }
+        Should -Invoke Start-Sleep -Exactly 0
+    }
+
+    It "Polls with exponential backoff until the status reports enabled" {
+        Mock Start-Sleep { }
+        $script:getCalls = 0
+        Mock Invoke-GitHubHttpRequest { return $null } -ParameterFilter { $Method -eq 'Put' }
+        Mock Invoke-GitHubHttpRequest {
+            $script:getCalls++
+            return [PSCustomObject]@{ enabled = ($script:getCalls -ge 4) }
+        } -ParameterFilter { $Method -eq 'Get' }
+
+        Enable-GitHubImmutableRelease -State $script:state | Should -Be $true
+        $script:getCalls | Should -Be 4
+        Should -Invoke Start-Sleep -Exactly 1 -ParameterFilter { $Seconds -eq 1 }
+        Should -Invoke Start-Sleep -Exactly 1 -ParameterFilter { $Seconds -eq 2 }
+        Should -Invoke Start-Sleep -Exactly 1 -ParameterFilter { $Seconds -eq 4 }
+    }
+
+    It "Returns false when the status never reports enabled" {
+        Mock Start-Sleep { }
+        Mock Invoke-GitHubHttpRequest { return $null } -ParameterFilter { $Method -eq 'Put' }
+        Mock Invoke-GitHubHttpRequest { return [PSCustomObject]@{ enabled = $false } } -ParameterFilter { $Method -eq 'Get' }
+
+        Enable-GitHubImmutableRelease -State $script:state -MaxAttempts 3 | Should -Be $false
+        Should -Invoke Invoke-GitHubHttpRequest -Exactly 3 -ParameterFilter { $Method -eq 'Get' }
+        Should -Invoke Start-Sleep -Exactly 2
+    }
+
+    It "Returns false when enabling fails" {
+        Mock Invoke-GitHubHttpRequest { throw "403 Forbidden" }
+
+        Enable-GitHubImmutableRelease -State $script:state | Should -Be $false
+    }
+}
+
+Describe "Get-GitHubTagProtection" {
+    BeforeEach {
+        $script:state = [RepositoryState]::new()
+        $script:state.RepoOwner = "owner"
+        $script:state.RepoName = "repo"
+        $script:state.ApiUrl = "https://api.github.com"
+        $script:state.ServerUrl = "https://github.com"
+        $script:state.Token = "token"
+    }
+
+    It "Returns active tag rulesets with a deletion rule that match the tag" {
+        Mock Invoke-GitHubHttpRequest {
+            if ($Uri -match '/rulesets/\d+$') {
+                $id = [int]($Uri -split '/')[-1]
+                switch ($id) {
+                    1 { return [PSCustomObject]@{ id = 1; name = "Protect v tags"; enforcement = "active"; source_type = "Repository"; rules = @([PSCustomObject]@{ type = "deletion" }); conditions = [PSCustomObject]@{ ref_name = [PSCustomObject]@{ include = @("refs/tags/v*"); exclude = @() } } } }
+                    2 { return [PSCustomObject]@{ id = 2; name = "No deletion rule"; enforcement = "active"; source_type = "Repository"; rules = @([PSCustomObject]@{ type = "update" }); conditions = [PSCustomObject]@{ ref_name = [PSCustomObject]@{ include = @("~ALL"); exclude = @() } } } }
+                    3 { return [PSCustomObject]@{ id = 3; name = "Excluded"; enforcement = "active"; source_type = "Repository"; rules = @([PSCustomObject]@{ type = "deletion" }); conditions = [PSCustomObject]@{ ref_name = [PSCustomObject]@{ include = @("~ALL"); exclude = @("refs/tags/v1.0.0") } } } }
+                    4 { return [PSCustomObject]@{ id = 4; name = "Org rule"; enforcement = "evaluate"; source_type = "Organization"; source = "myorg"; rules = @([PSCustomObject]@{ type = "deletion" }); conditions = [PSCustomObject]@{ ref_name = [PSCustomObject]@{ include = @("~ALL"); exclude = @() } } } }
+                }
+            }
+            return @(
+                [PSCustomObject]@{ id = 1; target = "tag"; enforcement = "active" }
+                [PSCustomObject]@{ id = 2; target = "tag"; enforcement = "active" }
+                [PSCustomObject]@{ id = 3; target = "tag"; enforcement = "active" }
+                [PSCustomObject]@{ id = 4; target = "tag"; enforcement = "evaluate" }
+                [PSCustomObject]@{ id = 5; target = "branch"; enforcement = "active" }
+                [PSCustomObject]@{ id = 6; target = "tag"; enforcement = "disabled" }
+            )
+        }
+
+        $result = @(Get-GitHubTagProtection -State $script:state -TagName "v1.0.0")
+
+        $result.Count | Should -Be 2
+        $result[0].Name | Should -Be "Protect v tags"
+        $result[0].Url | Should -Be "https://github.com/owner/repo/rules/1"
+        $result[1].Source | Should -Be "organization myorg"
+        $result[1].Url | Should -Be "https://github.com/organizations/myorg/settings/rules/4"
+    }
+
+    It "Returns an empty array when rulesets cannot be read" {
+        Mock Invoke-GitHubHttpRequest { throw "403 Forbidden" }
+
+        $result = @(Get-GitHubTagProtection -State $script:state -TagName "v1.0.0")
+
+        $result.Count | Should -Be 0
+    }
+}
+
 Describe "Test-ImmutableReleaseError" {
     Context "422 errors with immutable release message" {
         It "Should return true for structured 422 error with immutable release message" {

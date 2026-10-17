@@ -4,6 +4,7 @@
     . "$PSScriptRoot/../../../GitHubApi.ps1"
     . "$PSScriptRoot/../../base/RemediationAction.ps1"
     . "$PSScriptRoot/../../base/ReleaseRemediationAction.ps1"
+    . "$PSScriptRoot/../../tags/DeleteTagAction/DeleteTagAction.ps1"
     . "$PSScriptRoot/RepublishReleaseAction.ps1"
 }
 
@@ -15,6 +16,7 @@ Describe "RepublishReleaseAction" {
         $script:state.ApiUrl = "https://api.github.com"
         $script:state.ServerUrl = "https://github.com"
         $script:state.Token = "test-token"
+        Mock Get-GitHubImmutableReleaseStatus { return $true }
     }
     
     Context "Constructor" {
@@ -98,25 +100,23 @@ Describe "RepublishReleaseAction" {
             $commands[1] | Should -Match "--draft=false --latest=false"
         }
         
-        It "Should return an ignore-versions YAML snippet (not a gh command) when issue is unfixable" {
+        It "Should return the remote tag delete command and ruleset guidance after tag deletion failed" {
             $action = [RepublishReleaseAction]::new("v1.0.0")
-            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release not immutable")
-            $issue.Version = "v1.0.0"
-            $issue.Status = "unfixable"
-            $script:state.Issues = @($issue)
+            $action.TagDeletionFailed = $true
+            $action.BlockingRulesets = @([PSCustomObject]@{ Name = "Protect tags"; Enforcement = "active"; Source = "repository test-owner/test-repo"; Url = "https://github.com/test-owner/test-repo/rules/1" })
             
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -BeGreaterThan 0
-            ($commands -join "`n") | Should -Match 'ignore-versions:\s*"v1\.0\.0"'
+            ($commands -join "`n") | Should -Match "Protect tags"
+            ($commands -join "`n") | Should -Match "bypass list"
+            $commands | Should -Contain "git push origin :refs/tags/v1.0.0"
             ($commands -join "`n") | Should -Not -Match "gh release"
-            $action.ManualCommandsLanguage | Should -Be "yaml"
         }
         
-        It "Should return settings URL comment AND remediation commands when no immutable releases exist" {
-            # When no immutable releases exist, show both the settings URL comment AND the gh release edit commands
+        It "Should return the enable-immutability command AND remediation commands when no immutable releases exist" {
+            # When no immutable releases exist, show both the gh api enable command AND the gh release edit commands
             $action = [RepublishReleaseAction]::new("v1.0.0")
-            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 was republished but is still mutable. Enable 'Release immutability' in repository settings")
+            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 was republished but is still mutable. Enable 'Release immutability' for the repository")
             $issue.Version = "v1.0.0"
             $issue.Status = "manual_fix_required"
             $script:state.Issues = @($issue)
@@ -124,17 +124,18 @@ Describe "RepublishReleaseAction" {
             
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 3
+            $commands.Count | Should -Be 4
             $commands[0] | Should -Match "^# Enable 'Release immutability'"
-            $commands[0] | Should -Match "settings#releases-settings"
-            $commands[1] | Should -Match "gh release edit v1.0.0"
-            $commands[1] | Should -Match "--draft=true"
+            $commands[0] | Should -Match "admin"
+            $commands[1] | Should -Be "gh api -X PUT repos/test-owner/test-repo/immutable-releases"
             $commands[2] | Should -Match "gh release edit v1.0.0"
-            $commands[2] | Should -Match "--draft=false"
+            $commands[2] | Should -Match "--draft=true"
+            $commands[3] | Should -Match "gh release edit v1.0.0"
+            $commands[3] | Should -Match "--draft=false"
         }
         
-        It "Should return settings URL comment AND remediation commands when auto-fix is false" {
-            # Show settings URL AND remediation commands when no immutable releases exist
+        It "Should return the enable-immutability command AND remediation commands when auto-fix is false" {
+            # Show the enable command AND remediation commands when no immutable releases exist
             # This ensures users see the comment even in non-autofix mode
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 is published but not immutable")
@@ -145,19 +146,20 @@ Describe "RepublishReleaseAction" {
             
             $commands = $action.GetManualCommands($script:state)
             
-            $commands.Count | Should -Be 3
+            $commands.Count | Should -Be 4
             $commands[0] | Should -Match "^# Enable 'Release immutability'"
-            $commands[0] | Should -Match "settings#releases-settings"
-            $commands[1] | Should -Match "gh release edit v1.0.0"
-            $commands[1] | Should -Match "--draft=true"
+            $commands[0] | Should -Match "admin"
+            $commands[1] | Should -Be "gh api -X PUT repos/test-owner/test-repo/immutable-releases"
             $commands[2] | Should -Match "gh release edit v1.0.0"
-            $commands[2] | Should -Match "--draft=false"
+            $commands[2] | Should -Match "--draft=true"
+            $commands[3] | Should -Match "gh release edit v1.0.0"
+            $commands[3] | Should -Match "--draft=false"
         }
         
         It "Should return gh release edit commands when repo already has immutable releases" {
-            # If the repo already has immutable releases, the feature is enabled - no need for settings URL
+            # If the repo already has immutable releases, the feature is enabled - no need for the enable command
             $action = [RepublishReleaseAction]::new("v1.0.0")
-            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 was republished but is still mutable. Enable 'Release immutability' in repository settings")
+            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release v1.0.0 was republished but is still mutable. Enable 'Release immutability' for the repository")
             $issue.Version = "v1.0.0"
             $issue.Status = "manual_fix_required"
             $script:state.Issues = @($issue)
@@ -274,10 +276,75 @@ Describe "RepublishReleaseAction" {
             $result | Should -Be $false
             $issue.Status | Should -Be "manual_fix_required"
             $issue.Message | Should -Match "Enable 'Release immutability'"
+            $issue.Message | Should -Match "gh api -X PUT repos/test-owner/test-repo/immutable-releases"
         }
         
-        It "Should mark as unfixable on 422 error" {
+        It "Should enable release immutability before republishing when it is disabled" {
+            Mock Get-GitHubImmutableReleaseStatus { return $false }
+            Mock Enable-GitHubImmutableRelease { return $true }
+            Mock Republish-GitHubRelease { return @{ Success = $true } }
+            Mock Test-ReleaseImmutability { return $true }
+
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $result = $action.Execute($script:state)
+
+            $result | Should -Be $true
+            Should -Invoke Enable-GitHubImmutableRelease -Times 1
+            Should -Invoke Republish-GitHubRelease -Times 1
+        }
+
+        It "Should require manual fix with the gh api command when immutability cannot be enabled" {
+            Mock Get-GitHubImmutableReleaseStatus { return $false }
+            Mock Enable-GitHubImmutableRelease { return $false }
+            Mock Republish-GitHubRelease { return @{ Success = $true } }
+
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release not immutable")
+            $issue.Version = "v1.0.0"
+            $issue.Status = "pending"
+            $script:state.Issues = @($issue)
+
+            $result = $action.Execute($script:state)
+
+            $result | Should -Be $false
+            $issue.Status | Should -Be "manual_fix_required"
+            $issue.Message | Should -Match "gh api -X PUT repos/test-owner/test-repo/immutable-releases"
+            Should -Invoke Republish-GitHubRelease -Times 0
+        }
+
+        It "Should list the enable command in manual steps after an enablement failure even if other releases are immutable" {
+            Mock Get-GitHubImmutableReleaseStatus { return $false }
+            Mock Enable-GitHubImmutableRelease { return $false }
+
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release not immutable")
+            $issue.Version = "v1.0.0"
+            $script:state.Issues = @($issue)
+            $immutable = [ReleaseInfo]::new([PSCustomObject]@{ id = 1; tag_name = "v0.9.0"; draft = $false; prerelease = $false; immutable = $true; html_url = "u" })
+            $script:state.Releases = @($immutable)
+
+            $action.Execute($script:state) | Should -Be $false
+            $commands = $action.GetManualCommands($script:state)
+            ($commands -join "`n") | Should -Match "gh api -X PUT repos/test-owner/test-repo/immutable-releases"
+        }
+
+        It "Should delete the tag on 422 error" {
             Mock Republish-GitHubRelease { return @{ Success = $false; Unfixable = $true } }
+            Mock Remove-GitHubRef { return $true }
+
+            $action = [RepublishReleaseAction]::new("v1.0.0")
+            $result = $action.Execute($script:state)
+
+            $result | Should -Be $true
+            Should -Invoke Remove-GitHubRef -Times 1 -ParameterFilter {
+                $RefName -eq "refs/tags/v1.0.0"
+            }
+        }
+
+        It "Should require manual fix and report blocking rulesets when tag deletion fails" {
+            Mock Republish-GitHubRelease { return @{ Success = $false; Unfixable = $true } }
+            Mock Remove-GitHubRef { return $false }
+            Mock Get-GitHubTagProtection { return @([PSCustomObject]@{ Name = "Protect tags"; Enforcement = "active"; Source = "repository test-owner/test-repo"; Url = "https://github.com/test-owner/test-repo/rules/1" }) }
             
             $action = [RepublishReleaseAction]::new("v1.0.0")
             $issue = [ValidationIssue]::new("non_immutable_release", "error", "Release not immutable")
@@ -288,7 +355,9 @@ Describe "RepublishReleaseAction" {
             $result = $action.Execute($script:state)
             
             $result | Should -Be $false
-            $issue.Status | Should -Be "unfixable"
+            $issue.Status | Should -Be "manual_fix_required"
+            $issue.Message | Should -Match "Protect tags"
+            $action.TagDeletionFailed | Should -Be $true
         }
     }
 }
