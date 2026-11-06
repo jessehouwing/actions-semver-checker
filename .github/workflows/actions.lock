@@ -21,7 +21,7 @@ workflows:
     '.github/workflows/pester-tests.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
-        - 'enricomi/publish-unit-test-result-action@v2.25.0'
+        - 'enricomi/publish-unit-test-result-action@v2.26.0'
         - 'step-security/harden-runner@v2.22.2'
     '.github/workflows/powershell.yml':
         - 'actions/checkout@v7.0.1'
@@ -52,9 +52,9 @@ dependencies:
         commit: 'sha1-cf430e030ddbb5b0abf93d22962f4752f3646cd9'
         owner_id: 44036562
         repo_id: 192625955
-    'enricomi/publish-unit-test-result-action@v2.25.0':
-        ref: 'v2.25.0'
-        commit: 'sha1-7622c5bf3d112a72ab4fa3951c2aa5723d8ab92d'
+    'enricomi/publish-unit-test-result-action@v2.26.0':
+        ref: 'v2.26.0'
+        commit: 'sha1-da5b7be67623cd59bbbd1a0ce4f022050a55605f'
         owner_id: 44700269
         repo_id: 290227969
     'github/codeql-action@v4.39.0':
