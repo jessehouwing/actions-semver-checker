@@ -34,7 +34,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
         - 'github/codeql-action@v4.39.0'
-        - 'ossf/scorecard-action@v2.5.0'
+        - 'ossf/scorecard-action@v2.6.0'
         - 'step-security/harden-runner@v2.22.2'
 dependencies:
     'actions/checkout@v7.0.1':
@@ -72,9 +72,9 @@ dependencies:
         commit: 'sha1-ca55c0d967b1f7aa6b3767e476c0bdbb5108481a'
         owner_id: 4173387
         repo_id: 1161059458
-    'ossf/scorecard-action@v2.5.0':
-        ref: 'v2.5.0'
-        commit: 'sha1-fa7117db83c52d787ae5a89f350999701505d78e'
+    'ossf/scorecard-action@v2.6.0':
+        ref: 'v2.6.0'
+        commit: 'sha1-23f22cd43608bae7a1f1fa2603d7314dee9538a5'
         owner_id: 67707773
         repo_id: 421101922
     'step-security/harden-runner@v2.22.2':
