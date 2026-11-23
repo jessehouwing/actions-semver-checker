@@ -163,9 +163,10 @@
                 # Simulate 404 - file not found
                 $exception = [System.Net.WebException]::new("The remote server returned an error: (404) Not Found.")
                 # Add a mock Response property
-                $exception | Add-Member -NotePropertyName Response -NotePropertyValue ([PSCustomObject]@{
+                $response = [PSCustomObject]@{
                     StatusCode = [PSCustomObject]@{ value__ = 404 }
-                }) -Force
+                }
+                $exception | Add-Member -NotePropertyName Response -NotePropertyValue $response -Force
                 throw $exception
             }
             

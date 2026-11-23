@@ -173,14 +173,15 @@ Describe "Helper functions" {
             $pre130 = [VersionRef]::new("v1.3.0", "refs/tags/v1.3.0", "sha130", "tag")
             
             # Mark v1.3.0 as prerelease via its release
-            $release130 = [ReleaseInfo]::new([PSCustomObject]@{
-                tag_name = "v1.3.0"
-                id = 130
-                draft = $false
-                prerelease = $true
-                html_url = "https://example.com"
-                immutable = $false
-            })
+            $release130 = [ReleaseInfo]::new(
+                [PSCustomObject]@{
+                    tag_name = "v1.3.0"
+                    id = 130
+                    draft = $false
+                    prerelease = $true
+                    html_url = "https://example.com"
+                    immutable = $false
+                })
 
             $state.Tags = @($tag100, $pre130)
             $state.Branches = @($branch120)
@@ -222,14 +223,15 @@ Describe "Helper functions" {
             $v220 = [VersionRef]::new("v2.2.5", "refs/tags/v2.2.5", "sha225", "tag")
             
             # Mark v2.3.0 as prerelease via its release
-            $release230 = [ReleaseInfo]::new([PSCustomObject]@{
-                tag_name = "v2.3.0"
-                id = 230
-                draft = $false
-                prerelease = $true
-                html_url = "https://example.com"
-                immutable = $false
-            })
+            $release230 = [ReleaseInfo]::new(
+                [PSCustomObject]@{
+                    tag_name = "v2.3.0"
+                    id = 230
+                    draft = $false
+                    prerelease = $true
+                    html_url = "https://example.com"
+                    immutable = $false
+                })
 
             $state.Tags = @($v210, $v220)
             $state.Branches = @($v230)
@@ -273,14 +275,15 @@ Describe "Helper functions" {
             $v300 = [VersionRef]::new("v3.0.0", "refs/tags/v3.0.0", "sha300", "tag")
             
             # Mark v3.0.0 as prerelease via its release
-            $release300 = [ReleaseInfo]::new([PSCustomObject]@{
-                tag_name = "v3.0.0"
-                id = 300
-                draft = $false
-                prerelease = $true
-                html_url = "https://example.com"
-                immutable = $false
-            })
+            $release300 = [ReleaseInfo]::new(
+                [PSCustomObject]@{
+                    tag_name = "v3.0.0"
+                    id = 300
+                    draft = $false
+                    prerelease = $true
+                    html_url = "https://example.com"
+                    immutable = $false
+                })
             
             $state.Tags = @($v100, $v200, $v300)
             $state.Releases = @($release300)
