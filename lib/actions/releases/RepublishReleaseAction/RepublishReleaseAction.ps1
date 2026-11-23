@@ -100,9 +100,9 @@ class RepublishReleaseAction : ReleaseRemediationAction {
         # 1. Any existing release is already immutable (from initial state)
         # 2. Any non_immutable_release issue was successfully fixed (auto-fix worked, meaning feature is enabled)
         $hasImmutableReleases = ($state.Releases | Where-Object { $_.IsImmutable }) | Select-Object -First 1
-        $anyImmutabilityFixSucceeded = ($state.Issues | Where-Object {
+        $anyImmutabilityFixSucceeded = $state.Issues | Where-Object {
             $_.Type -eq "non_immutable_release" -and $_.Status -eq "fixed"
-        }) | Select-Object -First 1
+        } | Select-Object -First 1
         
         # If no immutable releases exist AND no auto-fix succeeded, add the command to enable the feature
         if ($this.ImmutabilityEnableFailed -or (-not $hasImmutableReleases -and -not $anyImmutabilityFixSucceeded)) {
