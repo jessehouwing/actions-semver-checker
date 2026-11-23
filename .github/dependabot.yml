@@ -22,3 +22,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  - package-ecosystem: 'pip'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    cooldown:
+      default-days: 3
+    groups:
+      minor-updates:
+        update-types:
+          - minor
+          - patch
